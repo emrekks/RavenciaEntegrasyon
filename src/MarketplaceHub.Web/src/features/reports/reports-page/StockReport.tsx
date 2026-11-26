@@ -8,6 +8,7 @@ import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { RevealPanel, type Column, DataTable, Bars, type Kpi, KpiStrip } from './report-parts'
 import { Deferred } from './Deferred'
+import { barsEstimate, fixed, tableEstimate } from './deferred-estimates'
 import { BestSellerTables } from './SalesTables'
 
 // The best sellers' stock in the sales period (once Operasyon's Stok sub-tab; owner 7 Nov 2026 moved it to the Stok tab).
@@ -97,26 +98,26 @@ export function StockReport({ from, to, platforms, sales }: { from: string; to: 
   const adet = (value: number) => `${formatNumber(value)} adet`
   return <div className="reports-summary">
     <KpiStrip label="Stoğun parası" items={money} long />
-    <Deferred estimate={608}><KpiStrip label="Stoğun durumu" items={counts} long /></Deferred>
-    <Deferred estimate={360}><KpiStrip label="Çok satanların stoğu" items={bestSellerKpis(sales)} long /></Deferred>
+    <Deferred name="stockCounts" estimate={fixed.stockCounts}><KpiStrip label="Stoğun durumu" items={counts} long /></Deferred>
+    <Deferred name="stockBestSellerKpis" estimate={fixed.stockBestSellerKpis}><KpiStrip label="Çok satanların stoğu" items={bestSellerKpis(sales)} long /></Deferred>
     <div className="reports-grid">
-      <Deferred estimate={530}><BestSellerTables data={sales} /></Deferred>
-      <Deferred estimate={213}><div className="is-wide"><DataTable title="Kategori Bazlı Stok" csvName="rapor-stok-kategori" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="capital"
+      <BestSellerTables data={sales} />
+      <Deferred name="stockCategories" className="is-wide" estimate={tableEstimate(data.categories.length, 43)}><div className="is-wide"><DataTable title="Kategori Bazlı Stok" csvName="rapor-stok-kategori" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="capital"
         description="Stoklu varyantlar kategorisine göre; satış, dönemin net satışıdır." columns={stockGroupColumns('Kategori', true)} /></div></Deferred>
-      <Deferred estimate={124}><RevealPanel title="Renge Göre Adet" description="Stoklu varyantların rengine göre stok adedi.">{() =>
+      <Deferred name="stockColors" estimate={barsEstimate(Math.min(12, data.colors.length))}><RevealPanel title="Renge Göre Adet" description="Stoklu varyantların rengine göre stok adedi.">{() =>
         <Bars label="Renge göre adet" items={bars(data.colors, group => group.units, 12)} format={adet} />}</RevealPanel></Deferred>
-      <Deferred estimate={124}><RevealPanel title="Bedene Göre Adet" description="Stoklu varyantların bedenine göre stok adedi.">{() =>
+      <Deferred name="stockSizes" estimate={barsEstimate(Math.min(12, data.sizes.length))}><RevealPanel title="Bedene Göre Adet" description="Stoklu varyantların bedenine göre stok adedi.">{() =>
         <Bars label="Bedene göre adet" items={bars(data.sizes, group => group.units, 12)} format={adet} />}</RevealPanel></Deferred>
-      <Deferred estimate={92}><div className="is-wide"><RevealPanel title="Stok Gün Dağılımı" description="Sermayenin, stoğun kaç gün yeteceğine göre dağılımı; dönemde satmayanlar en sonda.">{() =>
+      <Deferred name="stockCover" className="is-wide" estimate={barsEstimate(Math.min(10, data.cover.length))}><div className="is-wide"><RevealPanel title="Stok Gün Dağılımı" description="Sermayenin, stoğun kaç gün yeteceğine göre dağılımı; dönemde satmayanlar en sonda.">{() =>
         <Bars label="Stok gününe göre sermaye" items={bars(data.cover, group => group.capital)} format={formatTlShort} />}</RevealPanel></div></Deferred>
-      <Deferred estimate={192}><div className="is-wide"><DataTable title="Platformlara Göre Stok" csvName="rapor-stok-platform" rows={data.platforms} rowKey={row => row.connectionId} initialSort="listed"
+      <Deferred name="stockPlatforms" className="is-wide" estimate={tableEstimate(data.platforms.length, [64, 64, 62], 216)}><div className="is-wide"><DataTable title="Platformlara Göre Stok" csvName="rapor-stok-platform" rows={data.platforms} rowKey={row => row.connectionId} initialSort="listed"
         description="Mağazada aktif teklifi olan varyantların stoğu; değer mağazanın kendi fiyatıyla."
         empty="Seçilen mağazalarda teklif yok." columns={stockPlatformColumns} /></div></Deferred>
-      <Deferred estimate={232}><div className="is-wide"><DataTable title="Fiyat Bantları" csvName="rapor-stok-fiyat-bandi" rows={data.priceBands} rowKey={row => row.key} unknown={row => !row.known}
+      <Deferred name="stockPriceBands" className="is-wide" estimate={tableEstimate(data.priceBands.length, [52, 52, 43])}><div className="is-wide"><DataTable title="Fiyat Bantları" csvName="rapor-stok-fiyat-bandi" rows={data.priceBands} rowKey={row => row.key} unknown={row => !row.known}
         description="Panel satış fiyatına göre; alt sınır dahil, üst sınır hariç." columns={stockGroupColumns('Fiyat Bandı', false)} /></div></Deferred>
-      <Deferred estimate={211}><div className="is-wide"><DataTable title="En Çok Sermaye Bağlayan Ürünler" csvName="rapor-stok-sermaye" rows={data.topCapital} rowKey={row => row.key} initialSort="capital"
+      <Deferred name="stockTopCapital" className="is-wide" estimate={tableEstimate(data.topCapital.length, 83)}><div className="is-wide"><DataTable title="En Çok Sermaye Bağlayan Ürünler" csvName="rapor-stok-sermaye" rows={data.topCapital} rowKey={row => row.key} initialSort="capital"
         description="Stoğuna en çok para bağlanan 20 ürün; stok gün, dönemin satış hızıyla." columns={stockItemColumns(data.deadDays)} /></div></Deferred>
-      <Deferred estimate={211}><div className="is-wide"><DataTable title="Ölü Stok" csvName="rapor-stok-olu" rows={data.dead} rowKey={row => row.key} initialSort="capital"
+      <Deferred name="stockDead" className="is-wide" estimate={tableEstimate(data.dead.length, 83)}><div className="is-wide"><DataTable title="Ölü Stok" csvName="rapor-stok-olu" rows={data.dead} rowKey={row => row.key} initialSort="capital"
         description={`Son ${data.deadDays} günde hiç net satışı olmayan stoklu varyantlar; sermayeye göre ilk 50.`}
         empty={`Son ${data.deadDays} günde satmayan stoklu varyant yok.`} columns={stockItemColumns(data.deadDays)} /></div></Deferred>
     </div>

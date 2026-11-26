@@ -25,6 +25,9 @@ window.__reportsAudit = { done: false, findings: [] };
     await new Promise(resolve => setTimeout(resolve, 2500))
     const where = `${width}px ${view || '?view=overview'}`
     const doc = frame.contentDocument
+    // Blocks below the first screen are drawn a moment later (reports-page/Deferred.tsx): wait for them, 10 s at most.
+    for (let waited = 0; waited < 10000 && doc.querySelector('[data-deferred]'); waited += 100) await new Promise(resolve => setTimeout(resolve, 100))
+    if (doc.querySelector('[data-deferred]')) findings.push(`DEFERRED ${where}: ${doc.querySelectorAll('[data-deferred]').length} blocks still waiting after 10 s`)
     const body = doc.querySelector('.reports-body')
     if (!body) { findings.push(`EMPTY ${where}`); frame.remove(); continue }
     if (doc.documentElement.scrollWidth > width + 1) findings.push(`SCROLL ${where}: ${doc.documentElement.scrollWidth}px wide`)

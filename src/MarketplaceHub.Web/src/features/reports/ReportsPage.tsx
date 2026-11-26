@@ -97,6 +97,9 @@ export function ReportsPage() {
   // The tabs draw the report a moment after it arrives (a background render React can interrupt), so the period and
   // platform controls answer at once; the figures, tabs and counts all change together when it is drawn.
   const shown = useDeferredValue(data)
+  // The line runs until the new answer is drawn, not only while it is fetched: between the two the tabs still show the
+  // previous period's figures.
+  const refreshing = Boolean(data) && (report.isFetching || shown !== data)
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
   // A tab change slides the body in from the tab's side and starts the page from its top (shared/tab-slide.tsx).
   const go = useCallback((nextView: ViewKey, nextSub: string | null = null) => {
@@ -123,7 +126,7 @@ export function ReportsPage() {
       </div></div>
       {/* A thin line along the card's top edge runs while a filter change loads: inside the card, so it moves nothing and
           sticks out nowhere. */}
-      <span className={`reports-refreshing${report.isFetching && data ? ' is-active' : ''}`} role="status"><span className="sr-only">{report.isFetching && data ? 'Güncelleniyor' : ''}</span></span>
+      <span className={`reports-refreshing${refreshing ? ' is-active' : ''}`} role="status"><span className="sr-only">{refreshing ? 'Güncelleniyor' : ''}</span></span>
     </div>
     {report.isLoading && <Busy text="Rapor hazırlanıyor…" />}
     {report.isError && !data && <ErrorBox error={report.error} onRetry={() => void report.refetch()} />}

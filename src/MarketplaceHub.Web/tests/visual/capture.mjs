@@ -63,9 +63,20 @@ function snapshot() {
   return { properties, values: valueList, vectors: vectorList, elements, scroll: [document.documentElement.scrollWidth, document.documentElement.scrollHeight] }
 }
 
+// Raporlar draws blocks below the first screen a moment after it (src/features/reports/reports-page/Deferred.tsx, a
+// waiting box marked data-deferred): a capture waits until none is left, 10 s at most, and fails beyond that.
+async function waitForDeferred(page, limit = 10000) {
+  const start = Date.now()
+  while (await page.locator('[data-deferred]').count()) {
+    if (Date.now() - start > limit) throw new Error(`${await page.locator('[data-deferred]').count()} deferred blocks still waiting after ${limit} ms`)
+    await page.waitForTimeout(100)
+  }
+}
+
 async function settle(page) {
   await page.waitForLoadState('networkidle').catch(() => undefined)
   await page.evaluate(() => document.fonts.ready)
+  await waitForDeferred(page)
   let previous = ''
   for (let attempt = 0; attempt < 40; attempt += 1) {
     await page.waitForTimeout(250)

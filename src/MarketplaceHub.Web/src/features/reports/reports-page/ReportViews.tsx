@@ -4,6 +4,7 @@ import { change, formatCount, formatNumber, formatPercent, formatTl, type Report
 import { SalesMap } from '../SalesMap'
 import { type OpsSub, SubTabs, Panel, Bars, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, previousText, previousRate, percent, previousMoney, netProfitTip, netLossTip, netSalesTip, returnRateTip, UnlinkedDeductions, profitSteps, topGroups } from './report-parts'
 import { Deferred } from './Deferred'
+import { barsEstimate, fixed, moversEstimate, stackedEstimate, tableEstimate } from './deferred-estimates'
 import { Platforms, Cities, Movers, Products, BrandsAndCategories, Returns, Cancellations, Cargo, TimeOfDay, Customers, CostAndProfit, Invoices } from './SalesTables'
 
 type ProductSub = 'products' | 'brands'
@@ -15,7 +16,7 @@ const opsSubs: OpsSub[] = ['returns', 'cancellations', 'cargo', 'invoices']
 export const Geography = memo(function Geography({ data }: { data: ReportSales }) {
   return <div className="reports-summary">
     <SalesMap data={data} />
-    <Deferred estimate={612}><Cities data={data} /></Deferred>
+    <Deferred name="cities" estimate={fixed.cities}><Cities data={data} /></Deferred>
   </div>
 })
 
@@ -41,29 +42,29 @@ export const ProductsView = memo(function ProductsView({ data, sub, onSub }: { d
         <Bars label="En çok satan ürünler" format={formatNumber} items={[...data.topProducts].sort((a, b) => b.soldQuantity - a.soldQuantity).slice(0, 8)
           .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.soldQuantity, note: formatTl(product.salesAmount) }))} />
       </Panel>
-      <Deferred estimate={300}><Panel title="En Çok İade Edilenler" description="İade adedine göre; yanında iade oranı." className="reports-list">
+      <Deferred name="topReturned" estimate={barsEstimate(data.topReturned.some(product => product.returnedQuantity > 0) ? Math.min(8, data.topReturned.length) : 0)}><Panel title="En Çok İade Edilenler" description="İade adedine göre; yanında iade oranı." className="reports-list">
         <Bars label="En çok iade edilen ürünler" format={formatNumber} items={[...data.topReturned].sort((a, b) => b.returnedQuantity - a.returnedQuantity).slice(0, 8)
           .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.returnedQuantity, note: formatPercent(product.returnRate) }))} />
       </Panel></Deferred>
-      <Deferred estimate={300}><Panel title="Satışta Yükselen Ürünler" description="Önceki döneme göre satılan adedi en çok artanlar." className="reports-list">
+      <Deferred name="rising" estimate={moversEstimate(data.rising?.length ?? 0)}><Panel title="Satışta Yükselen Ürünler" description="Önceki döneme göre satılan adedi en çok artanlar." className="reports-list">
         <Movers items={data.rising ?? []} tone="up" empty="Önceki döneme göre satışı artan ürün yok." />
       </Panel></Deferred>
-      <Deferred estimate={300}><Panel title="Satışta Düşen Ürünler" description="Önceki döneme göre satılan adedi en çok azalanlar." className="reports-list">
+      <Deferred name="falling" estimate={moversEstimate(data.falling?.length ?? 0)}><Panel title="Satışta Düşen Ürünler" description="Önceki döneme göre satılan adedi en çok azalanlar." className="reports-list">
         <Movers items={data.falling ?? []} tone="down" empty="Önceki döneme göre satışı azalan ürün yok." />
       </Panel></Deferred>
-      <Deferred estimate={300}><Panel title="Markalar" description="Satılan adede göre." className="reports-list">
+      <Deferred name="brandBars" estimate={barsEstimate(topGroups(data.brands, group => group.soldQuantity).length)}><Panel title="Markalar" description="Satılan adede göre." className="reports-list">
         <Bars label="Markalara göre satış" format={formatNumber} items={topGroups(data.brands, group => group.soldQuantity)} />
       </Panel></Deferred>
-      <Deferred estimate={300}><Panel title="Kategoriler" description="Satılan adede göre." className="reports-list">
+      <Deferred name="categoryBars" estimate={barsEstimate(topGroups(data.categories, group => group.soldQuantity).length)}><Panel title="Kategoriler" description="Satılan adede göre." className="reports-list">
         <Bars label="Kategorilere göre satış" format={formatNumber} items={topGroups(data.categories, group => group.soldQuantity)} />
       </Panel></Deferred>
     </div>
-    <Deferred estimate={48}><SubTabs label="Ürün kırılımı" value={sub} onChange={onSub} items={[
+    <Deferred name="productSubTabs" estimate={fixed.productSubTabs}><SubTabs label="Ürün kırılımı" value={sub} onChange={onSub} items={[
       { value: 'products', label: 'Ürünler', icon: 'products', count: formatCount(data.topProducts.length) },
       { value: 'brands', label: 'Marka ve Kategori', icon: 'layers', count: formatCount(data.brands.filter(group => group.known).length) }
     ]} /></Deferred>
     {/* These sub-tabs sit under the lists, so a change keeps the scroll where they are. */}
-    <Deferred estimate={1070}><TabSlidePanel active={sub} order={['products', 'brands']} scrollToTop={false} role="tabpanel">{sub === 'brands' ? <BrandsAndCategories data={data} /> : <Products data={data} />}</TabSlidePanel></Deferred>
+    <Deferred name="productTables" estimate={sub === 'brands' ? stackedEstimate(tableEstimate(data.brands.length, 43), tableEstimate(data.categories.length, 43)) : stackedEstimate(tableEstimate(data.topProducts.length, 83), tableEstimate(data.topReturned.length, 83))}><TabSlidePanel active={sub} order={['products', 'brands']} scrollToTop={false} role="tabpanel">{sub === 'brands' ? <BrandsAndCategories data={data} /> : <Products data={data} />}</TabSlidePanel></Deferred>
   </div>
 })
 
@@ -109,9 +110,9 @@ export const ProfitView = memo(function ProfitView({ data }: { data: ReportSales
   ]
   return <div className="reports-summary">
     <KpiStrip label="Kârlılığın göstergeleri" items={items} long />
-    <Deferred estimate={1109}><CostAndProfit data={data} /></Deferred>
-    <Deferred estimate={171}><UnlinkedDeductions data={data} panel /></Deferred>
-    <Deferred estimate={692}><Platforms data={data} /></Deferred>
+    <Deferred name="costAndProfit" estimate={fixed.costAndProfit}><CostAndProfit data={data} /></Deferred>
+    <Deferred name="unlinked" estimate={fixed.unlinked}><UnlinkedDeductions data={data} panel /></Deferred>
+    <Deferred name="platforms" estimate={fixed.platforms}><Platforms data={data} /></Deferred>
   </div>
 })
 
@@ -141,6 +142,6 @@ export const OperationsView = memo(function OperationsView({ data, sub, onSub }:
 export const CustomersView = memo(function CustomersView({ data }: { data: ReportSales }) {
   return <div className="reports-summary">
     <Customers data={data} />
-    <Deferred estimate={567}><TimeOfDay data={data} /></Deferred>
+    <Deferred name="timeOfDay" estimate={fixed.timeOfDay}><TimeOfDay data={data} /></Deferred>
   </div>
 })

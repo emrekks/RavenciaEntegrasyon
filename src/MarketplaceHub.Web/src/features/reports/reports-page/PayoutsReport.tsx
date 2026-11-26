@@ -17,6 +17,7 @@ import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../../ma
 import { PlatformSquareMark } from '../../../shared/platform-square-mark'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { Deferred } from './Deferred'
+import { fixed } from './deferred-estimates'
 import { SubTabs, Panel, type Kpi, KpiStrip } from './report-parts'
 
 // Hakediş: what the marketplaces will pay, by payout day, and what they paid; every figure from the stores' accounting
@@ -195,7 +196,7 @@ ${otherText}` : ''}` },
     : groups.some(group => group.status === 'PAID') ? ['Kısmen Ödendi', 'is-paid'] as const : ['Tahmini', 'is-expected'] as const
   return <div className="reports-summary reports-payouts">
     <KpiStrip label="Hakediş özeti" items={items} marks long />
-    <Deferred estimate={1201}><Panel title="Ödeme Özeti" description="Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer." className="reports-payout-list">
+    <Deferred name="payoutList" estimate={fixed.payoutList}><Panel title="Ödeme Özeti" description="Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer." className="reports-payout-list">
       {/* Every marketplace's total (a card sets the platform filter; the totals add up to the balance). Trendyol's card
           holds its payout regions in a list that opens under it; a region sets the region filter. */}
       {!search.trim() && platformCards.length > 0 && <div className="reports-payout-regions is-platforms" role="group" aria-label="Pazaryeri Toplamları">

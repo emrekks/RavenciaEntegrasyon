@@ -9,6 +9,11 @@ import { Columns, Donut, Progress, useReveal, type ColumnPoint, type Part } from
 import { MetricSourceContext, type DetailKey, Delta, type OpenDetail, TipMark, TipText, previousLine, previousRate, Card, type Money, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, wholeLiras, previousText, percent, previousMoney, explain, commissionGap, cargoGap, vatMore, netProfitTip, netLossTip, netSalesTip, returnRateTip, unlinkedDeductions, financeCosts, trendyolRead, feeCategories, costFigure, coveredNote, profitSteps, weightedHours, weekdays } from './report-parts'
 import { ProfitBridge } from './ProfitBridge'
 import { Deferred } from './Deferred'
+import { fixed, heroEstimate } from './deferred-estimates'
+
+// Between 761 and 1100 px the figure cards go two in a row and an odd last one takes the whole row (reports.css); its
+// waiting box does the same.
+const heroSpan = (index: number, count: number) => index === count - 1 && count % 2 === 1 && typeof window !== 'undefined' && window.innerWidth > 760 && window.innerWidth <= 1100 ? { gridColumn: '1 / -1' } : undefined
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
 // period apart, under it), the way from the sales to the profit
@@ -24,13 +29,13 @@ export const Overview = memo(function Overview({ data, onMore }: { data: ReportS
   const cards = useMemo(() => overviewCards(data, money, ads.data, ads.isError, () => setAdsOpen(true)), [data, money, ads.data, ads.isError])
   return <div className="reports-overview">
     <OverviewFigures data={data} money={money} />
-    <Deferred estimate={592}><CostLinesCard data={data} money={money} /></Deferred>
+    <Deferred name="costLines" estimate={fixed.costLines}><CostLinesCard data={data} money={money} /></Deferred>
     <div className="reports-overview-row is-two">
-      <Deferred estimate={663}><ProfitBridge data={data} money={money} onMore={onMore} /></Deferred>
-      <Deferred estimate={593}><PeriodCard data={data} /></Deferred>
+      <Deferred name="bridge" estimate={fixed.bridge}><ProfitBridge data={data} money={money} onMore={onMore} /></Deferred>
+      <Deferred name="period" estimate={fixed.period}><PeriodCard data={data} /></Deferred>
     </div>
     <div className="reports-hero-grid">
-      {cards.map(card => <Deferred key={card.key} estimate={card.key === 'returns' ? 451 : 246}><HeroCard card={card} onMore={onMore} /></Deferred>)}
+      {cards.map((card, index) => <Deferred key={card.key} name={`hero-${card.key}`} estimate={heroEstimate(card.rows.length)} boxStyle={heroSpan(index, cards.length)}><HeroCard card={card} onMore={onMore} /></Deferred>)}
     </div>
     <AdReportModal open={adsOpen} onClose={() => setAdsOpen(false)} data={ads.data} />
   </div>
