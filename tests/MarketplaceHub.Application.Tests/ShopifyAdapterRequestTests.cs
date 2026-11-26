@@ -176,6 +176,111 @@ public sealed class ShopifyAdapterRequestTests
         Assert.Single(handler.Bodies);
     }
 
+    // B-10: an order's lines and a fulfillment's lines past the first 250 are read on by the parent's id and cursor.
+    [Fact]
+    public async Task AnOrderWithMoreLinesOrFulfilledLinesIsReadOnToTheEnd()
+    {
+        var handler = new Capturing(
+            """{"data":{"order":{"lineItems":{"nodes":[{"id":"gid://shopify/LineItem/12"}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}""",
+            """{"data":{"fulfillment":{"fulfillmentLineItems":{"nodes":[{"id":"gid://shopify/FulfillmentLineItem/2","quantity":2,"lineItem":{"id":"gid://shopify/LineItem/12"}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}""");
+        var client = Client(handler);
+        using var order = JsonDocument.Parse("""{"id":"gid://shopify/Order/1","lineItems":{"nodes":[{"id":"gid://shopify/LineItem/11"}],"pageInfo":{"hasNextPage":true,"endCursor":"L1"}},"fulfillments":[{"id":"gid://shopify/Fulfillment/5","fulfillmentLineItems":{"nodes":[{"id":"gid://shopify/FulfillmentLineItem/1","quantity":1,"lineItem":{"id":"gid://shopify/LineItem/11"}}],"pageInfo":{"hasNextPage":true,"endCursor":"F1"}}}]}""");
+
+        var result = await client.ReadWholeOrderAsync(Shop(), order.RootElement, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Code);
+        var requests = handler.Bodies.Select(body => JsonDocument.Parse(body).RootElement).ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.Equal(ShopifyHttpClient.OrderLineItemsContinuationQuery, requests[0].GetProperty("query").GetString());
+        Assert.Equal("gid://shopify/Order/1", requests[0].GetProperty("variables").GetProperty("id").GetString());
+        Assert.Equal("L1", requests[0].GetProperty("variables").GetProperty("after").GetString());
+        Assert.Equal(ShopifyHttpClient.FulfillmentLineItemsContinuationQuery, requests[1].GetProperty("query").GetString());
+        Assert.Equal("gid://shopify/Fulfillment/5", requests[1].GetProperty("variables").GetProperty("id").GetString());
+        Assert.Equal("F1", requests[1].GetProperty("variables").GetProperty("after").GetString());
+        var lineItems = result.Value.GetProperty("lineItems");
+        Assert.Equal(["gid://shopify/LineItem/11", "gid://shopify/LineItem/12"], lineItems.GetProperty("nodes").EnumerateArray().Select(node => node.GetProperty("id").GetString()).ToArray());
+        Assert.False(ShopifyHttpClient.HasNextPage(lineItems));
+        var fulfilled = ShopifyHttpClient.FulfilledQuantities(result.Value.GetProperty("fulfillments").EnumerateArray().ToList());
+        Assert.Equal(1m, fulfilled["11"]);
+        Assert.Equal(2m, fulfilled["12"]);
+    }
+
+    [Fact]
+    public async Task AnOrderWithoutFurtherPagesIsTakenAsItCame()
+    {
+        var handler = new Capturing("""{"data":{}}""");
+        var client = Client(handler);
+        const string json = """{"id":"gid://shopify/Order/1","lineItems":{"nodes":[{"id":"gid://shopify/LineItem/11"}],"pageInfo":{"hasNextPage":false,"endCursor":null}},"fulfillments":[]}""";
+        using var order = JsonDocument.Parse(json);
+
+        var result = await client.ReadWholeOrderAsync(Shop(), order.RootElement, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Code);
+        Assert.Empty(handler.Bodies);
+        Assert.Equal(json, result.Value.GetRawText());
+    }
+
+    [Fact]
+    public async Task AnOrderLineContinuationWithoutACursorFailsInsteadOfCuttingTheOrder()
+    {
+        var handler = new Capturing("""{"data":{}}""");
+        var client = Client(handler);
+        using var order = JsonDocument.Parse("""{"id":"gid://shopify/Order/1","lineItems":{"nodes":[{"id":"gid://shopify/LineItem/11"}],"pageInfo":{"hasNextPage":true,"endCursor":null}},"fulfillments":[]}""");
+
+        var result = await client.ReadWholeOrderAsync(Shop(), order.RootElement, CancellationToken.None);
+
+        Assert.Equal(ShopifyHttpClient.OrderContinuationIncompleteCode, result.Error?.Code);
+        Assert.Empty(handler.Bodies);
+    }
+
+    // B-10: a product's variants past the first 250 are read on by the product's id and cursor.
+    [Fact]
+    public async Task AProductWithMoreVariantsIsReadOnToTheEnd()
+    {
+        var handler = new Capturing("""{"data":{"product":{"variants":{"nodes":[{"id":"gid://shopify/ProductVariant/2","sku":"B"}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}""");
+        var client = Client(handler);
+        using var edge = JsonDocument.Parse("""{"cursor":"P1","node":{"id":"gid://shopify/Product/9","variants":{"nodes":[{"id":"gid://shopify/ProductVariant/1","sku":"A"}],"pageInfo":{"hasNextPage":true,"endCursor":"V1"}}}}""");
+
+        var result = await client.ReadWholeProductEdgeAsync(Shop(), edge.RootElement, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Code);
+        using var request = JsonDocument.Parse(Assert.Single(handler.Bodies));
+        Assert.Equal(ShopifyHttpClient.ProductVariantsContinuationQuery, request.RootElement.GetProperty("query").GetString());
+        Assert.Equal("gid://shopify/Product/9", request.RootElement.GetProperty("variables").GetProperty("id").GetString());
+        Assert.Equal("V1", request.RootElement.GetProperty("variables").GetProperty("after").GetString());
+        Assert.Equal(["A", "B"], result.Value.GetProperty("node").GetProperty("variants").GetProperty("nodes").EnumerateArray().Select(node => node.GetProperty("sku").GetString()).ToArray());
+    }
+
+    [Fact]
+    public async Task AProductVariantContinuationThatCannotBeReadFailsInsteadOfCuttingTheProduct()
+    {
+        var handler = new Capturing("""{"data":{"product":null}}""");
+        var client = Client(handler);
+        using var edge = JsonDocument.Parse("""{"cursor":"P1","node":{"id":"gid://shopify/Product/9","variants":{"nodes":[{"id":"gid://shopify/ProductVariant/1","sku":"A"}],"pageInfo":{"hasNextPage":true,"endCursor":"V1"}}}}""");
+
+        var result = await client.ReadWholeProductEdgeAsync(Shop(), edge.RootElement, CancellationToken.None);
+
+        Assert.Equal(ShopifyHttpClient.ProductVariantsIncompleteCode, result.Error?.Code);
+    }
+
+    // B-10: a product write never takes a variant list with a further page as the product's whole list.
+    [Fact]
+    public void BothProductVariantReadsAskWhetherMoreVariantsFollow()
+    {
+        Assert.Contains("variants(first:250){nodes{id sku}pageInfo{hasNextPage}}", ShopifyHttpClient.ExistingProductQuery, StringComparison.Ordinal);
+        Assert.Contains("variants(first:250){nodes{id sku}pageInfo{hasNextPage}}", ShopifyHttpClient.ProductSetMutation, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("""{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"V1"}}""", true)]
+    [InlineData("""{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}""", false)]
+    [InlineData("""{"nodes":[]}""", false)]
+    public void AConnectionWithAFurtherPageIsNotWhole(string connection, bool expected)
+    {
+        using var json = JsonDocument.Parse(connection);
+        Assert.Equal(expected, ShopifyHttpClient.HasNextPage(json.RootElement));
+    }
+
     [Theory]
     [InlineData("OPEN", ReturnClaimStatus.Approved)]
     [InlineData("CLOSED", ReturnClaimStatus.Completed)]

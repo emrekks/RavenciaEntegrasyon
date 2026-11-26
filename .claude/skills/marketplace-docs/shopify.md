@@ -32,8 +32,14 @@ Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ the `ShopifyHttpClient.*
   200 pages (25k cap), like orders (`MarketplaceJobProcessor.SyncShopifyReturns`, `NextShopifyReturnPage`).
   Needs `read_returns` or `read_marketplace_returns` (live token has it, RETURN_READ verified 29 Oct 2026).
   Approve/decline stays behind RETURN_WRITE.
-- Nested lists are not paged: `lineItems(first:250)`, `fulfillmentLineItems(first:250)`, `events(first:50)`,
-  `refunds(first:100)` (`ShopifyHttpClient.Orders.cs`).
+- Nested lists (B-10, 26 Nov 2026): an order's `lineItems(first:250)` and each fulfillment's
+  `fulfillmentLineItems(first:250)` are read on through `order(id)` / `fulfillment(id)` with `after:` until
+  `hasNextPage` is false; a catalog product's `variants(first:250)` through `product(id)` (`ReadWholeOrderAsync`,
+  `ReadWholeProductEdgeAsync`). A continuation that cannot be read whole fails the page
+  (SHOPIFY_ORDER_CONTINUATION_INCOMPLETE, SHOPIFY_PRODUCT_VARIANTS_INCOMPLETE). A product write refuses an existing
+  product with more than 250 variants (SHOPIFY_PRODUCT_VARIANT_LIST_INCOMPLETE): productSet would delete the unread ones.
+  `locations` and `inventoryLevels` (first:250) refuse the write when more follow. Still not paged: `events(first:50)`,
+  `refunds(first:100)`.
 - First read 3 months, daily baseline re-read, watermark − 10 min. Without `read_all_orders` only the last 60 days
   are visible.
 

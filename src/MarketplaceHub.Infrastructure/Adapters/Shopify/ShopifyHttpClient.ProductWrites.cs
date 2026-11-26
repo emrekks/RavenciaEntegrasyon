@@ -48,9 +48,7 @@ public sealed partial class ShopifyHttpClient
         var requestedPayloadHash = RequestedMetafield(input, "payload_hash");
         IReadOnlyList<RemoteOperationLine>? unchangedLines = null;
         string? unchangedProductId = null;
-        var existingProductResult = await QueryAsync(shop,
-            "query($handle:String!,$ownerKey:String!,$mediaFirst:Int!){productByIdentifier(identifier:{handle:$handle}){id status owner:metafield(namespace:\"marketplacehub\",key:$ownerKey){value} payloadHash:metafield(namespace:\"marketplacehub\",key:\"payload_hash\"){value} " + MediaSelection + " variants(first:250){nodes{id sku}}}}",
-            new { handle, ownerKey, mediaFirst }, cancellationToken);
+        var existingProductResult = await QueryAsync(shop, ExistingProductQuery, new { handle, ownerKey, mediaFirst }, cancellationToken);
         if (!existingProductResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(existingProductResult.Error!, existingProductResult.RateLimit);
         try
         {
@@ -64,6 +62,10 @@ public sealed partial class ShopifyHttpClient
                     : null;
                 if (string.IsNullOrWhiteSpace(ownerId) || !string.Equals(ownerId, requestedOwner, StringComparison.OrdinalIgnoreCase))
                     return Fail<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "SHOPIFY_PRODUCT_HANDLE_CONFLICT", "Bu Shopify ürün adresi başka bir kayıt tarafından kullanılıyor; mevcut ürün değiştirilmedi.", HttpStatusCode.Conflict);
+                // B-10: a product with more variants than one read holds is neither compared nor written: productSet takes
+                // at most 250 variants and would delete the ones this read never saw.
+                if (HasNextPage(existingProduct.GetProperty("variants")))
+                    return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, VariantListIncompleteCode, $"Shopify'daki {handle} ürününde 250'den fazla varyant var; varyant listesi tam okunamadığı için ürüne yazılmadı.", HttpStatusCode.UnprocessableEntity);
                 // Another card of the family already wrote this exact content: the product is not written again,
                 // but its Online Store publication below still runs, since that earlier write may have stopped there.
                 // A product whose pictures did not all arrive is written again.
@@ -135,9 +137,7 @@ public sealed partial class ShopifyHttpClient
         }
         else
         {
-            productSet = await QueryAsync(shop,
-                "mutation($identifier:ProductSetIdentifiers!,$input:ProductSetInput!,$mediaFirst:Int!){productSet(identifier:$identifier,input:$input,synchronous:true){product{id status " + MediaSelection + " variants(first:250){nodes{id sku}}}userErrors{field message}}}",
-                new { identifier = new { handle }, input, mediaFirst }, cancellationToken);
+            productSet = await QueryAsync(shop, ProductSetMutation, new { identifier = new { handle }, input, mediaFirst }, cancellationToken);
             if (!productSet.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(productSet.Error!, productSet.RateLimit);
             try
             {
@@ -151,7 +151,9 @@ public sealed partial class ShopifyHttpClient
                 var remoteVariants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray()
                     .Select(variant => new { Id = TextValue(variant, "id"), Sku = TextValue(variant, "sku")?.Trim() })
                     .ToArray();
-                if (remoteVariants.Length != requestedSkus.Length
+                // A variant list with a further page is not the whole product: it never passes as matching.
+                if (HasNextPage(product.GetProperty("variants"))
+                    || remoteVariants.Length != requestedSkus.Length
                     || remoteVariants.Any(variant => string.IsNullOrWhiteSpace(variant.Id) || string.IsNullOrWhiteSpace(variant.Sku))
                     || remoteVariants.Select(variant => variant.Sku).Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedSkus.Length
                     || requestedSkus.Any(sku => !remoteVariants.Any(variant => string.Equals(variant.Sku, sku, StringComparison.OrdinalIgnoreCase))))
@@ -187,6 +189,10 @@ public sealed partial class ShopifyHttpClient
     // which Shopify applies once (publishing an already published product changes nothing).
     internal const string MediaIncompleteCode = "SHOPIFY_PRODUCT_MEDIA_INCOMPLETE";
     internal const string MediaSelection = "media(first:$mediaFirst){nodes{status mediaErrors{message}}}";
+    // Both reads of a product's variants ask whether more follow (B-10): a list cut at 250 is never taken as the product's.
+    internal const string ExistingProductQuery = "query($handle:String!,$ownerKey:String!,$mediaFirst:Int!){productByIdentifier(identifier:{handle:$handle}){id status owner:metafield(namespace:\"marketplacehub\",key:$ownerKey){value} payloadHash:metafield(namespace:\"marketplacehub\",key:\"payload_hash\"){value} " + MediaSelection + " variants(first:250){nodes{id sku}pageInfo{hasNextPage}}}}";
+    internal const string ProductSetMutation = "mutation($identifier:ProductSetIdentifiers!,$input:ProductSetInput!,$mediaFirst:Int!){productSet(identifier:$identifier,input:$input,synchronous:true){product{id status " + MediaSelection + " variants(first:250){nodes{id sku}pageInfo{hasNextPage}}}userErrors{field message}}}";
+    internal const string VariantListIncompleteCode = "SHOPIFY_PRODUCT_VARIANT_LIST_INCOMPLETE";
 
     // Shopify answers productSet with the media it created from the files (status UPLOADED while it fetches them): fewer
     // than sent, or one FAILED or carrying errors, is a shortfall. Null when every file arrived.
