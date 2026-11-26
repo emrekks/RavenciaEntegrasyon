@@ -37,6 +37,7 @@ describe('dock diagnostic', () => {
     act(() => card.click())
     await vi.waitFor(() => expect(document.querySelector('[data-rv-diagnostic]')).not.toBeNull())
     expect(document.body.textContent).toContain('Kopyala')
-    expect(document.body.textContent).toContain('menu=open')
+    // The panel is lazy-loaded and writes its text after it mounts: wait for it instead of reading at once.
+    await vi.waitFor(() => expect(document.body.textContent).toContain('menu=open'))
   })
 })
