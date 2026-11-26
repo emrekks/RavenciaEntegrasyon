@@ -406,10 +406,19 @@ internal sealed partial class OrderQueryService
                 : packageStatuses is not null
                 ? status switch
                 {
-                    "NEW" => order => currentPackages.Any(package => package.TenantId == order.TenantId
+                    // Yeni and İşleme Alınanlar list the orders still to ship: an order the marketplace cancelled whole is
+                    // in neither, while its package still reads open. Hepsiburada cancels the line first (lineitems/cancel
+                    // webhook) and unpacks the package minutes later (live 4240894023 on 26 Nov 2026: 3 m 45 s, 4047024475
+                    // on 24 Nov: 29 m 32 s); in between the order was CANCELLED with an Open (ReadyToShip) package.
+                    "NEW" => order => order.DerivedStatus != "CANCELLED"
+                        && (currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
-                        || unpackagedNew.Any(newOrder => newOrder.Id == order.Id),
+                        || unpackagedNew.Any(newOrder => newOrder.Id == order.Id)),
+                    "PROCESSING" => order => order.DerivedStatus != "CANCELLED"
+                        && currentPackages.Any(package => package.TenantId == order.TenantId
+                            && package.OrderId == order.Id
+                            && packageStatuses.Contains(package.Status)),
                     // A Hepsiburada undelivered package is Teslim Edilemedi like every other marketplace's (it was
                     // listed under Askıda instead of Kargoda before 5 Nov 2026).
                     "ON_HOLD" => order => currentPackages.Any(package => package.TenantId == order.TenantId

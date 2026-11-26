@@ -195,7 +195,9 @@ export function OrdersPage() {
   const microPending = useQuery({ queryKey: queryKeys.orders('summary', 'micro-pending'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>(`/orders/summary?${microPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
   const cancellationsToday = useQuery({ queryKey: queryKeys.dashboard('cancellations', day), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getDashboardCancellations'>>(`/dashboard/cancellations?day=${day}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
   const todayCancellations = dailyCancellationCounts(cancellationsToday.data?.stores)
-  const summary = useQuery({ queryKey: queryKeys.orders('summary', 'filtered', summaryParams), queryFn: ({ signal }) => hubApi<ApiAnswer<'getOrdersSummary'>>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary', { signal }), placeholderData: keepPreviousData })
+  // The tab counters and the Yeni Sipariş / İşleme Alınan cards are refreshed every minute like the İptal card next to
+  // them: fetched once, they kept counting a cancelled order as İşleme Alınan while İptal already showed it (26 Nov 2026).
+  const summary = useQuery({ queryKey: queryKeys.orders('summary', 'filtered', summaryParams), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary', { signal }), placeholderData: keepPreviousData, staleTime: 30_000, refetchInterval: 60_000 })
   // The bootstrap names the stores of the cards' hover lists; its unfiltered late total is never shown for the list.
   const lateOrdersQuery = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { signal }), staleTime: 30_000 })
   // The Yeni Sipariş and İşleme Alınan cards' products per store: the filtered summary's units, named by the bootstrap's stores.

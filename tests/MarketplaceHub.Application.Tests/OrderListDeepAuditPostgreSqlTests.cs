@@ -153,6 +153,51 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Hepsiburada 4240894023 (26 Nov 2026): the customer cancelled the line, the order turned CANCELLED, and its package
+    // still read Open (ReadyToShip) until Hepsiburada unpacked it minutes later. Meanwhile İşleme Alınanlar (and Yeni,
+    // for a package still new) must not list or count it; İptal does.
+    [PostgreSqlFact]
+    public async Task AnOrderCancelledWholeIsNotStillToShipWhileItsPackageReadsOpen()
+    {
+        var tenantId = await SeedAsync("ol-cxl");
+        try
+        {
+            await using (var seedDb = fixture.CreateContext())
+            {
+                var connectionId = await seedDb.PlatformConnections.Where(x => x.TenantId == tenantId).Select(x => x.Id).SingleAsync();
+                var now = DateTimeOffset.UtcNow;
+                void Add(string number, string derived, ShipmentPackageStatus packageStatus, string raw)
+                {
+                    var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = number, OrderNumber = number, Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-5), LastRemoteModifiedAt = now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = derived, CreatedAt = now, UpdatedAt = now, Version = 1 };
+                    seedDb.Orders.Add(order);
+                    seedDb.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = "1", Sku = $"SKU-{number}", TitleSnapshot = "Ürün", OrderedQuantity = 1, CancelledQuantity = derived == "CANCELLED" ? 1 : 0, UnitPrice = 10m, VatRate = 20m, RawStatus = derived == "CANCELLED" ? "CancelledByCustomer" : "Open" });
+                    seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = number, Status = packageStatus, RawStatus = raw, StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+                }
+                Add("cxl-open", "CANCELLED", ShipmentPackageStatus.ReadyToShip, "Open");
+                Add("cxl-new", "CANCELLED", ShipmentPackageStatus.New, "Created");
+                Add("live-open", "READY_TO_SHIP", ShipmentPackageStatus.ReadyToShip, "Open");
+                await seedDb.SaveChangesAsync();
+            }
+
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            async Task<List<string>> Numbers(string tab) => (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: tab), CancellationToken.None)).Items.Select(x => x.OrderNumber).ToList();
+
+            Assert.Equal(["live-open"], await Numbers("PROCESSING"));
+            Assert.DoesNotContain("cxl-new", await Numbers("NEW"));
+            var cancelled = await Numbers("CANCELLED");
+            Assert.Contains("cxl-open", cancelled);
+            Assert.Contains("cxl-new", cancelled);
+            var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None);
+            Assert.Equal(1, summary.Processing);
+            Assert.Equal((await Numbers("NEW")).Count, summary.New);
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     // The micro-export card counts the pending orders the row's flag marks (Trendyol micro = true), per country, under
     // the list's filters; its filter lists exactly those orders.
     [PostgreSqlFact]
