@@ -117,6 +117,9 @@
 /* ---------- live additions ---------- */
 /* the order detail opens full screen on phones */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full { position: fixed; inset: 0; z-index: 1; width: 100%; height: 100%; border: 0; border-radius: 0; }
+/* Full screen on a phone: the head starts under the status bar area (a Home Screen app runs under it), and the body keeps its scroll to itself (the page behind is not pinned for this sheet, shared/overlay-scroll-lock.ts). */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-h { box-sizing: content-box; padding-top: env(safe-area-inset-top, 0px); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-b { overscroll-behavior: contain; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f { position: relative; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-menu.rr-sheet-menu { position: absolute; top: auto; left: 12px; right: 12px; bottom: calc(100% + 6px); max-height: 60vh; overflow-y: auto; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-note-line { color: var(--rr-warn) !important; }

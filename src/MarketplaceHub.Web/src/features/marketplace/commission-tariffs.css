@@ -23,7 +23,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-periods { display: grid; gap: 8px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-period { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; transition: background-color 120ms ease, border-color 120ms ease; }
 .app-shell.stitch-shell main .commission-tariffs .commission-period:hover { border-color: var(--rv-color-border-strong); }
-.app-shell.stitch-shell main .commission-tariffs .commission-period.is-on { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .commission-tariffs .commission-period.is-on { background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 .app-shell.stitch-shell main .commission-tariffs .commission-period-main { display: grid; flex: 1; justify-content: stretch; justify-items: start; gap: 2px; min-width: 0; min-height: 0; height: auto; margin: 0; padding: 10px 12px; color: inherit; font: inherit; text-align: left; text-transform: none; background: none; border: 0; border-radius: 12px; box-shadow: none; }
 .app-shell.stitch-shell main .commission-tariffs button.commission-period-main { cursor: pointer; }
 .app-shell.stitch-shell main .commission-tariffs .commission-period-main:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }

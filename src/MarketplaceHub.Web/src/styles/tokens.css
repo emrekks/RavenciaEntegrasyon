@@ -33,6 +33,10 @@
   --rv-color-surface-raised: #1d1d23;
   --rv-color-surface-soft: #22222a;
   --rv-color-table-head: #111115;
+  /* The project's one selection look (owner, 26 Nov 2026): percentages only, because a colour computed on :root
+     could not pick up a per-element accent such as --pf-accent; each rule keeps its own color-mix(). */
+  --rv-select-fill: 7%;
+  --rv-select-line: 38%;
   --rv-color-border: #2a2a32;
   --rv-color-border-strong: #383842;
   --rv-color-ink: #ececf0;
@@ -163,6 +167,8 @@
   --rv-color-surface-raised: #f0f2f6;
   --rv-color-surface-soft: #dfe3ea;
   --rv-color-table-head: #dfe3ea;
+  --rv-select-fill: 10%;
+  --rv-select-line: 38%;
   --rv-color-border: #c9d0dc;
   --rv-color-border-strong: #a4aec0;
   --rv-color-ink: #2f3a4f;

@@ -95,7 +95,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt-group { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 10px 10px 4px; color: var(--rr-muted); border-top: 1px solid var(--rr-line); font-size: 12px; font-weight: 600; cursor: default; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt-group:first-child, :is(main .rr.rr, .rr-layer.rr-layer) .rr-ph + .rr-opt-group { margin-top: 0; border-top: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:hover { background: var(--rv-hover, var(--rr-soft)); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on { background: var(--rr-primary-soft); color: var(--rr-violet); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on { background: color-mix(in srgb, var(--rr-primary) var(--rv-select-fill), transparent); color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-grow { flex: 1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt small { color: var(--rr-subtle); font-size: 12px; }
 /* An option's row count in a filter popover, in the side menu's count box (design-system.css): right-aligned figures;
@@ -217,7 +217,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-seg { display: inline-flex; gap: 2px; max-width: 100%; padding: 1px; overflow-x: auto; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; color: var(--rr-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; font-size: 12.5px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button:hover { color: var(--rr-ink); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button.rr-on { color: var(--rr-violet); background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button.rr-on { color: var(--rr-violet); background: color-mix(in srgb, var(--rr-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rr-primary) var(--rv-select-line), transparent); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters { display: grid; grid-template-columns: minmax(200px, 1.3fr) minmax(150px, .8fr) minmax(220px, 1fr) auto; gap: 12px; align-items: end; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: minmax(180px, 1.2fr) minmax(140px, .75fr) minmax(210px, 1fr) minmax(190px, .9fr) auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters .rr-fbtns { display: flex; gap: 8px; }
@@ -304,7 +304,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-jump .rr-in::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-jump .rr-btn { height: 36px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button { min-width: 36px; height: 36px; padding: 0 8px; color: var(--rr-muted); background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button.rr-on { color: var(--rr-violet); background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button.rr-on { color: var(--rr-violet); background: color-mix(in srgb, var(--rr-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rr-primary) var(--rv-select-line), transparent); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button:hover:not(.rr-on) { color: var(--rr-ink); background: var(--rv-hover, var(--rr-raised)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; } /* docking, surface and motion: StickyActionBar */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk .rr-grow { flex: 1; font-weight: 500; }
@@ -338,7 +338,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-qty-static { display: flex; align-items: center; height: 36px; padding: 0 12px; color: var(--rr-muted); background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 7px; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcards { display: grid; gap: 10px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard.rr-on { background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard.rr-on { background: color-mix(in srgb, var(--rr-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rr-primary) var(--rv-select-line), transparent); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard .rr-pc-h { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard .rr-pc-h .rr-cklabel { font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 16px; margin: 0; font-size: 12px; }
@@ -484,7 +484,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; color: var(--rr-ink); text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; font-size: 14px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:hover:not(:disabled) { background: var(--rv-hover, var(--rr-raised)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button svg { color: var(--rr-muted); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-on { background: var(--rr-primary-soft); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-on { background: color-mix(in srgb, var(--rr-primary) var(--rv-select-fill), transparent); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-on svg { color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button .rr-c { margin-left: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-danger { color: var(--rr-bad); }
@@ -542,7 +542,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td { vertical-align: middle; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-wordmark { max-width: none; object-fit: contain; object-position: left center; margin-bottom: 6px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img { width: auto; max-width: calc(100vw - 32px); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview { aspect-ratio: 2 / 3; width: auto; height: min(calc(100vh - 230px), 600px); min-height: 240px; margin-inline: auto; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview { aspect-ratio: 2 / 3; width: auto; height: min(calc(100dvh - 230px), 600px); min-height: 240px; margin-inline: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { max-width: 34ch; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fshell { position: relative; z-index: 80; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring { align-items: center; }
@@ -1103,8 +1103,8 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 }
 /* picture preview: no footer; the picture sits with the same 12px on every side and gets the footer's height */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-body.rr-m-body { padding: 12px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: calc(min(100vh - 170px, 640px) * 2 / 3 + 26px); max-width: calc(100vw - 32px); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: 100%; height: auto; max-height: min(calc(100vh - 170px), 640px); min-height: 0; aspect-ratio: 2 / 3; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: calc(min(100dvh - 170px, 640px) * 2 / 3 + 26px); max-width: calc(100vw - 32px); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: 100%; height: auto; max-height: min(calc(100dvh - 170px), 640px); min-height: 0; aspect-ratio: 2 / 3; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { max-width: none; }
 /* product name keeps a little air above its codes */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > b:first-child { margin-bottom: 4px; }

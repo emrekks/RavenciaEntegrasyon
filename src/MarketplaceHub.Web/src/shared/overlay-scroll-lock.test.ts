@@ -20,6 +20,16 @@ describe('overlay scroll lock', () => {
     uninstall()
   })
 
+  it('does not pin the page for the phone full-screen order detail', async () => {
+    const uninstall = installOverlayScrollLock()
+    const sheet = document.createElement('div'); sheet.className = 'rr-sheet rr-sheet-full'; sheet.setAttribute('aria-modal', 'true')
+    document.body.append(sheet)
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    expect(document.body.style.position).toBe('')
+    uninstall()
+    sheet.remove()
+  })
+
   it('does not pin the page for the phone full-screen menu (it keeps the bottom bar where the page left it)', async () => {
     const uninstall = installOverlayScrollLock()
     const menu = document.createElement('div'); menu.className = 'rv-fullmenu'; menu.setAttribute('aria-modal', 'true')

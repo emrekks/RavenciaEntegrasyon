@@ -456,6 +456,10 @@ public sealed partial class InvoicingBillingService(
             "DELIVERY_ASC" => candidates.OrderBy(candidate => candidate.Package.StatusOccurredAt).ThenBy(candidate => candidate.Package.Id),
             "ORDER_DESC" => candidates.OrderByDescending(candidate => candidate.Order.OrderedAt).ThenBy(candidate => candidate.Package.Id),
             "ORDER_ASC" => candidates.OrderBy(candidate => candidate.Order.OrderedAt).ThenBy(candidate => candidate.Package.Id),
+            // By the day the panel created the invoice (owner, 26 Nov 2026): invoiced rows first, the rows without an
+            // invoice after them by their order date.
+            "INVOICE_DESC" => candidates.OrderBy(candidate => candidate.Invoice is null).ThenByDescending(candidate => candidate.Invoice?.CreatedAt ?? candidate.Order.OrderedAt).ThenBy(candidate => candidate.Package.Id),
+            "INVOICE_ASC" => candidates.OrderBy(candidate => candidate.Invoice is null).ThenBy(candidate => candidate.Invoice?.CreatedAt ?? candidate.Order.OrderedAt).ThenBy(candidate => candidate.Package.Id),
             "DUE_ASC" => candidates.OrderBy(candidate => candidate.InvoiceDueAt == null).ThenBy(candidate => candidate.InvoiceDueAt).ThenBy(candidate => candidate.Package.Id),
             "AMOUNT_DESC" => candidates.OrderByDescending(candidate => candidate.Amount).ThenBy(candidate => candidate.Package.Id),
             "AMOUNT_ASC" => candidates.OrderBy(candidate => candidate.Amount).ThenBy(candidate => candidate.Package.Id),

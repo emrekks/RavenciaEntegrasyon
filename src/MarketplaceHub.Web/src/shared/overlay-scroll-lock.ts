@@ -11,7 +11,9 @@ export const OVERLAY_SELECTOR = [
   '.rr-overlay',
   // The phone's full-screen menu is aria-modal but covers the page itself and keeps the bottom bar: pinning body (position: fixed) for it
   // made a Home Screen app measure the fixed layers against a different box than with the menu closed.
-  '[aria-modal="true"]:not(.rv-fullmenu)',
+  // The phone's full-screen order detail covers the page the same way and scrolls its own body (overscroll contained): pinned, a Home
+  // Screen app drew it short of the screen's bottom edge (owner, 26 Nov 2026, iPhone 16 Pro).
+  '[aria-modal="true"]:not(.rv-fullmenu):not(.rr-sheet-full)',
 ].join(', ')
 
 let pinned: { y: number; body: [string, string, string, string, string] } | null = null
