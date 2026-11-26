@@ -27,6 +27,22 @@ public sealed class PlatformUpdateDispatchAndVatTests
     }
 
     [Theory]
+    [InlineData("""{"UrunAdi":"Bluz","kg":"1"}""", null)]
+    [InlineData("""{"UrunAdi":"Bluz","kg":"1","GarantiSuresi":null}""", null)]
+    [InlineData("""{"UrunAdi":"Bluz","kg":"1","GarantiSuresi":""}""", null)]
+    [InlineData("""{"UrunAdi":"Bluz","kg":"1","GarantiSuresi":0}""", "0")]
+    [InlineData("""{"UrunAdi":"Bluz","kg":"1","GarantiSuresi":24}""", "24")]
+    public void HepsiburadaUpdate_LeavesAnUnknownWarrantyOut(string attributesJson, string? expected)
+    {
+        using var document = JsonDocument.Parse(attributesJson);
+        var attributes = document.RootElement.EnumerateObject().ToDictionary(property => property.Name, property => property.Value, StringComparer.OrdinalIgnoreCase);
+        var item = JsonNode.Parse(JsonSerializer.Serialize(HepsiburadaProductUpdateComposer.UpdateItem("HBV1", "SKU-1", attributes)))!.AsObject();
+        if (expected is null) Assert.False(item.ContainsKey("warrantyPeriod"));
+        else Assert.Equal(expected, item["warrantyPeriod"]!.GetValue<string>());
+        Assert.Equal("1", item["desi"]!.GetValue<string>());
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData(0)]
     public void HepsiburadaDispatchTime_WithoutDays_SendsNothing(int? days) =>

@@ -50,27 +50,7 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
         {
             if (!sourceBySku.TryGetValue(variant.Sku, out var sourceItem))
                 return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_SKU_MISMATCH", "Hepsiburada güncellemesindeki bir stok kodu paneldeki varyantla eşleşmiyor; stok kodlarını kontrol edip yeniden deneyin.", 422);
-            var attributes = ReadAttributes(sourceItem);
-            var updateItem = new Dictionary<string, object?>
-            {
-                ["hbSku"] = remoteLinks[variant.VariantId],
-                ["merchantSku"] = variant.Sku,
-                ["productName"] = String(attributes, "UrunAdi"),
-                ["productDescription"] = String(attributes, "UrunAciklamasi"),
-                ["barcode"] = String(attributes, "Barcode"),
-                ["attributes"] = attributes.Where(pair => !HepsiburadaProductPublicationComposer.ReservedAttributeKeys.Contains(pair.Key) && !pair.Key.StartsWith("Image", StringComparison.Ordinal))
-                    .ToDictionary(pair => pair.Key, pair => (object?)pair.Value.Clone(), StringComparer.Ordinal),
-                ["kdv"] = String(attributes, "tax_vat_rate"),
-                ["warrantyPeriod"] = Scalar(attributes, "GarantiSuresi"),
-                ["desi"] = String(attributes, "kg")
-            };
-            for (var imageIndex = 1; imageIndex <= 10; imageIndex++)
-            {
-                var image = String(attributes, $"Image{imageIndex}");
-                if (!string.IsNullOrWhiteSpace(image)) updateItem[$"image{imageIndex}"] = image;
-            }
-            if (!string.IsNullOrWhiteSpace(String(attributes, "Video1"))) updateItem["video"] = String(attributes, "Video1");
-            items.Add(updateItem);
+            items.Add(UpdateItem(remoteLinks[variant.VariantId], variant.Sku, ReadAttributes(sourceItem)));
         }
 
         var noItems = "{\"items\":[]}";
@@ -103,6 +83,33 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
         if (days is not > 0) return null;
         var items = listings.Select(listing => new Dictionary<string, object> { ["hepsiburadaSku"] = listing.HepsiburadaSku, ["merchantSku"] = listing.MerchantSku, ["dispatchTime"] = days.Value }).ToList();
         return items.Count == 0 ? null : JsonSerializer.Serialize(new { merchantId, items });
+    }
+
+    // One ticket-api item. Hepsiburada updates every field the item carries (an empty value clears it), so an unknown
+    // warranty is left out, never sent as null or empty: a card without one keeps the warranty Hepsiburada holds.
+    internal static Dictionary<string, object?> UpdateItem(string hbSku, string merchantSku, IReadOnlyDictionary<string, JsonElement> attributes)
+    {
+        var updateItem = new Dictionary<string, object?>
+        {
+            ["hbSku"] = hbSku,
+            ["merchantSku"] = merchantSku,
+            ["productName"] = String(attributes, "UrunAdi"),
+            ["productDescription"] = String(attributes, "UrunAciklamasi"),
+            ["barcode"] = String(attributes, "Barcode"),
+            ["attributes"] = attributes.Where(pair => !HepsiburadaProductPublicationComposer.ReservedAttributeKeys.Contains(pair.Key) && !pair.Key.StartsWith("Image", StringComparison.Ordinal))
+                .ToDictionary(pair => pair.Key, pair => (object?)pair.Value.Clone(), StringComparer.Ordinal),
+            ["kdv"] = String(attributes, "tax_vat_rate")
+        };
+        var warranty = Scalar(attributes, "GarantiSuresi");
+        if (!string.IsNullOrWhiteSpace(warranty)) updateItem["warrantyPeriod"] = warranty;
+        updateItem["desi"] = String(attributes, "kg");
+        for (var imageIndex = 1; imageIndex <= 10; imageIndex++)
+        {
+            var image = String(attributes, $"Image{imageIndex}");
+            if (!string.IsNullOrWhiteSpace(image)) updateItem[$"image{imageIndex}"] = image;
+        }
+        if (!string.IsNullOrWhiteSpace(String(attributes, "Video1"))) updateItem["video"] = String(attributes, "Video1");
+        return updateItem;
     }
 
     private static Dictionary<string, JsonElement> ReadAttributes(JsonElement item)
