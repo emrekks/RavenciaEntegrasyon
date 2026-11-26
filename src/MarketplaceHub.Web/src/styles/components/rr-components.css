@@ -542,7 +542,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td { vertical-align: middle; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-wordmark { max-width: none; object-fit: contain; object-position: left center; margin-bottom: 6px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img { width: auto; max-width: calc(100vw - 32px); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview { aspect-ratio: 2 / 3; width: auto; height: min(calc(100vh - 230px), 600px); min-height: 240px; margin-inline: auto; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview { aspect-ratio: 2 / 3; width: auto; height: min(calc(100dvh - 230px), 600px); min-height: 240px; margin-inline: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { max-width: 34ch; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fshell { position: relative; z-index: 80; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring { align-items: center; }
@@ -1103,8 +1103,8 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 }
 /* picture preview: no footer; the picture sits with the same 12px on every side and gets the footer's height */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-body.rr-m-body { padding: 12px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: calc(min(100vh - 170px, 640px) * 2 / 3 + 26px); max-width: calc(100vw - 32px); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: 100%; height: auto; max-height: min(calc(100vh - 170px), 640px); min-height: 0; aspect-ratio: 2 / 3; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: calc(min(100dvh - 170px, 640px) * 2 / 3 + 26px); max-width: calc(100vw - 32px); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: 100%; height: auto; max-height: min(calc(100dvh - 170px), 640px); min-height: 0; aspect-ratio: 2 / 3; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { max-width: none; }
 /* product name keeps a little air above its codes */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > b:first-child { margin-bottom: 4px; }

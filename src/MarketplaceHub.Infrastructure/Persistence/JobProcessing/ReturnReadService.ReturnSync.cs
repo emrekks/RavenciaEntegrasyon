@@ -126,7 +126,8 @@ internal sealed partial class ReturnReadService
                     continue;
                 }
                 cursor.OpaqueCursor = null;
-                cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
+                // As at the normal end: the window's end is the next run's start, so claims changed during this run are not skipped.
+                cursor.LastModifiedWatermark = state.EndAt ?? timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;

@@ -729,7 +729,7 @@ public static class TrendyolEFaturamCanonicalPayload
 
     private static string FindTaxId(JsonElement source, int depth = 0)
     {
-        var value = Text(source, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "turkishIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
+        var value = TaxIdText(source, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "turkishIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
         if ((ValidTaxId(value) && value != "11111111111") || depth >= 5) return value == "11111111111" ? "" : value;
         if (source.ValueKind == JsonValueKind.Object)
         {
@@ -752,6 +752,16 @@ public static class TrendyolEFaturamCanonicalPayload
     private static readonly System.Text.RegularExpressions.Regex MarketplaceId = new(@"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[,;:-]?\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     // Marketplace feeds sometimes prefix the street text with the address record id; it must not reach the fiscal document.
     private static string WithoutMarketplaceIds(string value) => MarketplaceId.Replace(value, string.Empty).Trim();
+    // The first of the keys that holds a valid number: a blank or unusable field earlier in the list does not hide a
+    // number a later key of the same object carries (scan 25 Nov 2026 C-11). With none valid, the first present text.
+    private static string TaxIdText(JsonElement parent, params string[] names)
+    {
+        foreach (var name in names)
+            if (TryGetProperty(parent, name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+                && value.ToString().Trim() is var text && ValidTaxId(text) && text != "11111111111")
+                return text;
+        return Text(parent, names);
+    }
     private static string Text(JsonElement parent, params string[] names)
     {
         foreach (var name in names)
