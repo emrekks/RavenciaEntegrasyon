@@ -45,7 +45,7 @@ describe('Faturalar desktop table keeps its 23 Nov cells', () => {
   })
 
   it('the desktop column grid (from 1025 px): order column capped at 240 px, the other columns share the rest by weight', () => {
-    const rule = bodies(read('./invoices-sade.css')).find(item => item.body.includes('minmax(200px, 240px) minmax(100px, 1fr) minmax(150px, .8fr)'))
+    const rule = bodies(read('./invoices-sade.css')).find(item => item.body.includes('minmax(190px, 240px) minmax(130px, 1fr) minmax(144px, .8fr)'))
     expect(rule?.media.join(' ')).toMatch(/min-width:\s*1025px/)
   })
 
