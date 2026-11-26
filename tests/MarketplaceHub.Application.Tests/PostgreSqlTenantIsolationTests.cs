@@ -5877,6 +5877,108 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Task.FromResult(AdapterResult<bool>.Success(true));
     }
 
+    // GET /connections/{id}/instant-notifications keeps the marketplace's webhook list for a minute (WebhookStatusCache):
+    // the second read does not ask the marketplace, a change the panel makes there does, another tenant's connection is
+    // asked on its own and a failed read is asked again and still shows UNKNOWN.
+    [PostgreSqlFact]
+    public async Task InstantNotifications_StatusKeepsTheMarketplaceAnswerForAMinuteUntilTheUserChangesIt()
+    {
+        var tenant = NewTenant("webhook-status-cache");
+        var otherTenant = NewTenant("webhook-status-cache-other");
+        var connection = NewQuestionConnection(tenant);
+        var otherConnection = NewQuestionConnection(otherTenant);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var hasher = new TokenHasher(new byte[32]);
+        var cache = new WebhookStatusCache(new MemoryCache(new MemoryCacheOptions { SizeLimit = 100 }));
+        var port = new CountingWebhookPort();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.AddRange(tenant, otherTenant);
+            seedDb.PlatformConnections.AddRange(connection, otherConnection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new InstantNotificationService(db, port, hasher, new EphemeralDataProtectionProvider(), configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance, cache);
+            Task<ServiceResult<InstantNotificationView>> StatusAsync(Tenant owner, PlatformConnection of) => service.StatusAsync(owner.Id, of.Id, "status", CancellationToken.None);
+            Assert.Null((await service.EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None)).Error);
+            Assert.Null((await service.EnableAsync(otherTenant.Id, otherConnection.Id, "enable-other", CancellationToken.None)).Error);
+
+            var before = port.ListCalls;
+            var first = await StatusAsync(tenant, connection);
+            var second = await StatusAsync(tenant, connection);
+            Assert.Equal(before + 1, port.ListCalls);
+            Assert.Equal(first.Value!.State, second.Value!.State);
+
+            // Another tenant's connection is read on its own.
+            await StatusAsync(otherTenant, otherConnection);
+            Assert.Equal(before + 2, port.ListCalls);
+
+            // Closing and opening again at the marketplace: the next status asks the marketplace.
+            Assert.Null((await service.DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None)).Error);
+            Assert.Null((await service.EnableAsync(tenant.Id, connection.Id, "enable-again", CancellationToken.None)).Error);
+            var listsBefore = port.ListCalls;
+            await StatusAsync(tenant, connection);
+            Assert.Equal(listsBefore + 1, port.ListCalls);
+            // A change at the marketplace by another tenant's action also clears it (it is never served stale).
+            await StatusAsync(otherTenant, otherConnection);
+            Assert.Equal(listsBefore + 2, port.ListCalls);
+
+            // A failed read is not kept: asked again, UNKNOWN both times.
+            cache.InvalidateAll();
+            port.Fail = true;
+            var failed = await StatusAsync(tenant, connection);
+            var failedAgain = await StatusAsync(tenant, connection);
+            Assert.Equal(listsBefore + 4, port.ListCalls);
+            Assert.Equal(("UNKNOWN", "UNKNOWN"), (failed.Value!.State, failedAgain.Value!.State));
+            port.Fail = false;
+            await StatusAsync(tenant, connection);
+            await StatusAsync(tenant, connection);
+            Assert.Equal(listsBefore + 5, port.ListCalls);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            foreach (var id in new[] { tenant.Id, otherTenant.Id })
+            {
+                await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == id).ExecuteDeleteAsync();
+                await DeleteInvoiceTestTenantAsync(id);
+            }
+        }
+    }
+
+    private sealed class CountingWebhookPort : IWebhookRegistrationPort
+    {
+        private readonly HashSet<string> registered = new(StringComparer.Ordinal);
+        private int next;
+        public int ListCalls { get; private set; }
+        public bool Fail { get; set; }
+
+        public Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListWebhooksAsync(AdapterContext context, CancellationToken cancellationToken)
+        {
+            ListCalls++;
+            return Task.FromResult(Fail
+                ? AdapterResult<IReadOnlyList<RemoteWebhook>>.Failure(new(AdapterErrorClass.Remote5xx, "TEST_DOWN", "Pazaryeri yanıt vermedi.", null, null, null))
+                : AdapterResult<IReadOnlyList<RemoteWebhook>>.Success(registered.Select(id => new RemoteWebhook(id, null, "ACTIVE", null)).ToList()));
+        }
+
+        public Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken)
+        {
+            var id = $"remote-webhook-{++next}";
+            registered.Add(id);
+            return Task.FromResult(AdapterResult<string>.Success(id));
+        }
+
+        public Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<bool>.Success(registered.Remove(externalId)));
+
+        public Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<bool>.Success(true));
+    }
+
     [PostgreSqlFact]
     public async Task ExternalEffectReconcile_ReadsTheMarketplaceAndCompletesOrReleasesThePickingEffect()
     {

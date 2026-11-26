@@ -20,8 +20,11 @@ public sealed class InstantNotificationService(
     IDataProtectionProvider dataProtection,
     IConfiguration configuration,
     TimeProvider timeProvider,
-    ILogger<InstantNotificationService> logger) : IInstantNotificationService
+    ILogger<InstantNotificationService> logger,
+    WebhookStatusCache? statusCache = null) : IInstantNotificationService
 {
+    // Every call to the marketplace goes through this: a change there clears the status answers kept by statusCache.
+    private readonly IWebhookRegistrationPort marketplace = statusCache is null ? registrations : new ClearingPort(registrations, statusCache);
     // Passive Trendyol webhooks this scope has already removed at Trendyol (or found gone), so RetirePausedAsync does not
     // ask Trendyol to remove them a second time.
     private readonly HashSet<string> removedAtMarketplace = new(StringComparer.Ordinal);
@@ -91,7 +94,7 @@ public sealed class InstantNotificationService(
         // registration is not called open whatever the marketplace lists.
         if (connection.Status is not ("ACTIVE" or "VERIFIED"))
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "CONNECTION_INACTIVE", $"Bağlantı aktif değil; {platform}'dan gelen bildirimler bağlantı etkinleşene kadar reddediliyor. Bağlantıyı kontrol edip etkinleştirin.", cancellationToken));
-        var remote = await registrations.ListWebhooksAsync(Context(tenantId, connectionId, correlationId, "webhook-status"), cancellationToken);
+        var remote = await ListForStatusAsync(connection, subscription, correlationId, cancellationToken);
         if (!remote.IsSuccess)
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "UNKNOWN", $"{platform}'daki durum okunamadı: {remote.Error!.SafeMessage}", cancellationToken));
         var remoteState = RemoteState(subscription.ExternalSubscriptionId!, remote.Value!);
@@ -105,6 +108,42 @@ public sealed class InstantNotificationService(
         // While the notifications count as healthy the order read is only the safety net; otherwise it runs at its own cadence.
         var readMinutes = healthy ? WebhookPollingPolicy.SafetyNetSeconds / 60 : await OrderReadMinutesAsync(tenantId, connectionId, cancellationToken);
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, RegisteredMessage(connection.PlatformCode, state, healthy, readMinutes), cancellationToken));
+    }
+
+    // The marketplace's webhook list for the status: a successful answer is kept for a minute (WebhookStatusCache),
+    // a failed one is not.
+    private async Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListForStatusAsync(PlatformConnection connection, WebhookSubscription subscription, string correlationId, CancellationToken cancellationToken)
+    {
+        var key = new WebhookStatusCache.Key(connection.TenantId, connection.Id, connection.Version, subscription.Id, subscription.ExternalSubscriptionId);
+        if (statusCache is not null && statusCache.TryGet(key, out var kept)) return AdapterResult<IReadOnlyList<RemoteWebhook>>.Success(kept);
+        var generation = statusCache?.CurrentGeneration ?? CancellationToken.None;
+        var remote = await marketplace.ListWebhooksAsync(Context(connection.TenantId, connection.Id, correlationId, "webhook-status"), cancellationToken);
+        if (remote is { IsSuccess: true, Value: { } listed }) statusCache?.Set(key, generation, listed);
+        return remote;
+    }
+
+    // Forwards every call; after a call that can change the marketplace's registrations (whatever its outcome) the kept
+    // status answers are cleared.
+    private sealed class ClearingPort(IWebhookRegistrationPort inner, WebhookStatusCache cache) : IWebhookRegistrationPort
+    {
+        public Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListWebhooksAsync(AdapterContext context, CancellationToken cancellationToken) =>
+            inner.ListWebhooksAsync(context, cancellationToken);
+        public Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken) =>
+            ClearingAsync(inner.CreateWebhookAsync(context, url, username, password, cancellationToken));
+        public Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+            ClearingAsync(inner.DeleteWebhookAsync(context, externalId, cancellationToken));
+        public Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+            ClearingAsync(inner.ActivateWebhookAsync(context, externalId, cancellationToken));
+        public Task<AdapterResult<bool>> DeactivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+            ClearingAsync(inner.DeactivateWebhookAsync(context, externalId, cancellationToken));
+        public Task<AdapterResult<string?>> RestoreMissingWebhooksAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+            ClearingAsync(inner.RestoreMissingWebhooksAsync(context, externalId, cancellationToken));
+
+        private async Task<T> ClearingAsync<T>(Task<T> call)
+        {
+            try { return await call; }
+            finally { cache.InvalidateAll(); }
+        }
     }
 
     // A registration the marketplace lists as active is "ACTIVE" only once a notification has come and the notifications
@@ -207,7 +246,7 @@ public sealed class InstantNotificationService(
         db.WebhookSubscriptions.Add(subscription);
         await db.SaveChangesAsync(cancellationToken);
 
-        var created = await registrations.CreateWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-create"), url, username, password, cancellationToken);
+        var created = await marketplace.CreateWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-create"), url, username, password, cancellationToken);
         if (!created.IsSuccess)
         {
             // A timeout or server fault may hide a registration the marketplace made: the row is kept until the marketplace's
@@ -256,7 +295,7 @@ public sealed class InstantNotificationService(
                 : null;
             if (passive is not null)
             {
-                var removed = await registrations.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), passive.ExternalSubscriptionId!, cancellationToken);
+                var removed = await marketplace.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), passive.ExternalSubscriptionId!, cancellationToken);
                 if (!removed.IsSuccess)
                     return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REMOVAL_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydı silinemedi: {removed.Error!.SafeMessage}", 502);
                 await CloseAsync(passive, "DELETED", cancellationToken);
@@ -273,7 +312,7 @@ public sealed class InstantNotificationService(
         }
         if (subscription.ExternalSubscriptionId is { } externalId && externalId != ManualRegistration)
         {
-            var deleted = await registrations.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), externalId, cancellationToken);
+            var deleted = await marketplace.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), externalId, cancellationToken);
             if (!deleted.IsSuccess)
                 return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REMOVAL_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydı silinemedi: {deleted.Error!.SafeMessage}", 502);
         }
@@ -339,8 +378,8 @@ public sealed class InstantNotificationService(
         {
             var context = Context(tenantId, connectionId, correlationId, "webhook-pause");
             var closed = trendyol
-                ? await registrations.DeactivateWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken)
-                : await registrations.DeleteWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken);
+                ? await marketplace.DeactivateWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken)
+                : await marketplace.DeleteWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken);
             // A Trendyol webhook that is gone already receives nothing either; the activation makes a new one.
             failure = closed.IsSuccess || trendyol && closed.Error!.Class == AdapterErrorClass.NotFound ? null : closed.Error!.SafeMessage;
         }
@@ -452,7 +491,7 @@ public sealed class InstantNotificationService(
     {
         var context = Context(connection.TenantId, connection.Id, correlationId, "webhook-resume");
         AdapterResult<bool> activated;
-        try { activated = await registrations.ActivateWebhookAsync(context, externalId, cancellationToken); }
+        try { activated = await marketplace.ActivateWebhookAsync(context, externalId, cancellationToken); }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             activated = AdapterResult<bool>.Failure(new(AdapterErrorClass.TransientNetwork, "WEBHOOK_ACTIVATE_UNREACHABLE", "Trendyol'a ulaşılamadı.", null, null, null));
@@ -478,7 +517,7 @@ public sealed class InstantNotificationService(
         {
             try
             {
-                var removed = await registrations.DeleteWebhookAsync(context, externalId, cancellationToken);
+                var removed = await marketplace.DeleteWebhookAsync(context, externalId, cancellationToken);
                 if (removed.IsSuccess) removedAtMarketplace.Add(externalId);
                 else logger.LogWarning("Passive Trendyol order webhook {WebhookId} could not be removed: {Code}", externalId, removed.Error?.Code);
             }
@@ -498,7 +537,7 @@ public sealed class InstantNotificationService(
     private async Task<(ShopifyRegistrationCheck Outcome, string? Failure)> EnsureShopifyRegisteredAsync(Guid tenantId, Guid connectionId, Guid subscriptionId, string correlationId, CancellationToken cancellationToken)
     {
         var subscription = await db.WebhookSubscriptions.SingleAsync(x => x.TenantId == tenantId && x.Id == subscriptionId, cancellationToken);
-        var restored = await registrations.RestoreMissingWebhooksAsync(Context(tenantId, connectionId, correlationId, "webhook-check"), subscription.ExternalSubscriptionId!, cancellationToken);
+        var restored = await marketplace.RestoreMissingWebhooksAsync(Context(tenantId, connectionId, correlationId, "webhook-check"), subscription.ExternalSubscriptionId!, cancellationToken);
         if (restored.IsSuccess)
         {
             if (restored.Value is not { } ids) return (ShopifyRegistrationCheck.Unchanged, null);
@@ -622,14 +661,14 @@ public sealed class InstantNotificationService(
     private async Task<RegistrationSettlement> SettleRegistrationAsync(PlatformConnection connection, WebhookSubscription subscription, string correlationId, CancellationToken cancellationToken)
     {
         var context = Context(connection.TenantId, connection.Id, correlationId, "webhook-settle");
-        var listed = await registrations.ListWebhooksAsync(context, cancellationToken);
+        var listed = await marketplace.ListWebhooksAsync(context, cancellationToken);
         if (!listed.IsSuccess) return RegistrationSettlement.Unknown;
         var ours = listed.Value!.Where(webhook => RouteTokenHashOf(webhook.Url) is { } hash && hash == subscription.RouteTokenHash).ToList();
         var adopted = AdoptableIds(connection.PlatformCode, ours);
         var adoptedIds = adopted?.Split(MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhookIdSeparator) ?? [];
         foreach (var extra in ours.Where(webhook => !adoptedIds.Contains(webhook.Id, StringComparer.Ordinal)))
         {
-            var removed = await registrations.DeleteWebhookAsync(context, extra.Id, cancellationToken);
+            var removed = await marketplace.DeleteWebhookAsync(context, extra.Id, cancellationToken);
             if (!removed.IsSuccess && adopted is null) return RegistrationSettlement.Unknown;
         }
         if (adopted is not null)
@@ -700,7 +739,7 @@ public sealed class InstantNotificationService(
             if (connection?.PlatformCode == "TRENDYOL" && row.ExternalSubscriptionId is { } externalId && externalId != ManualRegistration && !removedAtMarketplace.Contains(externalId))
             {
                 bool removed;
-                try { removed = (await registrations.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), externalId, cancellationToken)).IsSuccess; }
+                try { removed = (await marketplace.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), externalId, cancellationToken)).IsSuccess; }
                 catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested) { removed = false; }
                 if (!removed)
                 {
@@ -787,14 +826,14 @@ public sealed class InstantNotificationService(
                         logger.LogWarning("Shopify order webhooks of connection {ConnectionId} could not be restored: {Reason}", subscription.ConnectionId, check.Failure);
                     continue;
                 }
-                var remote = await registrations.ListWebhooksAsync(context, cancellationToken);
+                var remote = await marketplace.ListWebhooksAsync(context, cancellationToken);
                 if (!remote.IsSuccess) continue;
                 var match = remote.Value!.FirstOrDefault(webhook => webhook.Id == subscription.ExternalSubscriptionId);
                 if (match is null || match.Status == "ACTIVE") continue;
                 // Read again right before activating: a Pasife Al made while this pass ran has set the webhook passive on
                 // purpose, and activating it would undo that.
                 if (!await StillOpenAsync(subscription.TenantId, subscription.ConnectionId, subscription.Id, cancellationToken)) continue;
-                var activated = await registrations.ActivateWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken);
+                var activated = await marketplace.ActivateWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken);
                 if (activated.IsSuccess)
                 {
                     reactivated++;

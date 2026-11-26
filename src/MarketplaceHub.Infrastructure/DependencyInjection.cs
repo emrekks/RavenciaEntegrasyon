@@ -85,6 +85,7 @@ public static class DependencyInjection
         services.AddSingleton<CursorCodec>();
         // Serves entries only in a process that runs CategoryRequirementsChangeListener (the API).
         services.AddSingleton<CategoryRequirementsCache>();
+        services.AddSingleton<WebhookStatusCache>();
         services.AddScoped<ICatalogService, CatalogService>();
         // The "Platformlarda Güncelle" summary (read only) and its marketplace values (MarketplaceKnownListingValueStore).
         services.AddScoped<IProductUpdatePreviewService, ProductUpdatePreviewService>();
