@@ -11,10 +11,7 @@
    still for people who ask for less motion. */
 /* Phones: the card that drops from under the top bar is placed by app/bottom-nav.css (its "html body .rv-notification-history" rule); the
    dimmed page behind it is below, and tapping it closes the card. */
-@keyframes rv-drop-down { from { transform: translateY(-12px); } to { transform: none; } }
 .rv-notification-dim { display: none; }
 @media (max-width: 760px) { .rv-notification-dim { position: fixed; inset: 0; z-index: calc(var(--rv-z-toast) - 1); display: block; background: var(--rv-color-backdrop, rgb(0 0 0 / 50%)); } }
 .rv-notification-history { animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards, rv-motion-pop var(--rv-motion-menu) var(--rv-ease-menu) backwards; transform-origin: top right; }
 @media (prefers-reduced-motion: reduce) { .rv-notification-history { animation: none; } }
-/* The card drops down instead of popping from the bell. */
-@media (max-width: 760px) and (prefers-reduced-motion: no-preference) { .rv-notification-history { animation-name: rv-motion-fade, rv-drop-down; animation-duration: 140ms; transform-origin: top center; } }

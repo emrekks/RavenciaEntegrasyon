@@ -193,11 +193,103 @@ async function questionDetailStep() {
     await context.close()
   }
 }
+// The question page's store strip on a phone: long store names are cut with an ellipsis inside their own cell and the record
+// count stays whole beside them (a nowrap name used to push the count into the next column).
+async function questionSyncStripStep() {
+  const longStates = [
+    { connectionId: 'c-ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Moda Trendyol Premium Mağaza Uzun Ad', historyImported: true, progressStatus: 'COMPLETED', importedCount: 1284, productQuestionCount: 1284, orderQuestionCount: 0, lastSuccessAt: '2026-10-20T06:21:00Z', lastError: null },
+    { connectionId: 'c-hb', platformCode: 'HEPSIBURADA', storeName: 'Ravencia Moda Hepsiburada Resmi Satıcı Mağazası', historyImported: true, progressStatus: 'COMPLETED', importedCount: 642, productQuestionCount: 518, orderQuestionCount: 124, lastSuccessAt: '2026-10-20T06:19:00Z', lastError: null },
+  ]
+  for (const width of [320, 360, 375, 393, 430]) {
+    const context = await browser.newContext({ viewport: { width, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
+    await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+    const page = await context.newPage()
+    await page.clock.setFixedTime(frozenNow)
+    await installApiMock(page, { unhandled: new Set(), overrides: [['GET /questions/sync-state', longStates]] })
+    try {
+      await page.goto(server.origin + '/questions')
+      await page.locator('.qi-sync .rv-questions-sync-item').first().waitFor({ timeout: 15000 })
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
+      const bad = await page.evaluate(() => {
+        const problems = []
+        for (const cell of document.querySelectorAll('.qi-sync .rv-questions-sync-item')) {
+          const box = cell.getBoundingClientRect()
+          for (const el of cell.querySelectorAll('*')) {
+            const rect = el.getBoundingClientRect()
+            if (rect.width && getComputedStyle(el).display !== 'none' && rect.right > box.right + 0.5) problems.push((el.className && String(el.className).split(' ')[0] || el.tagName.toLowerCase()) + ' +' + (rect.right - box.right).toFixed(1) + 'px')
+          }
+        }
+        return problems
+      })
+      if (bad.length) failures.push('question store strip @' + width + ': ' + [...new Set(bad)].slice(0, 6).join(', '))
+    } catch (error) { failures.push('question store strip @' + width + ': ' + String(error.message).split(String.fromCharCode(10))[0]) }
+    await context.close()
+  }
+}
+// The question page's head on the narrowest phones: the page does not scroll sideways and Hazır Cevaplar and Yenile keep
+// their icon, label and count inside their own boxes, side by side.
+async function questionHeadStep() {
+  for (const width of [320, 360, 375]) {
+    const context = await browser.newContext({ viewport: { width, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
+    await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+    const page = await context.newPage()
+    await page.clock.setFixedTime(frozenNow)
+    await installApiMock(page, { unhandled: new Set() })
+    try {
+      await page.goto(server.origin + '/questions')
+      await page.locator('.qi-acts > button').nth(1).waitFor({ timeout: 15000 })
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
+      const bad = await page.evaluate(() => {
+        const problems = []
+        if (document.documentElement.scrollWidth > innerWidth) problems.push('page scrolls sideways ' + document.documentElement.scrollWidth + '/' + innerWidth)
+        const buttons = [...document.querySelectorAll('.qi-acts > button')]
+        for (const button of buttons) if (button.scrollWidth > button.clientWidth) problems.push('"' + button.textContent.trim() + '" runs past its button ' + button.scrollWidth + '/' + button.clientWidth)
+        const [first, second] = buttons.map(button => button.getBoundingClientRect())
+        if (first && second && (Math.abs(first.top - second.top) > 1 || first.right > second.left || second.right > innerWidth)) problems.push('buttons are not side by side inside the page')
+        return problems
+      })
+      if (bad.length) failures.push('question head @' + width + ': ' + bad.join(', '))
+    } catch (error) { failures.push('question head @' + width + ': ' + String(error.message).split(String.fromCharCode(10))[0]) }
+    await context.close()
+  }
+}
+// Siparişler' summary cards on tablets and phones: no text runs past its card (the İptal card's "N Paket | N Kısmi İptal | N Adet Ürün" line
+// used to be cut at 761-1099 px).
+async function orderCardsStep() {
+  for (const width of [375, 761, 900, 1024, 1050, 1099]) {
+    const context = await browser.newContext({ viewport: { width, height: width < 768 ? 812 : 900 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce' })
+    await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+    const page = await context.newPage()
+    await page.clock.setFixedTime(frozenNow)
+    await installApiMock(page, { unhandled: new Set() })
+    try {
+      await page.goto(server.origin + '/orders')
+      await page.locator('.rr-metrics > article').first().waitFor({ timeout: 15000 })
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
+      const bad = await page.evaluate(() => {
+        const problems = []
+        for (const card of document.querySelectorAll('.rr-metrics > article')) {
+          const box = card.getBoundingClientRect()
+          for (const el of card.querySelectorAll(':scope > :not(.rv-card-bg):not(.rr-metric-tip) *, :scope > :not(.rv-card-bg):not(.rr-metric-tip)')) {
+            const rect = el.getBoundingClientRect()
+            if (rect.width && getComputedStyle(el).display !== 'none' && rect.right > box.right + 0.5) problems.push((card.querySelector('small')?.textContent ?? 'card') + ': ' + (el.className && String(el.className).split(' ')[0] || el.tagName.toLowerCase()) + ' +' + (rect.right - box.right).toFixed(1) + 'px')
+          }
+        }
+        return problems
+      })
+      if (bad.length) failures.push('order cards @' + width + ': ' + [...new Set(bad)].slice(0, 6).join(', '))
+    } catch (error) { failures.push('order cards @' + width + ': ' + String(error.message).split(String.fromCharCode(10))[0]) }
+    await context.close()
+  }
+}
 try {
   await Promise.all(Array.from({ length: 4 }, worker))
   if (!only) await badgeStep()
   if (!only) await glideStep()
   if (!only) await questionDetailStep()
+  if (!only) await questionSyncStripStep()
+  if (!only) await questionHeadStep()
+  if (!only) await orderCardsStep()
   if (!only) {
     await layerStep('filter sheet', '/orders', page => page.getByRole('button', { name: /^Filtre/ }).first().click(), page => page.getByRole('button', { name: /^Filtrele$/ }).first().click())
     await layerStep('window', '/orders', page => page.getByRole('button', { name: /Detayları Aç/ }).first().click(), page => page.keyboard.press('Escape'))
