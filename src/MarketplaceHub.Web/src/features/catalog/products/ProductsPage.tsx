@@ -13,7 +13,7 @@ import { CardBackgroundIcon, StickyActionBar, TitleHint, useDockHost, useConfirm
 import { CountUp } from '../../../shared/components/CountUp'
 import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../../shared/ui/rr-components'
-import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
+import { appendNotification, noticeRecord, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
 import { productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState, withProductPlatformWork } from '../product-platform-status'
 import { readStickySort, rememberSort, storedPageSize } from '../../../shared/sticky-sort'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
@@ -384,7 +384,9 @@ export function ProductsPage() {
   const refreshQuickEdit = () => Promise.all(QUICK_EDIT_SYNC_KEYS.map(queryKey => client.invalidateQueries({ queryKey })))
   // Each result lands below the toasts already shown and goes to the notification history.
   function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info' | 'warning', context?: NotificationContext, shape: { lines?: string[]; persistent?: boolean } = {}) {
-    appendNotification({ ...context, title, message, kind })
+    // D-8: a finished warning (skipped cards, a partial result) is kept in the history like a job's final result; a
+    // persistent one is work in progress, and validation or local feedback stays a toast (noticeRecord).
+    appendNotification({ ...context, title, message, kind, record: noticeRecord(context?.record, `${title} ${message}`, kind, shape.persistent) })
     toastStack.show({ kind, title, message, lines: shape.lines, durationMs: shape.persistent ? undefined : shape.lines?.length ? 8000 : 4000 })
   }
   function openProductImport() {
@@ -727,8 +729,8 @@ export function ProductsPage() {
     {/* One product card (a whole model family) opens the very same popup as its row's Platformlarda Yayınla. */}
     {bulkFieldOpen && selectedProductIds.length > 0 && <Suspense fallback={null}><BulkFieldDialog {...selectionModelGroups(selectedProductIds, selectedProductCache)} cardCount={selectedProductCardCount} onClose={() => setBulkFieldOpen(false)} onDone={async outcome => { showProductToast(outcome.title, outcome.message, outcome.kind, outcome.skipped ? { operation: 'Toplu Değer Ata', details: outcome.skipped.details, target: outcome.skipped.target, record: true } : { operation: 'Toplu Değer Ata' }); setBulkFieldOpen(false); await refresh().catch(() => undefined) }} /></Suspense>}
     {bulkPublishOpen && selectedProductCardCount === 1 &&selectedProductIds[0] && <Suspense fallback={null}><ProductPublishPopup productId={selectedProductIds[0]} onClose={() => { setBulkPublishOpen(false); void client.invalidateQueries({ queryKey: queryKeys.products() }) }} /></Suspense>}
-    {bulkUpdateOpen && <Suspense fallback={null}><BulkPlatformUpdateDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={connectionsQuery.data?.items ?? []} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkUpdateOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Güncelleme', details: notice.details, record: true } : { operation: 'Toplu Güncelleme' }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
-    {bulkPublishOpen && selectedProductCardCount !== 1 && <Suspense fallback={null}><BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Yayın', details: notice.details, record: true } : { operation: 'Toplu Yayın' }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
+    {bulkUpdateOpen && <Suspense fallback={null}><BulkPlatformUpdateDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={connectionsQuery.data?.items ?? []} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkUpdateOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Güncelleme', details: notice.details, record: true } : { operation: 'Toplu Güncelleme', record: notice.record }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
+    {bulkPublishOpen && selectedProductCardCount !== 1 && <Suspense fallback={null}><BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Yayın', details: notice.details, record: true } : { operation: 'Toplu Yayın', record: notice.record }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
     {lowStockOpen && <LowStockDetailsModal products={lowStockQuery.data?.items ?? []} loading={lowStockQuery.isLoading} error={lowStockQuery.error} onClose={() => setLowStockOpen(false)} onImageClick={(url, title, modelCode) => setLightboxImage({ url, title, modelCode })} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </section>

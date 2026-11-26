@@ -35,7 +35,7 @@ public sealed partial class ShopifyHttpClient
         var inputs = BuildInvoiceMetafieldSetInputs(delivery.OrderId, delivery.InvoiceLink, current.Value!.PdfUrl?.CompareDigest);
         var written = await QueryAsync(shop, mutation, new { metafields = inputs }, cancellationToken);
         if (!written.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(written.Error!, written.RateLimit);
-        var mutationPayload = written.Value!.RootElement.GetProperty("metafieldsSet");
+        var mutationPayload = written.Value.GetProperty("metafieldsSet");
         if (HasUserErrors(mutationPayload, out var userError))
             return Failure<InvoiceDeliveryResult>(new(AdapterErrorClass.BusinessConflict, "SHOPIFY_INVOICE_METAFIELD_WRITE_REJECTED", userError ?? "Shopify fatura metafield yazımını reddetti.", (int)HttpStatusCode.Conflict, null, null), written.RateLimit);
 
@@ -77,7 +77,7 @@ public sealed partial class ShopifyHttpClient
         if (!result.IsSuccess) return AdapterResult<ShopifyInvoiceMetafields>.Failure(result.Error!, result.RateLimit);
         try
         {
-            var order = result.Value!.RootElement.GetProperty("order");
+            var order = result.Value.GetProperty("order");
             if (order.ValueKind == JsonValueKind.Null)
                 return Failure<ShopifyInvoiceMetafields>(new(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", (int)HttpStatusCode.NotFound, null, null), result.RateLimit);
             return AdapterResult<ShopifyInvoiceMetafields>.Success(new(ReadMetafield(order, "pdf")), result.RateLimit);

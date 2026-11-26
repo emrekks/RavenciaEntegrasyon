@@ -293,7 +293,10 @@ internal sealed partial class ProductJobService
         if (succeededCodes.Count > 0)
         {
             // A product closed for sale takes no price or stock updates; opening it brings its offer back.
-            var variantIds = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && succeededCodes.Contains(x.ExternalId)).Select(x => x.VariantId).ToListAsync(cancellationToken);
+            // B-10.5: the link may hold the barcode in another letter case than Pazarama's answer (K28): compared upper-cased
+            // and trimmed on both sides, as the sale-status request does (CatalogService.EnqueuePazaramaSaleStatusAsync).
+            var succeededUpper = succeededCodes.Select(code => code.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToArray();
+            var variantIds = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && succeededUpper.Contains(x.ExternalId.Trim().ToUpper())).Select(x => x.VariantId).ToListAsync(cancellationToken);
             var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
             foreach (var offer in offers) { offer.Status = payload.Close ? "INACTIVE" : "ACTIVE"; offer.Version++; }
             await db.SaveChangesAsync(cancellationToken);

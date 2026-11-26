@@ -264,21 +264,21 @@ public sealed class ShopifyFamilyPublicationTests
         using var refused = JsonDocument.Parse("""{ "publishablePublish": { "publishable": null, "userErrors": [ { "field": ["input"], "message": "Publication does not exist" } ] } }""");
         using var otherResource = JsonDocument.Parse("""{ "publishablePublish": { "publishable": { "id": "gid://shopify/Product/78" }, "userErrors": [] } }""");
 
-        Assert.Null(ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(published), product, "ravencia-model-x"));
+        Assert.Null(ShopifyHttpClient.PublishFailure(AdapterResult<JsonElement>.Success(published.RootElement), product, "ravencia-model-x"));
 
-        var rejected = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(refused), product, "ravencia-model-x")!;
+        var rejected = ShopifyHttpClient.PublishFailure(AdapterResult<JsonElement>.Success(refused.RootElement), product, "ravencia-model-x")!;
         Assert.Equal((AdapterErrorClass.Validation, ShopifyHttpClient.PublishFailedCode), (rejected.Class, rejected.Code));
         Assert.Contains(product, rejected.SafeMessage, StringComparison.Ordinal);
         Assert.Contains("ravencia-model-x", rejected.SafeMessage, StringComparison.Ordinal);
         Assert.Contains("Publication does not exist", rejected.SafeMessage, StringComparison.Ordinal);
 
-        var denied = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.Validation, "SHOPIFY_GRAPHQL_ERROR", "Field 'id' doesn't exist on type 'Publishable'", 200, null, "req-1")), product, "ravencia-model-x")!;
+        var denied = ShopifyHttpClient.PublishFailure(AdapterResult<JsonElement>.Failure(new(AdapterErrorClass.Validation, "SHOPIFY_GRAPHQL_ERROR", "Field 'id' doesn't exist on type 'Publishable'", 200, null, "req-1")), product, "ravencia-model-x")!;
         Assert.Equal((AdapterErrorClass.Validation, ShopifyHttpClient.PublishFailedCode, "req-1"), (denied.Class, denied.Code, denied.RemoteRequestId));
         Assert.Contains("Field 'id' doesn't exist", denied.SafeMessage, StringComparison.Ordinal);
 
-        var timeout = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "SHOPIFY_TIMEOUT", "zaman aşımı", null, null, null)), product, "ravencia-model-x")!;
+        var timeout = ShopifyHttpClient.PublishFailure(AdapterResult<JsonElement>.Failure(new(AdapterErrorClass.TransientNetwork, "SHOPIFY_TIMEOUT", "zaman aşımı", null, null, null)), product, "ravencia-model-x")!;
         Assert.Equal((AdapterErrorClass.TransientNetwork, ShopifyHttpClient.PublishRetryCode), (timeout.Class, timeout.Code));
-        Assert.Equal(ShopifyHttpClient.PublishRetryCode, ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(otherResource), product, "ravencia-model-x")!.Code);
+        Assert.Equal(ShopifyHttpClient.PublishRetryCode, ShopifyHttpClient.PublishFailure(AdapterResult<JsonElement>.Success(otherResource.RootElement), product, "ravencia-model-x")!.Code);
 
         Assert.True(ShopifyFamilySend.IsPublishOnlyFailure(rejected.Code));
         Assert.True(ShopifyFamilySend.IsPublishOnlyFailure(timeout.Code));
@@ -339,7 +339,7 @@ public sealed class ShopifyFamilyPublicationTests
 
         // A publish refused today carries the same code and says what happened in the panel's words.
         using var refused = JsonDocument.Parse("""{ "publishablePublish": { "publishable": null, "userErrors": [ { "field": ["input"], "message": "Publication does not exist" } ] } }""");
-        var rejected = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(refused), "gid://shopify/Product/77", "ravencia-model-x")!;
+        var rejected = ShopifyHttpClient.PublishFailure(AdapterResult<JsonElement>.Success(refused.RootElement), "gid://shopify/Product/77", "ravencia-model-x")!;
         Assert.StartsWith("Yayına alınamadı:", rejected.SafeMessage, StringComparison.Ordinal);
     }
 

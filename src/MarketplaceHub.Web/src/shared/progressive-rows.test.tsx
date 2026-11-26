@@ -5,8 +5,8 @@ import { firstFrameRows, PendingRows, useProgressiveRows } from './progressive-r
 
 const rows = (prefix: string, count = 50) => Array.from({ length: count }, (_, index) => ({ id: `${prefix}${index}` }))
 
-function List({ items }: { items: Array<{ id: string }> }) {
-  const progressive = useProgressiveRows(items, item => item.id)
+function List({ items, remountKey }: { items: Array<{ id: string }>; remountKey?: string }) {
+  const progressive = useProgressiveRows(items, item => item.id, remountKey)
   return <table><tbody ref={progressive.containerRef}>{progressive.rows.map(item => <tr key={item.id} className="row"><td>{item.id}</td></tr>)}<PendingRows height={progressive.pendingHeight} colSpan={1} /></tbody></table>
 }
 
@@ -46,6 +46,20 @@ describe('useProgressiveRows', () => {
     view.rerender(<List items={rows('b')} />)
     expect(shown()).toBe(firstFrameRows)
     expect(document.querySelector<HTMLElement>('.rv-rows-pending td')?.style.height).toBe(`${(50 - firstFrameRows) * 40}px`)
+  })
+
+  // A status tab mounts the previous tab's rows again while its own load (Siparişler, İadeler): they are drawn like a new
+  // list, even from a scrolled page (the tab change takes it to its top).
+  it('draws the same rows again progressively when their holder is mounted again', async () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length })
+    const view = render(<List items={rows('a')} remountKey="tab-0" />)
+    await afterPaint()
+    expect(shown()).toBe(50)
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 900 })
+    view.rerender(<List items={rows('a')} remountKey="tab-1" />)
+    expect(shown()).toBe(firstFrameRows)
+    await afterPaint()
+    expect(shown()).toBe(50)
   })
 
   // A new order arriving on top while the person reads row 40: the list is drawn whole, nothing disappears for a frame.

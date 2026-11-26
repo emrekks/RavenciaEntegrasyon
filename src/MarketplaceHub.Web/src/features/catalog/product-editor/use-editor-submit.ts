@@ -9,6 +9,7 @@ import { editorPriceChanges } from './editor-price-jumps'
 import { ApiRequestError } from '../../../shared/api'
 import { appendNotification, productNotificationSubject } from '../../../shared/notifications'
 import { followJobOutcomes, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
+import { recordsJobOutcome } from '../../../shared/job-outcome-notice'
 import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT } from '../variant-row-removal'
 import { mediaFilesLeftAfterFailedSave, newColoursWithoutPictures } from './product-media-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs } from './pending-create-media'
@@ -309,7 +310,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       // later toasts.
       if (createOnly) operationToasts.dismiss(productSaveToastKey)
       // A "sending" toast with no job to follow (the server named none) does not spin forever.
-      else setFeedback({ message, kind: result.kind, persistent: result.persistent && (result.title !== 'Aktarım Başladı' || followedJobs.length > 0), title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
+      else setFeedback({ message, kind: result.kind, persistent: result.persistent && (result.title !== 'Aktarım Başladı' || followedJobs.length > 0), title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey, record: result.record, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
       // "Aktarım Başladı" turns into how the jobs ended; a toast that already names a refusal keeps its place and the
       // result comes below it. The result also goes to the notification center, so it is not lost if the page is left.
       if (followedJobs.length && !createOnly) {
@@ -318,7 +319,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
         const operation = platformUpdate ? 'Platformlarda Güncelle' : 'Yayınla'
         void followJobOutcomes(followedJobs, outcomeTarget(followedJobs), (outcome, interim) => operationToasts.showDetached({
           title: outcome.title, message: outcome.lines.join(' '), lines: outcome.lines, kind: outcome.kind,
-          persistent: outcome.kind === 'error', durationMs: interim ? 8000 : 6000, key: resultKey,
+          persistent: outcome.kind === 'error', durationMs: interim ? 8000 : 6000, key: resultKey, record: interim ? false : recordsJobOutcome(outcome.kind, false),
           context: { subject, operation, jobId: followedJobs.length === 1 ? followedJobs[0].jobId : undefined }
         }))
       }

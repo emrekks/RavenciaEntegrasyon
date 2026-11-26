@@ -128,7 +128,8 @@ describe('product save feedback', () => {
     }))
     expect(feedback.title).toBe('Yayın Kısmen Başlatıldı')
     expect(feedback.lines).toContain('Pazarama: gönderilmedi — Marka eşleşmesi yok.')
-    expect(feedback).toMatchObject({ kind: 'warning', persistent: true })
+    // D-8: the refusal is finished, so the history keeps it although it stays on screen.
+    expect(feedback).toMatchObject({ kind: 'warning', persistent: true, record: true })
   })
 
   it('titles a publication that queued nothing and was refused "Yayın Başlatılamadı"', () => {

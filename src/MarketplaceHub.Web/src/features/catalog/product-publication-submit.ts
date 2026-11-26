@@ -95,6 +95,8 @@ export type ProductSaveFeedback = {
   kind: 'success' | 'error' | 'info' | 'warning'
   persistent: boolean
   durationMs?: number
+  /** A finished result the notification history keeps although it stays on screen (D-8). */
+  record?: boolean
 }
 
 const cardCount = (count: number) => `${count} renk kartı`
@@ -295,7 +297,9 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
   const partlySent = outcome.updates
     ? outcome.updates.some(update => update.queued.productInformation || update.queued.priceInventory)
     : outcome.publishRequested && outcome.publications.some(publication => publication.enqueuedCards > 0)
-  if (refused) return { title, lines, kind: partlySent && !outcome.saveWarnings.length ? 'warning' : 'error', persistent: true }
+  // A refusal is a finished result (the refused marketplace sends nothing more): kept in the history though it stays on
+  // screen (D-8).
+  if (refused) return { title, lines, kind: partlySent && !outcome.saveWarnings.length ? 'warning' : 'error', persistent: true, record: true }
   // Something went to a marketplace: it is on its way, not done. The toast stays as work in progress until the followed
   // jobs say how it ended (shared/job-outcome); a success never shows before that (owner, 7 Nov 2026: RYP003T).
   const sending = outcome.updates

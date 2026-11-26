@@ -25,7 +25,7 @@ public sealed partial class ShopifyHttpClient
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(result.Error!, result.RateLimit);
         try
         {
-            var connection = result.Value!.RootElement.GetProperty("productTypes");
+            var connection = result.Value.GetProperty("productTypes");
             var items = MapProductTypes(connection.GetProperty("nodes"));
             var info = connection.GetProperty("pageInfo");
             var hasMore = info.GetProperty("hasNextPage").GetBoolean();
@@ -68,7 +68,7 @@ public sealed partial class ShopifyHttpClient
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
         try
         {
-            var products = result.Value!.RootElement.GetProperty("products");
+            var products = result.Value.GetProperty("products");
             var items = new List<RemoteCatalogProduct>();
             foreach (var edge in products.GetProperty("edges").EnumerateArray())
             {

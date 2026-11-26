@@ -39,7 +39,7 @@ public sealed partial class ShopifyHttpClient
             ? NestedText(shop, "primaryDomain", "url")
             : null;
 
-    private async Task<AdapterResult<JsonDocument>> QueryOrderAsync(ShopifyRequestContext context, object variables, bool single, CancellationToken cancellationToken)
+    private async Task<AdapterResult<JsonElement>> QueryOrderAsync(ShopifyRequestContext context, object variables, bool single, CancellationToken cancellationToken)
     {
         var richQuery = single ? SingleOrderQuery(OrderFields(OrderRichCustomerFields)) : OrderPageQuery(OrderFields(OrderRichCustomerFields));
         var result = await QueryAsync(context, richQuery, variables, cancellationToken);
@@ -73,8 +73,8 @@ public sealed partial class ShopifyHttpClient
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(result.Error!, result.RateLimit);
         try
         {
-            var orders = result.Value!.RootElement.GetProperty("orders");
-            var shopUrl = ShopPrimaryDomainUrl(result.Value!.RootElement);
+            var orders = result.Value.GetProperty("orders");
+            var shopUrl = ShopPrimaryDomainUrl(result.Value);
             // One order the mapper cannot take does not stop the page (5 Nov 2026): it is skipped with an issue and, when
             // its id is readable, read again by number (RefusedOrders). An unreadable line alone never refuses an order:
             // the line is counted on its package (UnreadableOrderLines).
@@ -113,14 +113,14 @@ public sealed partial class ShopifyHttpClient
         var id = externalOrderId.StartsWith("gid://", StringComparison.Ordinal) ? externalOrderId : $"gid://shopify/Order/{externalOrderId}";
         var result = await QueryOrderAsync(shop, new { id }, single: true, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
-        var order = result.Value!.RootElement.GetProperty("order");
+        var order = result.Value.GetProperty("order");
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
         var whole = await ReadWholeOrderAsync(shop, order, cancellationToken);
         if (!whole.IsSuccess) return AdapterResult<RemoteOrder>.Failure(whole.Error!, whole.RateLimit ?? result.RateLimit);
         order = whole.Value;
         RemoteOrder mapped;
         // Found but not readable: a contract error, not "not found" (RefusedOrders).
-        try { mapped = MapOrder(order, ShopPrimaryDomainUrl(result.Value!.RootElement)); }
+        try { mapped = MapOrder(order, ShopPrimaryDomainUrl(result.Value)); }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException or FormatException)
         {
             return Fail<RemoteOrder>(AdapterErrorClass.ContractViolation, "SHOPIFY_ORDER_CONTRACT_INVALID", "Shopify siparişi bulundu ancak yanıtta beklenen bir alan eksik veya okunamadı.", HttpStatusCode.BadGateway);

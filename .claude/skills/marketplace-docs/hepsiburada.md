@@ -265,6 +265,10 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
   snapshot's refundAmount was a positive number equal to the line price); the other 8 read "İade Tutarı —".
 
 ## Product update status, field by field (18 Nov 2026)
+- The ticket-api import asks for only the fields to change (so Hepsiburada's enriched values are not overwritten) and
+  reads an empty attribute value as "delete it" (offline `hepsiburada-api-son.md` ~2817, request sample). So
+  `HepsiburadaProductUpdateComposer.UpdateItem` leaves `warrantyPeriod` out when the card holds no warranty (26 Nov
+  2026); a 0 is a known "no warranty" and is sent.
 - `GET /ticket-api/api/integrator/status/{trackingId}` answers per item (`IntegratorImportStatusItemDto`): `hbSku`,
   `message`, `productStatus` (`COMPLETED` | `UNCOMPLETED` in the schema; live answers also carry review states the mapper
   knows, e.g. `WAITING_APPROVAL`, `IN_REVIEW`) and `updateResults[]` (`IntegratorUpdateResultsDto`): `fieldName`
