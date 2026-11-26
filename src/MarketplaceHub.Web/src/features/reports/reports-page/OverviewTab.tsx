@@ -1,4 +1,4 @@
-import { useContext, useId, useState, type CSSProperties } from 'react'
+import { memo, useContext, useId, useMemo, useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { EmptyState } from '../../../shared/components'
 import { valueWithUnit } from '../../../shared/metric-value'
@@ -8,30 +8,38 @@ import { AdReportModal, adReportQuery, adReportRow, combined, reportAge, roasTex
 import { Columns, Donut, Progress, useReveal, type ColumnPoint, type Part } from '../report-visuals'
 import { MetricSourceContext, type DetailKey, Delta, type OpenDetail, TipMark, TipText, previousLine, previousRate, Card, type Money, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, wholeLiras, previousText, percent, previousMoney, explain, commissionGap, cargoGap, vatMore, netProfitTip, netLossTip, netSalesTip, returnRateTip, unlinkedDeductions, financeCosts, trendyolRead, feeCategories, costFigure, coveredNote, profitSteps, weightedHours, weekdays } from './report-parts'
 import { ProfitBridge } from './ProfitBridge'
+import { Deferred } from './Deferred'
+import { fixed, heroEstimate } from './deferred-estimates'
+
+// Between 761 and 1100 px the figure cards go two in a row and an odd last one takes the whole row (reports.css); its
+// waiting box does the same.
+const heroSpan = (index: number, count: number) => index === count - 1 && count % 2 === 1 && typeof window !== 'undefined' && window.innerWidth > 760 && window.innerWidth <= 1100 ? { gridColumn: '1 / -1' } : undefined
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
 // period apart, under it), the way from the sales to the profit
 // beside the period's buckets, then the product, order and advertising figures and the returns and operations. Every
 // amount comes from one account (moneyBreakdown), so the cards agree with each other and with the profit tab; a row's
 // explanation shows while the pointer or the focus is on it. Each card plays its animation once, when first in view.
-export function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
-  const money = moneyBreakdown(data, profitSteps(data))
+// The blocks under the six figures are drawn when near the screen (Deferred), each card of the figure grid on its own.
+export const Overview = memo(function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
+  const money = useMemo(() => moneyBreakdown(data, profitSteps(data)), [data])
   // Trendyol's ad report the seller uploads: campaign totals, apart from the period's figures (AdReport.tsx).
   const ads = useQuery(adReportQuery)
   const [adsOpen, setAdsOpen] = useState(false)
+  const cards = useMemo(() => overviewCards(data, money, ads.data, ads.isError, () => setAdsOpen(true)), [data, money, ads.data, ads.isError])
   return <div className="reports-overview">
     <OverviewFigures data={data} money={money} />
-    <CostLinesCard data={data} money={money} />
+    <Deferred name="costLines" estimate={fixed.costLines}><CostLinesCard data={data} money={money} /></Deferred>
     <div className="reports-overview-row is-two">
-      <ProfitBridge data={data} money={money} onMore={onMore} />
-      <PeriodCard data={data} />
+      <Deferred name="bridge" estimate={fixed.bridge}><ProfitBridge data={data} money={money} onMore={onMore} /></Deferred>
+      <Deferred name="period" estimate={fixed.period}><PeriodCard data={data} /></Deferred>
     </div>
     <div className="reports-hero-grid">
-      {overviewCards(data, money, ads.data, ads.isError, () => setAdsOpen(true)).map(card => <HeroCard key={card.key} card={card} onMore={onMore} />)}
+      {cards.map((card, index) => <Deferred key={card.key} name={`hero-${card.key}`} estimate={heroEstimate(card.rows.length)} boxStyle={heroSpan(index, cards.length)}><HeroCard card={card} onMore={onMore} /></Deferred>)}
     </div>
     <AdReportModal open={adsOpen} onClose={() => setAdsOpen(false)} data={ads.data} />
   </div>
-}
+})
 
 type Measure = 'netRevenue' | 'orders' | 'soldQuantity'
 const measures: Record<Measure, string> = { netRevenue: 'Net Ciro', orders: 'Sipariş', soldQuantity: 'Satılan Adet' }

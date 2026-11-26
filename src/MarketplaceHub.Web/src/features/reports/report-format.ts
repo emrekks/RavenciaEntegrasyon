@@ -80,7 +80,7 @@ export type ReportDesiSources = { marketplace: number; manual: number; measured:
 // "Desi: 5 siparişte pazaryerinin bildirdiği, 30 siparişte Trendyol kargo faturalarından ölçülen (1.320 koli)…"
 export function desiSourcesNote(sources: ReportDesiSources | null | undefined) {
   if (!sources) return ''
-  const count = (value: number) => value.toLocaleString('tr-TR')
+  const count = (value: number) => trNumber(value)
   const parts = [
     sources.marketplace ? `${count(sources.marketplace)} siparişte pazaryerinin siparişte bildirdiği` : '',
     sources.manual ? `${count(sources.manual)} siparişte ürüne girilen` : '',
@@ -142,6 +142,17 @@ export function variantColourAndSize(options: Array<{ name: string; value: strin
 const platformColors: Record<string, string> = { TRENDYOL: '#f27a1a', HEPSIBURADA: '#f5b301', SHOPIFY: '#5e8e3e', N11: '#7c5cff', PAZARAMA: '#2f9bd8', PTTAVM: '#1f3a8a' }
 export function platformColor(code: string) { return platformColors[code.toUpperCase()] ?? '#8a8f98' }
 
+// A number in Turkish with the given options: the same text as value.toLocaleString('tr-TR', options), from one formatter
+// per set of options kept for the page's life (toLocaleString builds a new one on every call, which cost ~60 ms of a
+// slowed phone's report render).
+const formatters = new Map<string, Intl.NumberFormat>()
+export function trNumber(value: number, options: Intl.NumberFormatOptions = {}) {
+  const key = JSON.stringify(options)
+  let formatter = formatters.get(key)
+  if (!formatter) { formatter = new Intl.NumberFormat('tr-TR', options); formatters.set(key, formatter) }
+  return formatter.format(value)
+}
+
 const number = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 })
 const whole = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 })
 const money = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 2, minimumFractionDigits: 2 })
@@ -155,11 +166,11 @@ export function formatTlWhole(value: number) { return moneyWhole.format(value) }
 // Zero is "₺0" like the short figures beside it on an axis ("₺50 B"), not "₺0,00".
 export function formatTlShort(value: number) { return value === 0 ? moneyWhole.format(0) : Math.abs(value) >= 10_000 ? moneyShort.format(value) : money.format(value) }
 export function formatPercent(rate: number | null | undefined, digits = 1) {
-  return rate === null || rate === undefined || Number.isNaN(rate) ? '—' : `%${(rate * 100).toLocaleString('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
+  return rate === null || rate === undefined || Number.isNaN(rate) ? '—' : `%${trNumber(rate * 100, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 }
 export function formatHours(hours: number | null | undefined) {
   if (hours === null || hours === undefined) return '—'
-  return hours >= 48 ? `${(hours / 24).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} gün` : `${hours.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} sa`
+  return hours >= 48 ? `${trNumber(hours / 24, { maximumFractionDigits: 1 })} gün` : `${trNumber(hours, { maximumFractionDigits: 1 })} sa`
 }
 export function formatDay(value: string) { const [year, month, day] = value.split('-'); return `${day}.${month}.${year}` }
 
@@ -178,14 +189,14 @@ export function change(current: number | null | undefined, previous: number | nu
   if (kind === 'rate') {
     const points = (current - previous) * 100
     if (Math.abs(points) < 0.05) return { text: '0,0 puan', direction: 'flat' }
-    return { text: `${points > 0 ? '+' : '−'}${Math.abs(points).toLocaleString('tr-TR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} puan`, direction: points > 0 ? 'up' : 'down' }
+    return { text: `${points > 0 ? '+' : '−'}${trNumber(Math.abs(points), { maximumFractionDigits: 1, minimumFractionDigits: 1 })} puan`, direction: points > 0 ? 'up' : 'down' }
   }
   // Something against nothing in the previous period is new ("▲ Yeni", no "+∞%"); nothing against nothing has no
   // change (the pill's "■ %0").
   if (previous === 0) return current > 0 ? { text: newChangeText, direction: 'up' } : null
   const percent = (current - previous) / Math.abs(previous) * 100
   if (Math.abs(percent) < 0.05) return { text: '%0', direction: 'flat' }
-  return { text: `${percent > 0 ? '+' : '−'}%${Math.abs(percent).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, direction: percent > 0 ? 'up' : 'down' }
+  return { text: `${percent > 0 ? '+' : '−'}%${trNumber(Math.abs(percent), { maximumFractionDigits: 1 })}`, direction: percent > 0 ? 'up' : 'down' }
 }
 
 // The report request: calendar days (yyyy-MM-dd), platforms and buckets; an empty choice is left out.
@@ -202,7 +213,7 @@ function csvSafe(text: string) { return /^[=+\-@\t\r]/.test(text) ? `'${text}` :
 export type CsvColumn<T> = { header: string; value: (row: T) => string | number | null | undefined }
 export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]) {
   const cell = (value: string | number | null | undefined) => {
-    const text = value === null || value === undefined ? '' : typeof value === 'number' ? value.toLocaleString('tr-TR', { useGrouping: false, maximumFractionDigits: 4 }) : csvSafe(value)
+    const text = value === null || value === undefined ? '' : typeof value === 'number' ? trNumber(value, { useGrouping: false, maximumFractionDigits: 4 }) : csvSafe(value)
     return `"${text.replaceAll('"', '""')}"`
   }
   // Semicolons and a byte-order mark: Excel in Turkish opens it in columns with the letters right.

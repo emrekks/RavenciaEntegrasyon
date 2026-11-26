@@ -3037,29 +3037,38 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var inventoryByVariant = inventories.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariantConnection = offers.ToDictionary(x => (x.VariantId, x.ConnectionId));
+        // Each card's variants, profiles, links and listings and each profile's listings by one lookup, in their read order:
+        // the list once scanned every one of them per card, variant and connection (a 443-card Düşük Stok page: tens of
+        // millions of comparisons).
+        var variantsByProduct = variants.ToLookup(x => x.ProductId);
+        var profilesByProduct = profiles.ToLookup(x => x.ProductId);
+        var productOfVariant = variants.ToDictionary(x => x.Id, x => x.ProductId);
+        var linksByProduct = variantLinks.Where(x => productOfVariant.ContainsKey(x.VariantId)).ToLookup(x => productOfVariant[x.VariantId]);
+        var listingsByVariant = listingVariants.ToLookup(x => x.VariantId);
+        var listingsByProfile = listingVariants.ToLookup(x => x.ProfileId);
         return products.Select(product =>
         {
             // Product variants are inserted in the marketplace response order.
             // Sorting by SKU made the gallery jump between colours (for example
             // black, green, black) even though Trendyol sent each colour as a
             // contiguous block.
-            var productVariants = variants.Where(x => x.ProductId == product.Id)
+            var productVariants = variantsByProduct[product.Id]
                 .OrderBy(x => x.SortOrder)
                 .ThenBy(x => x.CreatedAt)
                 .ThenBy(x => x.Id)
                 .ToList();
             var productVariantIds = productVariants.Select(x => x.Id).ToHashSet();
-            var productProfiles = profiles.Where(x => x.ProductId == product.Id).ToList();
+            var productProfiles = profilesByProduct[product.Id].ToList();
             // A variant the marketplace still reviews or refused (its listing APPROVAL_PENDING or REJECTED: Trendyol's
             // unapproved list) is not on sale there, though an import linked it: it is not matched, so the card reads
             // "Reddedildi" / "Onay Bekliyor", not "Yayında", and Yayınla can send it again (owner, 14 Nov 2026: MZ056).
-            var heldLinks = listingVariants
-                .Where(x => ImportedApprovalStates.IsHeldListing(x.ActualStatus) && productVariantIds.Contains(x.VariantId))
+            var heldLinks = productVariants.SelectMany(variant => listingsByVariant[variant.Id])
+                .Where(x => ImportedApprovalStates.IsHeldListing(x.ActualStatus))
                 .Select(x => (x.VariantId, ConnectionId: productProfiles.FirstOrDefault(profile => profile.Id == x.ProfileId)?.ConnectionId))
                 .Where(x => x.ConnectionId is not null)
                 .Select(x => (x.VariantId, x.ConnectionId!.Value))
                 .ToHashSet();
-            var productLinks = variantLinks.Where(x => productVariantIds.Contains(x.VariantId) && !heldLinks.Contains((x.VariantId, x.ConnectionId))).ToList();
+            var productLinks = linksByProduct[product.Id].Where(x => !heldLinks.Contains((x.VariantId, x.ConnectionId))).ToList();
             // The variants the marketplace no longer knows, per connection: neither matched nor live there.
             var productArchived = product.Status == ProductStatus.Archived;
             var missingLinks = productLinks
@@ -3070,16 +3079,15 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             {
                 inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
                 var linkedConnectionIds = productLinks.Where(x => x.VariantId == variant.Id && !missingLinks.Contains((x.VariantId, x.ConnectionId))).Select(x => x.ConnectionId).ToHashSet();
-                var listingConnectionIds = listingVariants
-                    .Where(x => x.VariantId == variant.Id)
+                var listingConnectionIds = listingsByVariant[variant.Id]
                     .Select(x => productProfiles.FirstOrDefault(profile => profile.Id == x.ProfileId)?.ConnectionId)
                     .OfType<Guid>()
                     .Where(connectionId => !missingLinks.Contains((variant.Id, connectionId)))
                     .ToHashSet();
                 // Present on a connection: a healthy link, or a LIVE listing (a family send lists colour cards that get
                 // no link of their own; live 2026-10-29 MZ053TCD on PTT AVM: 24 LIVE variants, 9 links).
-                var liveListingConnectionIds = listingVariants
-                    .Where(x => x.VariantId == variant.Id && x.ActualStatus == "LIVE")
+                var liveListingConnectionIds = listingsByVariant[variant.Id]
+                    .Where(x => x.ActualStatus == "LIVE")
                     .Select(x => productProfiles.FirstOrDefault(profile => profile.Id == x.ProfileId)?.ConnectionId)
                     .OfType<Guid>()
                     .Where(connectionId => !missingLinks.Contains((variant.Id, connectionId)))
@@ -3096,7 +3104,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         offerByVariantConnection.TryGetValue((variant.Id, connectionId), out var channelOffer);
                         // The sale state rides on the variant's link; a variant the marketplace no longer knows has none.
                         var saleLink = isMissing ? null : productLinks.FirstOrDefault(x => x.VariantId == variant.Id && x.ConnectionId == connectionId);
-                        var listing = profile is null ? null : listingVariants.FirstOrDefault(x => x.VariantId == variant.Id && x.ProfileId == profile.Id);
+                        var listing = profile is null ? null : listingsByVariant[variant.Id].FirstOrDefault(x => x.ProfileId == profile.Id);
                         return new ProductVariantPlatformStatusView(
                             connection.Value.DisplayName,
                             connection.Value.PlatformCode,
@@ -3134,14 +3142,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     // or one still queued is not matched, so a 23 of 24 card does not read 24 of 24.
                     if (profile is not null)
                     {
-                        foreach (var listing in listingVariants.Where(x => x.ProfileId == profile.Id && x.ActualStatus == "LIVE")) linkedVariantIds.Add(listing.VariantId);
+                        foreach (var listing in listingsByProfile[profile.Id].Where(x => x.ActualStatus == "LIVE")) linkedVariantIds.Add(listing.VariantId);
                     }
                     // A variant the marketplace no longer knows is not matched there, even with a LIVE listing behind it.
                     var missingVariantCount = linkedVariantIds.RemoveWhere(variantId => missingLinks.Contains((variantId, connectionId)));
                     // A variant whose listing waits for a person (MANUAL_REVIEW: the marketplace's answer could not be
                     // settled, e.g. Trendyol's approval check found another product id) is not counted live there: the
                     // mark says "İncelemede" (owner, 15 Nov 2026: MZ056 Mürdüm read as matched).
-                    var reviewVariantCount = profile is null ? 0 : linkedVariantIds.RemoveWhere(variantId => listingVariants.Any(x => x.ProfileId == profile.Id && x.VariantId == variantId && x.ActualStatus == "MANUAL_REVIEW"));
+                    var reviewVariantCount = profile is null ? 0 : linkedVariantIds.RemoveWhere(variantId => listingsByProfile[profile.Id].Any(x => x.VariantId == variantId && x.ActualStatus == "MANUAL_REVIEW"));
 
                     var matchedVariantCount = linkedVariantIds.Count;
                     var status = ProductListingHealth.Status(profile?.ActualStatus, matchedVariantCount, missingVariantCount, productVariantIds.Count);
@@ -3150,7 +3158,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     // listing has no link and stays unknown).
                     var saleLinks = productLinks.Where(x => x.ConnectionId == connectionId && linkedVariantIds.Contains(x.VariantId)).ToList();
                     var updating = ProductListingHealth.IsUpdateInFlight(profile?.ActualStatus);
-                    var rejectedVariantCount = profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Rejected).Select(x => x.VariantId).Distinct().Count();
+                    var rejectedVariantCount = profile is null ? 0 : listingsByProfile[profile.Id].Where(x => productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Rejected).Select(x => x.VariantId).Distinct().Count();
                     return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode, missingVariantCount,
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OnSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
@@ -3162,7 +3170,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         // a card whose update is on its way was sent again: "Onaya Gönderildi", not "Reddedildi", until
                         // the marketplace answers (ProductListingHealth.UpdateInFlightStatuses).
                         updating ? 0 : rejectedVariantCount,
-                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Pending).Select(x => x.VariantId).Distinct().Count())
+                        profile is null ? 0 : listingsByProfile[profile.Id].Where(x => productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Pending).Select(x => x.VariantId).Distinct().Count())
                     {
                         ResubmittedVariantCount = updating ? rejectedVariantCount : 0,
                         UpdatingVariantCount = updating ? matchedVariantCount : 0,
@@ -3177,10 +3185,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var published = publicationColours.TryGetValue(product.Id, out var colours)
                 ? PublicationVariantMedia.ForCard(mediaByProduct[product.Id], activeVariantsByProduct[product.Id].Select(variant => variant.Id), x => x.VariantId, x => x.Id, chartAssetId, colours).FirstOrDefault(x => x.Id != chartAssetId)
                 : null;
+            var productMedia = mediaByProduct.GetValueOrDefault(product.Id) ?? [];
             var image = (published is null ? null : CatalogMediaDisplay.Url(published.Id, published.Classification, published.Url))
-                ?? media.Where(x => x.ProductId == product.Id && x.VariantId == null && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
-                ?? media.Where(x => x.ProductId == product.Id && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
-                ?? media.Where(x => x.ProductId == product.Id).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
+                ?? productMedia.Where(x => x.VariantId == null && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
+                ?? productMedia.Where(x => x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
+                ?? productMedia.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
             var sizeChartUrl = sizeChartUrlByProduct.GetValueOrDefault(product.Id);
             var prices = variantViews.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, product.DefaultSalePrice));
             var currency = variantViews.Select(x => x.Currency).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "TRY";

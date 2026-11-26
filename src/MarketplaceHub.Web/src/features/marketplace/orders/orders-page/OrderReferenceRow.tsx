@@ -1,7 +1,7 @@
 import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { copyText } from '../../../../shared/copy-text'
 import { observeUnitPriceAlignment } from '../../unit-price-alignment'
-import { Fragment, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, memo, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import { hubApi } from '../../../../shared/api'
@@ -218,6 +218,30 @@ export function OrderReferenceRow({ item, selected, onSelect, onMenuChange, onIn
     {invoiceStatusModalOpen && <ShopifyInvoiceStatusDialog orderNumber={displayOrderNumber(item.orderNumber)} invoiceStatus={item.invoiceStatus} manualInvoiceStatus={shipment?.manualInvoiceStatus} resolvePackageId={() => shopifyInvoicePackageId(item.id)} onClose={() => setInvoiceStatusModalOpen(false)} onFeedback={(message, kind) => { appendNotification({ ...orderNotificationContext(item), operation: 'Shopify fatura durumu', message, kind: normalizeNotificationKind(message, kind) }) }} />}
   </>
 }
+
+// The page's handlers for every row, one object that never changes (useStableHandlers): each gets the row's order, so
+// a row's own buttons call them with the same arguments its closures used to pass.
+export type OrderRowActions = {
+  select: (id: string, checked: boolean) => void
+  menuChange: (id: string, kind: 'invoice' | 'actions' | null) => void
+  invoiceCreate: (item: Order) => void
+  invoiceDetails: (item: Order) => void
+  invoiceUpload: (item: Order) => void
+  courierChange: (item: Order) => void
+  orderStatusChange: (item: Order) => void
+  processOrder: (item: Order) => void
+  createPackage: (item: Order) => void
+  printLabel: (item: Order, format: ShippingLabelFormat) => void
+  previewImage: (preview: ProductImagePreview) => void
+}
+type OrderListRowProps = { item: Order; actions: OrderRowActions; selected: boolean; processing: boolean; openMenu: 'invoice' | 'actions' | null; labelSettings: ShippingLabelSettings; printedLabels: Set<string>; noBuyer: boolean; tab: string; showCancelled: boolean }
+
+// A row of the Siparişler list, drawn again only when its own inputs change: picking a row, opening a window or a poll
+// that brought the same orders leaves the other rows as they are (26 Nov 2026: every pick redrew all 50 rows, 0.55 s on
+// a 4x slowed phone).
+export const OrderListRow = memo(function OrderListRow({ item, actions, ...row }: OrderListRowProps) {
+  return <OrderReferenceRow {...row} item={item} onSelect={checked => actions.select(item.id, checked)} onMenuChange={kind => actions.menuChange(item.id, kind)} onInvoiceCreate={() => actions.invoiceCreate(item)} onInvoiceDetails={() => actions.invoiceDetails(item)} onInvoiceUpload={() => actions.invoiceUpload(item)} onCourierChange={() => actions.courierChange(item)} onOrderStatusChange={() => actions.orderStatusChange(item)} onProcessOrder={() => actions.processOrder(item)} onCreatePackage={() => actions.createPackage(item)} onPrintLabel={format => actions.printLabel(item, format)} onPreviewImage={actions.previewImage} />
+})
 
 // Order status as a ring: how far the order has come, coloured by its state.
 function orderRingState(status: string): [RingTone, number, string] {

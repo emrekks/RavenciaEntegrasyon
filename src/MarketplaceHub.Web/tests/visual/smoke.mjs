@@ -39,6 +39,9 @@ async function worker() {
       await page.locator('.app-shell main').first().waitFor({ timeout: 15000 })
       await page.waitForLoadState('networkidle').catch(() => undefined)
       await page.waitForTimeout(600)
+      // Raporlar's blocks below the first screen come a moment later (data-deferred boxes): all of them, within 10 s.
+      for (let waited = 0; waited < 10000 && await page.locator('[data-deferred]').count(); waited += 100) await page.waitForTimeout(100)
+      if (await page.locator('[data-deferred]').count()) problems.push(`${await page.locator('[data-deferred]').count()} deferred blocks still waiting after 10 s`)
       if (await page.locator('.rv-state.is-error, [role="alert"].rv-state').count()) problems.push(`error screen: ${(await page.locator('.rv-state.is-error').first().innerText()).replace(/\s+/g, ' ').slice(0, 160)}`)
       if (!(await page.locator('.app-shell main').first().innerText()).trim()) problems.push('empty page')
     } catch (error) { problems.push(`did not render: ${error.message.split('\n')[0]}`) }

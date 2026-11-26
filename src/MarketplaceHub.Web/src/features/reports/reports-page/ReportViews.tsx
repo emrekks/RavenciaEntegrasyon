@@ -1,7 +1,10 @@
+import { memo } from 'react'
 import { TabSlidePanel } from '../../../shared/tab-slide'
 import { change, formatCount, formatNumber, formatPercent, formatTl, type ReportGroup, type ReportSales } from '../report-format'
 import { SalesMap } from '../SalesMap'
 import { type OpsSub, SubTabs, Panel, Bars, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, previousText, previousRate, percent, previousMoney, netProfitTip, netLossTip, netSalesTip, returnRateTip, UnlinkedDeductions, profitSteps, topGroups } from './report-parts'
+import { Deferred } from './Deferred'
+import { barsEstimate, fixed, moversEstimate, stackedEstimate, tableEstimate } from './deferred-estimates'
 import { Platforms, Cities, Movers, Products, BrandsAndCategories, Returns, Cancellations, Cargo, TimeOfDay, Customers, CostAndProfit, Invoices } from './SalesTables'
 
 type ProductSub = 'products' | 'brands'
@@ -10,15 +13,15 @@ const opsSubs: OpsSub[] = ['returns', 'cancellations', 'cargo', 'invoices']
 
 // Coğrafya: the sales map with its breakdown (its own figures over the map), the provinces ranked by sales and by
 // returns, and the full city table.
-export function Geography({ data }: { data: ReportSales }) {
+export const Geography = memo(function Geography({ data }: { data: ReportSales }) {
   return <div className="reports-summary">
     <SalesMap data={data} />
-    <Cities data={data} />
+    <Deferred name="cities" estimate={fixed.cities}><Cities data={data} /></Deferred>
   </div>
-}
+})
 
 // Ürünler: the best sellers, the most returned, brands and categories as bars, then their tables under two sub-tabs.
-export function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub; onSub: (sub: ProductSub) => void }) {
+export const ProductsView = memo(function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub; onSub: (sub: ProductSub) => void }) {
   const now = data.summary
   const then = data.previousSummary
   const unit = (summary: ReportSales['summary']) => summary.ordersWithAmount > 0 && summary.soldQuantity > 0 ? summary.grossSales / summary.soldQuantity : null
@@ -39,37 +42,37 @@ export function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: Pro
         <Bars label="En çok satan ürünler" format={formatNumber} items={[...data.topProducts].sort((a, b) => b.soldQuantity - a.soldQuantity).slice(0, 8)
           .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.soldQuantity, note: formatTl(product.salesAmount) }))} />
       </Panel>
-      <Panel title="En Çok İade Edilenler" description="İade adedine göre; yanında iade oranı." className="reports-list">
+      <Deferred name="topReturned" estimate={barsEstimate(data.topReturned.some(product => product.returnedQuantity > 0) ? Math.min(8, data.topReturned.length) : 0)}><Panel title="En Çok İade Edilenler" description="İade adedine göre; yanında iade oranı." className="reports-list">
         <Bars label="En çok iade edilen ürünler" format={formatNumber} items={[...data.topReturned].sort((a, b) => b.returnedQuantity - a.returnedQuantity).slice(0, 8)
           .map(product => ({ key: product.variantId ?? product.sku, label: product.title, value: product.returnedQuantity, note: formatPercent(product.returnRate) }))} />
-      </Panel>
-      <Panel title="Satışta Yükselen Ürünler" description="Önceki döneme göre satılan adedi en çok artanlar." className="reports-list">
+      </Panel></Deferred>
+      <Deferred name="rising" estimate={moversEstimate(data.rising?.length ?? 0)}><Panel title="Satışta Yükselen Ürünler" description="Önceki döneme göre satılan adedi en çok artanlar." className="reports-list">
         <Movers items={data.rising ?? []} tone="up" empty="Önceki döneme göre satışı artan ürün yok." />
-      </Panel>
-      <Panel title="Satışta Düşen Ürünler" description="Önceki döneme göre satılan adedi en çok azalanlar." className="reports-list">
+      </Panel></Deferred>
+      <Deferred name="falling" estimate={moversEstimate(data.falling?.length ?? 0)}><Panel title="Satışta Düşen Ürünler" description="Önceki döneme göre satılan adedi en çok azalanlar." className="reports-list">
         <Movers items={data.falling ?? []} tone="down" empty="Önceki döneme göre satışı azalan ürün yok." />
-      </Panel>
-      <Panel title="Markalar" description="Satılan adede göre." className="reports-list">
+      </Panel></Deferred>
+      <Deferred name="brandBars" estimate={barsEstimate(topGroups(data.brands, group => group.soldQuantity).length)}><Panel title="Markalar" description="Satılan adede göre." className="reports-list">
         <Bars label="Markalara göre satış" format={formatNumber} items={topGroups(data.brands, group => group.soldQuantity)} />
-      </Panel>
-      <Panel title="Kategoriler" description="Satılan adede göre." className="reports-list">
+      </Panel></Deferred>
+      <Deferred name="categoryBars" estimate={barsEstimate(topGroups(data.categories, group => group.soldQuantity).length)}><Panel title="Kategoriler" description="Satılan adede göre." className="reports-list">
         <Bars label="Kategorilere göre satış" format={formatNumber} items={topGroups(data.categories, group => group.soldQuantity)} />
-      </Panel>
+      </Panel></Deferred>
     </div>
-    <SubTabs label="Ürün kırılımı" value={sub} onChange={onSub} items={[
+    <Deferred name="productSubTabs" estimate={fixed.productSubTabs}><SubTabs label="Ürün kırılımı" value={sub} onChange={onSub} items={[
       { value: 'products', label: 'Ürünler', icon: 'products', count: formatCount(data.topProducts.length) },
       { value: 'brands', label: 'Marka ve Kategori', icon: 'layers', count: formatCount(data.brands.filter(group => group.known).length) }
-    ]} />
+    ]} /></Deferred>
     {/* These sub-tabs sit under the lists, so a change keeps the scroll where they are. */}
-    <TabSlidePanel active={sub} order={['products', 'brands']} scrollToTop={false} role="tabpanel">{sub === 'brands' ? <BrandsAndCategories data={data} /> : <Products data={data} />}</TabSlidePanel>
+    <Deferred name="productTables" estimate={sub === 'brands' ? stackedEstimate(tableEstimate(data.brands.length, 43), tableEstimate(data.categories.length, 43)) : stackedEstimate(tableEstimate(data.topProducts.length, 83), tableEstimate(data.topReturned.length, 83))}><TabSlidePanel active={sub} order={['products', 'brands']} scrollToTop={false} role="tabpanel">{sub === 'brands' ? <BrandsAndCategories data={data} /> : <Products data={data} />}</TabSlidePanel></Deferred>
   </div>
-}
+})
 
 // Kârlılık: the period's revenue, the part of it with a product cost, the net profit and the net
 // profit over the sales and over the product cost, each against the previous period; then the profit account, Trendyol's
 // real costs, the deductions tied to no order and the platforms. Every figure is the profit account's (moneyBreakdown),
 // so the strip agrees with Kâr Hesabı under it and with Genel Bakış; the commission and the coverages are in the panels.
-export function ProfitView({ data }: { data: ReportSales }) {
+export const ProfitView = memo(function ProfitView({ data }: { data: ReportSales }) {
   const now = data.summary
   const then = data.previousSummary
   const cost = data.cost
@@ -107,14 +110,14 @@ export function ProfitView({ data }: { data: ReportSales }) {
   ]
   return <div className="reports-summary">
     <KpiStrip label="Kârlılığın göstergeleri" items={items} long />
-    <CostAndProfit data={data} />
-    <UnlinkedDeductions data={data} panel />
-    <Platforms data={data} />
+    <Deferred name="costAndProfit" estimate={fixed.costAndProfit}><CostAndProfit data={data} /></Deferred>
+    <Deferred name="unlinked" estimate={fixed.unlinked}><UnlinkedDeductions data={data} panel /></Deferred>
+    <Deferred name="platforms" estimate={fixed.platforms}><Platforms data={data} /></Deferred>
   </div>
-}
+})
 
 // Operasyon: returns, cancellations, cargo and invoices as sub-tabs (the stock is the Stok tab's), each opening with its breakdown as bars.
-export function OperationsView({ data, sub, onSub }: { data: ReportSales; sub: OpsSub; onSub: (sub: OpsSub) => void }) {
+export const OperationsView = memo(function OperationsView({ data, sub, onSub }: { data: ReportSales; sub: OpsSub; onSub: (sub: OpsSub) => void }) {
   const now = data.summary
   const packages = data.cargo.reduce((sum, row) => sum + row.packages, 0)
   const invoiced = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
@@ -133,12 +136,12 @@ export function OperationsView({ data, sub, onSub }: { data: ReportSales; sub: O
       {sub === 'invoices' && <Invoices data={data} />}
     </TabSlidePanel>
   </div>
-}
+})
 
 // Müşteriler: who buys (unique and repeat customers) and when (weekday and hour).
-export function CustomersView({ data }: { data: ReportSales }) {
+export const CustomersView = memo(function CustomersView({ data }: { data: ReportSales }) {
   return <div className="reports-summary">
     <Customers data={data} />
-    <TimeOfDay data={data} />
+    <Deferred name="timeOfDay" estimate={fixed.timeOfDay}><TimeOfDay data={data} /></Deferred>
   </div>
-}
+})

@@ -6,7 +6,7 @@ import { Modal } from '../../shared/components'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { formatIstanbul } from '../../shared/format-date'
-import { formatCount, formatNumber, formatPercent, formatTl } from './report-format'
+import { formatCount, formatNumber, formatPercent, formatTl, trNumber } from './report-format'
 import { queryKeys } from '../../shared/api/query-keys'
 
 // Trendyol's product ads report the seller uploads ("Ürün Reklamları Raporum", GET /reports/ad-report). Every figure is a
@@ -32,7 +32,7 @@ const dayMs = 86_400_000
 
 export const reportAge = (report: AdReport, now = Date.now()) => Math.floor((now - new Date(report.exportedAt).getTime()) / dayMs)
 // ROAS with two decimals, as Trendyol writes Harcama Getirisi (3,83).
-export const roasText = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+export const roasText = (value: number) => trNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const when = (value: string) => formatIstanbul(value, { dateStyle: 'medium', timeStyle: 'short' })
 
 // The stores' newest reports added up, as the server sends them (C-11: ROAS has one formula, computed on the server).

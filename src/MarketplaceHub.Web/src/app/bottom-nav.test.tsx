@@ -474,3 +474,61 @@ describe('task mode', () => {
     expect(inline.host.querySelector('.rv-dock-layer')?.getAttribute('data-mode')).toBe('dock')
   })
 })
+
+// The shell reads the dock's state from <html> (shared/root-mark.ts): a :has() on the shell, html or body restyled the whole page on every row selection.
+describe('dock state on <html>', () => {
+  const mode = () => document.documentElement.getAttribute('data-rv-dock-mode')
+  const rows = () => document.documentElement.getAttribute('data-rv-dock-rows')
+  it('marks task mode and the warning row while a sticky bar is open, drops both while the menu is open and when the bar closes or the dock goes', () => {
+    const bar = (open: boolean) => <MemoryRouter initialEntries={['/products/new']}><Harness><StickyActionBar open={open} label="Ürün kaydetme" info={{ start: <button type="button" className="rv-dock-chip">8 Zorunlu Alan Eksik</button> }}><button type="button" data-dock-primary>Ürünü Oluştur</button></StickyActionBar></Harness></MemoryRouter>
+    const { host, rerender, unmount } = render(bar(false))
+    expect(mode()).toBeNull()
+    expect(rows()).toBeNull()
+    rerender(bar(true))
+    expect(mode()).toBe('task')
+    expect(rows()).toBe('2')
+    // The menu takes the dock back: no task mode, no warning row (BottomDock: task = taskActive && !menuOpen).
+    click(host.querySelector('.rv-dock button.rv-dock-slot'))
+    expect(host.querySelector('.rv-fullmenu')).toBeTruthy()
+    expect(mode()).toBeNull()
+    expect(rows()).toBeNull()
+    click(host.querySelector('.rv-dock button.rv-dock-slot'))
+    expect(mode()).toBe('task')
+    rerender(bar(false))
+    expect(mode()).toBeNull()
+    expect(rows()).toBeNull()
+    rerender(bar(true))
+    unmount()
+    expect(mode()).toBeNull()
+    expect(rows()).toBeNull()
+  })
+
+  it('marks task mode without the warning row for a selection bar, and clears it with the selection', () => {
+    const bar = (open: boolean) => <MemoryRouter initialEntries={['/orders']}><Harness><StickyActionBar open={open} label="Toplu işlemler" lead={<span>2 sipariş seçildi</span>}><button type="button">Sil</button></StickyActionBar></Harness></MemoryRouter>
+    const { rerender } = render(bar(true))
+    expect(mode()).toBe('task')
+    expect(rows()).toBeNull()
+    rerender(bar(false))
+    expect(mode()).toBeNull()
+  })
+
+  it('marks the open keyboard (a focused text box) and clears it when the focus leaves', () => {
+    const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness><input aria-label="Ara" /><input type="checkbox" aria-label="Seç" /></Harness></MemoryRouter>)
+    act(() => host.querySelector<HTMLInputElement>('input[aria-label="Ara"]')!.focus())
+    expect(document.documentElement.hasAttribute('data-rv-typing')).toBe(true)
+    act(() => host.querySelector<HTMLInputElement>('input[aria-label="Seç"]')!.focus())
+    expect(document.documentElement.hasAttribute('data-rv-typing')).toBe(false)
+  })
+
+  it('keeps the layer mark while any of two overlapping layers is open, whichever closes first', () => {
+    render(<MemoryRouter initialEntries={['/orders']}><Harness /></MemoryRouter>)
+    let first = () => undefined as void
+    let second = () => undefined as void
+    act(() => { first = lockPageScroll(true) })
+    act(() => { second = lockPageScroll(false) })
+    act(() => first())
+    expect(document.documentElement.hasAttribute('data-rv-layer')).toBe(true)
+    act(() => second())
+    expect(document.documentElement.hasAttribute('data-rv-layer')).toBe(false)
+  })
+})

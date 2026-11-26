@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
 import { useLayerOpen, useScrollLock } from '../shared/hooks/useScrollLock'
+import { useRootMark, useTextEntryFocusMark } from '../shared/root-mark'
 import { createTapCounter } from './dockDiagnosticFormat'
 import { dockDiagnosticEvent } from './DockDiagnosticHost'
 
@@ -46,7 +47,7 @@ const pillPages: DockTarget[] = [
   { to: '/questions', icon: 'questions', label: 'Sorular', aria: 'Ürün Soruları', noun: 'cevaplanmamış' },
 ]
 
-// The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
+// The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css, html[data-rv-typing]).
 // One floating opaque capsule in dock mode (our own icons and colours): five equal slots with a lighter inner pill under the open page that glides to the next
 // slot (stretching over both on the way). In task mode it gives way to one wide panel (the page's buttons), with the warning strip as a small pill above it.
 const menuIndex = pillPages.length
@@ -72,6 +73,11 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   const strip = task && hasInfo
   const [infoHidden, setInfoHidden] = useState(false)
   const rows = strip && !infoHidden ? 2 : 1
+  // The shell reads the dock's state from <html> (bottom-nav.css): the room under the page (task mode, the warning pill), the toasts' place above the pill and
+  // the keyboard. A :has() on the shell or the document for these restyled the whole page on every row selection (shared/root-mark.ts).
+  useRootMark('data-rv-dock-mode', task ? 'task' : null)
+  useRootMark('data-rv-dock-rows', rows === 2 ? '2' : null)
+  useTextEntryFocusMark('data-rv-typing')
   useEffect(() => {
     let last = window.scrollY
     const onScroll = () => {

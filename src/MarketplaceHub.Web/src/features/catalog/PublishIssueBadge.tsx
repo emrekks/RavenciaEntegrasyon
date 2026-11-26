@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { UiIcon } from '../../shared/components'
 import { useDismissable } from '../../shared/hooks/useDismissable'
+import { useRootMark } from '../../shared/root-mark'
 import { placePublishPopover } from './publish-popover-placement'
 import { publishIssueChips, publishIssueChipText, publishIssueTipLines, type PublishIssueRow } from './publish-issue-chips'
 
@@ -44,6 +45,8 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
   onOpenChange?: (open: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
+  // While any gap list is open the other badges and status tips stay quiet (publish-platform-issues.css, publication-status-tooltip.css: html[data-rv-issue-open]).
+  useRootMark('data-rv-issue-open', open ? '' : null)
   // A fix or an action that opens a window renders once more, so the effect below starts watching for its close.
   const [, setReturnWatch] = useState(0)
   const wrapper = useRef<HTMLSpanElement>(null)
