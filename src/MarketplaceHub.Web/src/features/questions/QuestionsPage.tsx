@@ -358,7 +358,7 @@ export function QuestionsPage() {
         {earlier.length > 0 && <section className="qi-customer-history" aria-label="Müşterinin önceki soruları">
           <header><UiIcon name="clock" size={14} /><b>Müşterinin Önceki Soruları</b><span className="qi-count">{earlier.length}</span></header>
           {earlier.map(item => { const itemState = questionStatus(item.status); return <div className="qi-history-item" key={item.id}>
-            <p className="qi-history-meta"><span>{item.productName || (item.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span>{item.storeName !== row.storeName && <span>{item.storeName}</span>}<span className="qi-tag"><StateGlyph state={itemState.glyph} />{itemState.label}</span></p>
+            <p className="qi-history-meta"><span title={item.productName || undefined}>{item.productName || (item.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span>{item.storeName !== row.storeName && <span>{item.storeName}</span>}<span className="qi-tag"><StateGlyph state={itemState.glyph} />{itemState.label}</span></p>
             {thread({ author: item.customerName || 'Müşteri', text: item.questionText, createdAt: item.createdAt }, `${item.id}-question`)}
             {visibleQuestionConversation(item.conversations ?? [], item.questionText).map((message, index) => thread(message, `${item.id}-${message.createdAt}-${index}`))}
           </div> })}
