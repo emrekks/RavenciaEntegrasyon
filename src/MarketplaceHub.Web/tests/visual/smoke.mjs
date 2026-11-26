@@ -164,10 +164,40 @@ async function glideStep() {
   } catch (error) { failures.push('dock pill step: ' + String(error.message).split(String.fromCharCode(10))[0]) }
   await context.close()
 }
+// A question's detail on a phone: nothing inside the body runs past its content edge (a nowrap line used to widen the grid column and cut the bubbles, times and note), and the body itself does not scroll sideways.
+async function questionDetailStep() {
+  for (const width of [320, 360, 375, 393, 430]) {
+    const context = await browser.newContext({ viewport: { width, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
+    await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+    const page = await context.newPage()
+    await page.clock.setFixedTime(frozenNow)
+    await installApiMock(page, { unhandled: new Set() })
+    try {
+      await page.goto(server.origin + '/questions')
+      await page.getByText('Merhaba, tuniği', { exact: false }).first().click()
+      await page.locator('.qi-detail-body .qi-history-item').first().waitFor({ timeout: 15000 })
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
+      const bad = await page.evaluate(() => {
+        const body = document.querySelector('.qi-detail-body'); const style = getComputedStyle(body); const box = body.getBoundingClientRect()
+        const edge = box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth)
+        const problems = []
+        if (body.scrollWidth > body.clientWidth) problems.push('body scrolls sideways ' + body.scrollWidth + '/' + body.clientWidth)
+        for (const el of body.querySelectorAll('*')) {
+          const rect = el.getBoundingClientRect()
+          if (rect.width && rect.right > edge + 0.5) problems.push((el.className && String(el.className).split(' ')[0] || el.tagName.toLowerCase()) + ' +' + (rect.right - edge).toFixed(1) + 'px')
+        }
+        return problems
+      })
+      if (bad.length) failures.push('question detail @' + width + ': ' + [...new Set(bad)].slice(0, 8).join(', '))
+    } catch (error) { failures.push('question detail @' + width + ': ' + String(error.message).split(String.fromCharCode(10))[0]) }
+    await context.close()
+  }
+}
 try {
   await Promise.all(Array.from({ length: 4 }, worker))
   if (!only) await badgeStep()
   if (!only) await glideStep()
+  if (!only) await questionDetailStep()
   if (!only) {
     await layerStep('filter sheet', '/orders', page => page.getByRole('button', { name: /^Filtre/ }).first().click(), page => page.getByRole('button', { name: /^Filtrele$/ }).first().click())
     await layerStep('window', '/orders', page => page.getByRole('button', { name: /Detayları Aç/ }).first().click(), page => page.keyboard.press('Escape'))

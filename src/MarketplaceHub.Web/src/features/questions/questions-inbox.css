@@ -339,6 +339,26 @@
   .rr-layer.rr-layer .qi-templates-modal .rv-question-template-card > div:last-child > .rr-btn { width: 100%; min-width: 0; justify-content: center; }
 }
 
+/* Phones: the detail body is a one-column grid whose column used to be `auto`, so the longest nowrap line (the earlier
+   question's product name) set the column's width and pushed the bubbles, times and the note past the card's edge. The
+   column is `minmax(0, 1fr)` now and every grid item may shrink; the product name is cut with an ellipsis after which
+   the status tag stays whole, the bubble text wraps, a header's time drops under the name only when both cannot share
+   the line, and the note wraps with its icon kept at the top. */
+@media (max-width: 760px) {
+  .qi-page .qi-detail-body { grid-template-columns: minmax(0, 1fr); }
+  .qi-page .qi-detail-body > *, .qi-page .qi-customer-history > *, .qi-page .qi-history-item > * { min-width: 0; }
+  .qi-page .qi-customer-history, .qi-page .qi-detail-body .rv-question-conversation, .qi-page .qi-history-item { grid-template-columns: minmax(0, 1fr); }
+  .qi-page .qi-history-meta { flex-wrap: nowrap; }
+  .qi-page .qi-history-meta > span:first-child { flex: 0 1 auto; }
+  .qi-page .qi-history-meta > span:not(:first-child) { flex: none; }
+  .qi-page .qi-detail-body .rv-question-thread-message { overflow-wrap: anywhere; }
+  .qi-page .qi-detail-body .rv-question-thread-message header { flex-wrap: wrap; column-gap: 10px; row-gap: 2px; }
+  .qi-page .qi-detail-body .rv-question-thread-message header strong { min-width: 0; overflow-wrap: anywhere; }
+  .qi-page .qi-detail-body .rv-question-thread-message time { white-space: nowrap; }
+  .qi-page .qi-detail-body .qi-note { align-items: flex-start; }
+  .qi-page .qi-detail-body .qi-note > .ui-icon { flex: none; margin-top: 1px; }
+}
+
 /* Nothing to list yet: the note is one full-width line of text and the card takes its height (owner, 13 Nov 2026; on a
    phone the two-column rule above squeezed it into half the card). */
 .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync:has(> .qi-sync-empty) { display: block !important; grid-template-columns: none !important; min-height: 0; height: auto; }

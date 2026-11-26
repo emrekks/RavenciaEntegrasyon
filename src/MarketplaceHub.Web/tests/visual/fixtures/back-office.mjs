@@ -204,6 +204,7 @@ const seller = (text, createdAt, rejectionReason = null) => ({ author: 'SELLER',
 const customer = (author, text, createdAt) => ({ author, text, createdAt })
 
 const questions = [
+  question({ key: 'ty-88130001', platformCode: 'TRENDYOL', externalQuestionId: '88130001', status: 'WAITING_FOR_ANSWER', customerName: 'Gülsüm A.', productName: 'Kadın Yeşil Büyük Beden Çizgi Desenli Hakim Yaka Tesettür Tunik Gömlek', productSku: 'RV-TNK-501', productBarcode: '8690000000501', questionText: 'Merhaba, tuniği 3. görseldeki gibi dar paça pantolonla giymeyi düşünüyorum. Kumaşı terletir mi, ütü gerektirir mi, yıkamada boyası solar mı ve boyu kalçayı tam kapatır mı? Ayrıca https://www.example.com/beden-tablosu/kadin/buyuk-beden/tunik/yesil-cizgili adresindeki ölçüler güncel mi?', createdAt: '2026-10-20T06:05:00Z', expiresAt: '2026-10-22T06:05:00Z' }),
   question({ key: 'ty-88120451', platformCode: 'TRENDYOL', externalQuestionId: '88120451', status: 'WAITING_FOR_ANSWER', customerName: 'Gamze T.', productName: 'Yün Karışımlı Kazak · Lacivert', productSku: 'RV-KZK-001', productBarcode: '8690000000017', productModelCode: 'KZK-001', questionText: 'Merhaba, 1.68 boyunda ve 60 kilogramım. S beden bana bol gelir mi, kalıbı dar mı?', createdAt: '2026-10-20T05:48:00Z', expiresAt: '2026-10-22T05:48:00Z' }),
   question({ key: 'hb-5502917', platformCode: 'HEPSIBURADA', externalQuestionId: '5502917', status: 'WAITING_FOR_ANSWER', customerName: 'Murat K.', productName: 'Oxford Gömlek · Mavi', productSku: 'RV-GML-402', productBarcode: '8690000000086', questionText: 'Gömleğin kumaşı %100 pamuk mu? Ütü gerektiriyor mu?', createdAt: '2026-10-20T04:10:00Z', expiresAt: '2026-10-20T15:10:00Z' }),
   question({ key: 'n11-77310482', platformCode: 'N11', externalQuestionId: '77310482', status: 'WAITING_FOR_ANSWER', customerName: 'Sena A.', productName: 'Kaşe Mont · Camel', productSku: 'RV-MNT-330', productBarcode: '8690000000048', questionText: 'Bu montun astarı var mı? Kış için yeterince sıcak tutar mı?', createdAt: '2026-10-19T17:32:00Z', expiresAt: '2026-10-21T17:32:00Z' }),
@@ -380,7 +381,7 @@ export const backOffice = [
   ['GET /questions/sync-state', questionSyncStates],
   ['POST /questions/sync', { jobs: ['job-question-sync-01', 'job-question-sync-02'], queuedConnections: 4 }],
   ['GET /question-templates', questionTemplates],
-  ['^/questions/([^/]+)/customer-history$', []],
+  ['^/questions/([^/]+)/customer-history$', ({ match }) => match[1] === 'q-ty-88130001' ? [question({ key: 'ty-88090002', platformCode: 'TRENDYOL', externalQuestionId: '88090002', status: 'ANSWERED', customerName: 'Gülsüm A.', productName: 'Kadın Yeşil Büyük Beden Çizgi Desenli Hakim Yaka Tesettür Tunik Gömlek', questionText: 'Merhaba, bu modelin beden tablosu var mı?', conversations: [seller('Merhaba 3. görselde beden tablosu mevcuttur efendim', '2026-10-14T14:19:00Z')], createdAt: '2026-10-14T14:05:00Z' })] : []],
   ['^/questions/(q-[^/]+)$', ({ match }) => questions.find(item => item.id === match[1]) ?? questions[0]],
   // Sistem Ayarları
   ['GET /settings/appearance', appearanceSettings],
