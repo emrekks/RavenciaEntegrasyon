@@ -17,6 +17,11 @@ export type OperationFeedback = {
   key?: string
   /** What the notification history keeps beyond the toast: marketplace, store, the product or order, the failure code. */
   context?: NotificationContext
+  /**
+   * Whether the history keeps it whatever its wording: true for a final result, false for a "still running" note (the
+   * wording policy then decides). Unset, a finished warning (a skipped card, a partial result) is kept.
+   */
+  record?: boolean
 }
 
 // One line per marketplace ("Pazarama: 3 kart kuyruğa alındı") becomes one Ayrıntı row named after the marketplace.
@@ -31,7 +36,10 @@ function feedbackLineDetails(lines: readonly string[] | undefined): Notification
 export function recordOperationFeedback(feedback: OperationFeedback) {
   const context = feedback.context ?? {}
   const details = [...feedbackLineDetails(feedback.lines), ...(context.details ?? [])]
-  return appendNotification({ ...context, title: feedback.title ?? context.title, message: feedback.message, kind: feedback.kind, details: details.length > 0 ? details : undefined })
+  // D-8: the wording policy keeps no warning, so a finished warning or partial result is recorded here, as the job
+  // outcome notices do; a persistent one is work in progress and stays a toast.
+  const record = feedback.record ?? context.record ?? (feedback.kind === 'warning' && !feedback.persistent ? true : undefined)
+  return appendNotification({ ...context, title: feedback.title ?? context.title, message: feedback.message, kind: feedback.kind, details: details.length > 0 ? details : undefined, record })
 }
 
 /** How an operation's feedback looks as a toast. */

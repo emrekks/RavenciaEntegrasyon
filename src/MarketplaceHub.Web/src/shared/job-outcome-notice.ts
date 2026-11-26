@@ -15,6 +15,11 @@ export function jobOutcomeToast(feedback: JobOutcomeFeedback, interim: boolean) 
   } as const
 }
 
+/** A followed job's final result (not a "still running" note, not a plain info) is kept in the notification history. */
+export function recordsJobOutcome(kind: JobOutcomeFeedback['kind'], interim: boolean): true | undefined {
+  return !interim && kind !== 'info' ? true : undefined
+}
+
 /**
  * The notification of a followed result. A final result (aktarıldı, Kısmen Aktarıldı, İnceleme Bekliyor, aktarılamadı)
  * is kept in the history whatever its wording; a "still running" note stays a toast.
@@ -27,7 +32,7 @@ export function jobOutcomeNotification(feedback: JobOutcomeFeedback, interim: bo
     message: toast.message,
     kind: toast.kind,
     jobId: jobs.length === 1 ? jobs[0].jobId : context.jobId,
-    record: !interim && feedback.kind !== 'info' ? true : undefined
+    record: recordsJobOutcome(feedback.kind, interim)
   }
 }
 

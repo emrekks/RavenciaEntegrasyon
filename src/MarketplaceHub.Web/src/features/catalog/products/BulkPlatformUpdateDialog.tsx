@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, newSendCorrelationId, sendCorrelationHeader } from '../../../shared/idempotency'
 import { followJobOutcomes, groupedOutcomeFeedback, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
+import { recordsJobOutcome } from '../../../shared/job-outcome-notice'
 import type { NotificationDetail } from '../../../shared/notifications'
 import { PlatformUpdateDialog, isPlatformUpdateSelectable, isPlatformUpdateWritable, type PlatformUpdateTarget } from '../product-editor/PlatformUpdateDialog'
 import { platformUpdatePreferencesFrom, platformUpdateStoresFrom, productInformationLabel, type PlatformUpdateField, type PlatformUpdatePreferences } from '../product-editor/platform-update-fields'
@@ -19,7 +20,7 @@ import '../product-editor/product-editor-hydration.css'
 import './bulk-platform-update.css'
 import { queryKeys } from '../../../shared/api/query-keys'
 
-export type BulkPlatformUpdateNotice = { title: string; message: string; kind: 'success' | 'error' | 'info' | 'warning'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
+export type BulkPlatformUpdateNotice = { title: string; message: string; kind: 'success' | 'error' | 'info' | 'warning'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean; record?: boolean }
 
 const checkConcurrency = 6
 const sendConcurrency = 4
@@ -159,7 +160,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     onClose()
     if (followed.length) {
       const target = outcomeTarget(followed)
-      void followJobOutcomes(followed, target, outcome => onDone({ title: outcome.title, message: outcome.lines.join(' '), lines: outcome.lines, kind: outcome.kind, persistent: outcome.kind === 'error' }), {
+      void followJobOutcomes(followed, target, (outcome, interim) => onDone({ title: outcome.title, message: outcome.lines.join(' '), lines: outcome.lines, kind: outcome.kind, persistent: outcome.kind === 'error', record: recordsJobOutcome(outcome.kind, interim) }), {
         summarize: outcomes => groupedOutcomeFeedback(followed, outcomes, target),
         pollMs: 5_000
       })

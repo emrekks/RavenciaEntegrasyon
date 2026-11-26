@@ -9,6 +9,7 @@ import { editorPriceChanges } from './editor-price-jumps'
 import { ApiRequestError } from '../../../shared/api'
 import { appendNotification, productNotificationSubject } from '../../../shared/notifications'
 import { followJobOutcomes, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
+import { recordsJobOutcome } from '../../../shared/job-outcome-notice'
 import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT } from '../variant-row-removal'
 import { mediaFilesLeftAfterFailedSave, newColoursWithoutPictures } from './product-media-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs } from './pending-create-media'
@@ -318,7 +319,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
         const operation = platformUpdate ? 'Platformlarda Güncelle' : 'Yayınla'
         void followJobOutcomes(followedJobs, outcomeTarget(followedJobs), (outcome, interim) => operationToasts.showDetached({
           title: outcome.title, message: outcome.lines.join(' '), lines: outcome.lines, kind: outcome.kind,
-          persistent: outcome.kind === 'error', durationMs: interim ? 8000 : 6000, key: resultKey,
+          persistent: outcome.kind === 'error', durationMs: interim ? 8000 : 6000, key: resultKey, record: interim ? false : recordsJobOutcome(outcome.kind, false),
           context: { subject, operation, jobId: followedJobs.length === 1 ? followedJobs[0].jobId : undefined }
         }))
       }
