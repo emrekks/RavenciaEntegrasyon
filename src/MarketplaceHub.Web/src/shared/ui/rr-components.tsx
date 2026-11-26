@@ -19,7 +19,7 @@ import { useDismissable } from '../hooks/useDismissable'
 // prefix of styles/components/rr-components.css (formerly features/marketplace/returns-sade.css, moved whole and
 // imported here at the same point, so the CSS order of every chunk stays the same).
 
-type IconName = 'search' | 'chev' | 'left' | 'right' | 'cal' | 'down' | 'up' | 'filter' | 'copy' | 'open' | 'close' | 'doc' | 'check' | 'box' | 'refresh' | 'upload' | 'alert' | 'info' | 'print' | 'arrowR' | 'image' | 'clock' | 'truck' | 'play' | 'edit' | 'ban' | 'export' | 'import' | 'plus' | 'trash' | 'dup' | 'price' | 'stock' | 'on' | 'off' | 'sortv'
+type IconName = 'search' | 'chev' | 'left' | 'right' | 'cal' | 'down' | 'up' | 'filter' | 'copy' | 'open' | 'close' | 'doc' | 'check' | 'box' | 'refresh' | 'upload' | 'alert' | 'info' | 'print' | 'arrowR' | 'image' | 'clock' | 'truck' | 'play' | 'edit' | 'ban' | 'export' | 'import' | 'download' | 'plus' | 'trash' | 'dup' | 'price' | 'stock' | 'on' | 'off' | 'sortv'
 
 const iconPaths: Record<IconName, [ReactNode, number]> = {
   search: [<><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></>, 16],
@@ -48,8 +48,9 @@ const iconPaths: Record<IconName, [ReactNode, number]> = {
   play: [<path d="M5 3.5v9l7-4.5z" />, 16],
   edit: [<path d="M10.5 2.8 13.2 5.5 6 12.7l-3.2.5.5-3.2z" />, 16],
   ban: [<><circle cx="8" cy="8" r="5.8" /><path d="m4 12 8-8" /></>, 16],
-  export: [<><path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2" /><path d="M2.5 10.5v3h11v-3" /></>, 16],
-  import: [<><path d="M8 10.5V2.5M4.8 5.5 8 2.5l3.2 3" /><path d="M2.5 10.5v3h11v-3" /></>, 16],
+  export: [<><path d="M8 10.5V2.5M4.8 5.5 8 2.5l3.2 3" /><path d="M2.5 10.5v3h11v-3" /></>, 16],
+  import: [<><path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2" /><path d="M2.5 10.5v3h11v-3" /></>, 16],
+  download: [<><path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2" /><path d="M2.5 10.5v3h11v-3" /></>, 16],
   plus: [<path d="M8 3v10M3 8h10" />, 16],
   trash: [<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9" />, 16],
   dup: [<><rect x="5" y="5" width="8.5" height="8.5" rx="1.5" /><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5" /></>, 16],
@@ -64,7 +65,7 @@ const iconPaths: Record<IconName, [ReactNode, number]> = {
 // set's geometry (24 box) scaled into this set's 16 box, so a concept is one glyph everywhere; the rest stay as drawn here.
 const sharedGlyphs: Partial<Record<IconName, UiIconName>> = {
   search: 'search', check: 'check', close: 'close', alert: 'alert', refresh: 'refresh', upload: 'upload', copy: 'copy', dup: 'copy', edit: 'edit',
-  trash: 'trash', plus: 'plus', truck: 'truck', clock: 'clock', cal: 'calendar', box: 'orders', stock: 'stock', export: 'download', import: 'import',
+  trash: 'trash', plus: 'plus', truck: 'truck', clock: 'clock', cal: 'calendar', box: 'orders', stock: 'stock', export: 'export', import: 'import', download: 'download',
   ban: 'cancel', chev: 'chevronDown', left: 'chevronLeft', right: 'chevronRight', arrowR: 'arrowRight', open: 'externalLink', image: 'image',
   play: 'play', on: 'circleCheck', price: 'tag'
 }

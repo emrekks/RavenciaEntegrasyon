@@ -40,7 +40,7 @@ export function ExcelExportButton({ path, query, fallbackName, disabled }: { pat
     } finally { setBusy(false) }
   }
   return <span className="jc-export">
-    <Button variant="secondary" size="sm" loading={busy} disabled={disabled || busy} onClick={() => void run()} title="Geçerli arama ve süzgeçle tüm satırları Excel dosyası olarak indirir."><UiIcon name="download" size={14} />Excel’e Aktar</Button>
+    <Button variant="secondary" size="sm" loading={busy} disabled={disabled || busy} onClick={() => void run()} title="Geçerli arama ve süzgeçle tüm satırları Excel dosyası olarak indirir."><UiIcon name="export" size={14} />Excel’e Aktar</Button>
     {error && <small role="alert" className="jc-export-error">{error}</small>}
   </span>
 }
