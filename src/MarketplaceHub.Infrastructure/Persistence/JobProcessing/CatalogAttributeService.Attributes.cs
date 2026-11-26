@@ -205,8 +205,8 @@ internal sealed partial class CatalogAttributeService
 
     internal async Task<Category> EnsureMappedCategory(Guid tenantId, Guid connectionId, ReferenceSnapshot categorySnapshot, ReferenceItem remoteCategory, CancellationToken cancellationToken)
     {
-        var mapping = await db.CategoryMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categorySnapshot.ScopeExternalId && x.ExternalId == remoteCategory.ExternalId, cancellationToken);
-        Category? category = mapping is null ? null : await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId, cancellationToken);
+        var mapping = await FindCategoryMapping(db, tenantId, connectionId, categorySnapshot.ScopeExternalId, remoteCategory.ExternalId, cancellationToken);
+        Category? category = mapping is null ? null : await MappedCategory(db, tenantId, mapping, cancellationToken);
         var leafName = CategoryLeafName(remoteCategory.Name, remoteCategory.Path);
         var normalized = NormalizeCatalogKey(remoteCategory.Path, 160);
         var legacyNormalized = NormalizeCatalogKey(remoteCategory.Name, 160);
@@ -267,9 +267,23 @@ internal sealed partial class CatalogAttributeService
         return category;
     }
 
+    // B-5: the mapping of a marketplace category, saved or added in this unit of work. A query alone does not see one
+    // added since the last save, so a second lookup of the same category added a duplicate that broke the unique index.
+    internal static async Task<CategoryMapping?> FindCategoryMapping(AppDbContext db, Guid tenantId, Guid connectionId, string? scopeExternalId, string externalId, CancellationToken cancellationToken) =>
+        db.CategoryMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scopeExternalId && x.ExternalId == externalId && db.Entry(x).State != EntityState.Deleted)
+        ?? await db.CategoryMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scopeExternalId && x.ExternalId == externalId, cancellationToken);
+
+    // The panel category a mapping points at, also when both were added in this unit of work.
+    internal static async Task<Category?> MappedCategory(AppDbContext db, Guid tenantId, CategoryMapping mapping, CancellationToken cancellationToken) =>
+        db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == mapping.LocalId)
+        ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId, cancellationToken);
+
     // Whether another marketplace category of this connection and scope is already mapped to the panel category (saved or
     // added in this unit of work).
-    private async Task<bool> CategoryMappedToAnother(Guid tenantId, Guid connectionId, string? scopeExternalId, string externalId, Guid categoryId, CancellationToken cancellationToken) =>
+    private Task<bool> CategoryMappedToAnother(Guid tenantId, Guid connectionId, string? scopeExternalId, string externalId, Guid categoryId, CancellationToken cancellationToken) =>
+        CategoryMappedToAnother(db, tenantId, connectionId, scopeExternalId, externalId, categoryId, cancellationToken);
+
+    internal static async Task<bool> CategoryMappedToAnother(AppDbContext db, Guid tenantId, Guid connectionId, string? scopeExternalId, string externalId, Guid categoryId, CancellationToken cancellationToken) =>
         db.CategoryMappings.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scopeExternalId && x.LocalId == categoryId && x.ExternalId != externalId && db.Entry(x).State != EntityState.Deleted)
         || await db.CategoryMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scopeExternalId && x.LocalId == categoryId && x.ExternalId != externalId, cancellationToken);
 

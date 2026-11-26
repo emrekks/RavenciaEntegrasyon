@@ -812,10 +812,19 @@ internal sealed partial class CatalogImportService
         var constraint = root is PostgresException postgres
             ? $"sqlState={postgres.SqlState}; constraint={postgres.ConstraintName ?? "—"}; table={postgres.TableName ?? "—"}; detail={postgres.Detail ?? postgres.MessageText}"
             : $"exception={root.GetType().Name}; detail={root.Message}{(conflictRows is null ? "" : $" rows={conflictRows}")}";
-        var summary = Short($"Pazar yeri ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' panele alınamadı; sonraki ürünle devam edildi. Veritabanı ayrıntısı: {constraint}", 2_000);
+        var reason = ImportFailureReason(root);
+        var summary = Short($"Pazar yeri ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' panele alınamadı; sonraki ürünle devam edildi.{(reason is null ? "" : $" {reason}")} Veritabanı ayrıntısı: {constraint}", 2_000);
         await RecordIssue(tenantId, $"product-sync-import:{connectionId}:{issueIdentity}", "PRODUCT_IMPORT_FAILED", summary, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    // B-5: the import itself never adds a second mapping of a panel category (CatalogAttributeService.FindCategoryMapping,
+    // CategoryMappedToAnother); a duplicate can still come from another import of the connection saving the same mapping
+    // at the same moment. Only that model fails, with this reason; the next run finds the saved mapping.
+    internal static string? ImportFailureReason(Exception root) =>
+        root is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, TableName: "category_mappings" }
+            ? "Kategori eşlemesi aynı anda başka bir aktarımda kaydedildi; ürün bir sonraki aktarımda alınır."
+            : null;
 
     // The rows a version conflict was about, read from the exception's entries before the change tracker is cleared:
     // table, primary key, state and the version the save expected, e.g. "catalog.products Id=… Modified Version=3".

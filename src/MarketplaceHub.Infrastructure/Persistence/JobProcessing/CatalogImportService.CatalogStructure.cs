@@ -331,8 +331,8 @@ internal sealed partial class CatalogImportService
     {
         var connectionId = connection.Id;
         var now = timeProvider.GetUtcNow();
-        var mapping = await db.CategoryMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categorySnapshot.ScopeExternalId && x.ExternalId == remoteCategory.ExternalId, cancellationToken);
-        var existing = mapping is null ? null : await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId, cancellationToken);
+        var mapping = await CatalogAttributeService.FindCategoryMapping(db, tenantId, connectionId, categorySnapshot.ScopeExternalId, remoteCategory.ExternalId, cancellationToken);
+        var existing = mapping is null ? null : await CatalogAttributeService.MappedCategory(db, tenantId, mapping, cancellationToken);
         if (existing is not null && mapping is not null)
         {
             mapping.SnapshotId = categorySnapshot.Id;
@@ -385,7 +385,7 @@ internal sealed partial class CatalogImportService
         // A panel category links to a single marketplace category per connection. When
         // this connection already points it at another remote category, open a separate one.
         if (category is not null && decision.Decision == CategoryReuseDecision.ReuseExisting
-            && await db.CategoryMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categorySnapshot.ScopeExternalId && x.LocalId == category.Id, cancellationToken))
+            && await CatalogAttributeService.CategoryMappedToAnother(db, tenantId, connectionId, categorySnapshot.ScopeExternalId, remoteCategory.ExternalId, category.Id, cancellationToken))
         {
             var separateName = SeparateCategoryName(roots, leaf, platformLabel, remoteCategory);
             decision = new(CategoryReuseDecision.CreateSeparate, null, separateName, "Bu bağlantıda aynı panel kategorisine başka bir pazar yeri kategorisi zaten eşli; ayrı kategori açılacak.");

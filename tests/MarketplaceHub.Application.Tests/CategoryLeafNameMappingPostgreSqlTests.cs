@@ -52,6 +52,45 @@ public sealed class CategoryLeafNameMappingPostgreSqlTests(PostgreSqlTenantIsola
         Assert.Equal(2, await check.Categories.CountAsync(x => x.TenantId == tenant.Id));
     }
 
+    // B-5 (closure audit): the same marketplace category looked up twice before a save found no saved mapping and added a
+    // second one, which broke the unique index on save. The lookup now sees the mapping added in this unit of work.
+    [PostgreSqlFact]
+    public async Task TheSameMarketplaceCategoryTwiceBeforeASave_AddsOneMapping()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"b5b-{Guid.NewGuid():N}", DisplayName = "b5b", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "N11", Environment = "PRODUCTION", DisplayName = "b5b", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        var snapshot = new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "CATEGORIES", SourceVersion = "test", ContentHash = "test", FetchedAt = now, IsCurrent = true };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            seed.ReferenceSnapshots.Add(snapshot);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new CatalogAttributeService(db, TimeProvider.System, null!, null!);
+        var first = await service.EnsureMappedCategory(tenant.Id, connection.Id, snapshot, Remote(tenant.Id, connection.Id, snapshot.Id, "300", "Kadın / Elbise"), CancellationToken.None);
+        var second = await service.EnsureMappedCategory(tenant.Id, connection.Id, snapshot, Remote(tenant.Id, connection.Id, snapshot.Id, "300", "Kadın / Elbise"), CancellationToken.None);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(first.Id, second.Id);
+        await using var check = fixture.CreateContext();
+        var mapping = Assert.Single(await check.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync());
+        Assert.Equal(first.Id, mapping.LocalId);
+        Assert.Equal(1, await check.Categories.CountAsync(x => x.TenantId == tenant.Id));
+    }
+
+    // A duplicate saved by another import at the same moment fails only that model's products, with a reason in the issue.
+    [Fact]
+    public void ACategoryMappingSavedByAnotherImport_IsNamedInTheModelsFailure()
+    {
+        Assert.Contains("Kategori eşlemesi", CatalogImportService.ImportFailureReason(new Npgsql.PostgresException("dup", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.UniqueViolation, tableName: "category_mappings")));
+        Assert.Null(CatalogImportService.ImportFailureReason(new Npgsql.PostgresException("dup", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.UniqueViolation, tableName: "products")));
+        Assert.Null(CatalogImportService.ImportFailureReason(new InvalidOperationException("x")));
+    }
+
     private static ReferenceItem Remote(Guid tenantId, Guid connectionId, Guid snapshotId, string id, string path) => new()
     {
         Id = Guid.CreateVersion7(),
