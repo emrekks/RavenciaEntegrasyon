@@ -28,7 +28,7 @@
 .ss-page .ss-seg { display: inline-flex; gap: 2px; max-width: 100%; padding: 1px; overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; scrollbar-width: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 32px; min-height: 32px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 12.5px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button:hover { color: var(--rv-color-ink); background: none; }
-.app-shell.stitch-shell main .ss-page .ss-seg > button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
+.app-shell.stitch-shell main .ss-page .ss-seg > button.is-on { color: var(--ss-violet); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 .ss-page .ss-seg .ss-count { min-width: 18px; height: 16px; font-size: 10px; }
 .ss-page .ss-seg .ss-st { width: 14px; height: 14px; }
 .ss-page .ss-seg > button.is-on .ss-st:not(.is-done) { color: var(--ss-violet); }
@@ -178,7 +178,7 @@
 /* The group's "0/4 Seçili" count matches the Tümünü Seç button beside it (.ss-btn.is-xs: 28px, radius 7). */
 .ss-page .ss-dr-gh .ss-dr-sel { box-sizing: border-box; height: 28px; border-radius: 7px; }
 .ss-page .ss-dr-ico { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
-.ss-page .ss-dr-sel.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
+.ss-page .ss-dr-sel.is-on { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 .ss-page .ss-dr-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .ss-page .ss-dr-opt { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 52px; margin: 0; padding: 10px 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; transition: background-color .12s, border-color .12s; }
 .ss-page .ss-dr-opt:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); }
@@ -277,7 +277,7 @@
 .app-shell.stitch-shell main .ss-page .ss-seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 32px; min-height: 32px; padding: 0 10px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 12.5px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button:hover { color: var(--rv-color-ink); background: none; }
-.app-shell.stitch-shell main .ss-page .ss-seg2 button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
+.app-shell.stitch-shell main .ss-page .ss-seg2 button.is-on { color: var(--ss-violet); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button.is-on small { color: var(--ss-violet); opacity: .8; }
 .ss-page .ss-dz-work { display: grid; grid-template-columns: 236px minmax(0, 1fr) 264px; min-height: 560px; }
 .ss-page :is(.ss-dz-lib, .ss-dz-insp) { display: flex; flex-direction: column; min-width: 0; background: var(--rv-color-surface); }
@@ -303,7 +303,7 @@
 .ss-page .ss-itabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .ss-page .ss-itabs button { display: inline-flex; align-items: center; justify-content: center; height: 30px; min-height: 30px; padding: 0 6px; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-itabs button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
-.app-shell.stitch-shell main .ss-page .ss-itabs button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
+.app-shell.stitch-shell main .ss-page .ss-itabs button.is-on { color: var(--ss-violet); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 .ss-page .ss-ibody { display: grid; gap: 14px; align-content: start; padding: 14px 16px 16px; }
 .ss-page .ss-ibody-title { font-size: 14px; font-weight: 600; }
 .ss-page .ss-empty { padding: 28px 16px; color: var(--rv-color-muted); text-align: center; font-size: 13px; }
@@ -311,7 +311,7 @@
 .ss-page .ss-seg3.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .app-shell.stitch-shell main .ss-page .ss-seg3 button { height: 32px; min-height: 32px; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 12.5px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg3 button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
-.app-shell.stitch-shell main .ss-page .ss-seg3 button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); }
+.app-shell.stitch-shell main .ss-page .ss-seg3 button.is-on { color: var(--ss-violet); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); }
 .ss-page .ss-fchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .app-shell.stitch-shell main .ss-page .ss-fchip { display: inline-flex; align-items: center; gap: 4px; height: 26px; min-height: 26px; padding: 0 6px 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 12px; font-weight: 400 !important; text-transform: none; }
 .ss-page .ss-fchip svg { width: 13px; height: 13px; color: var(--rv-color-subtle); }
@@ -336,7 +336,7 @@
 .ss-page .ss-pick-menu { position: absolute; z-index: var(--rv-z-dropdown); top: calc(100% + 6px); left: 0; right: 0; display: grid; gap: 2px; padding: 6px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 8px 20px rgb(0 0 0 / 16%); }
 .app-shell.stitch-shell main .ss-page .ss-pick-opt { display: grid; grid-template-columns: auto minmax(0, 1fr) 16px; align-items: center; gap: 10px; width: 100%; height: auto; min-height: 0; padding: 7px 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; font-weight: 400 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-pick-opt:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.app-shell.stitch-shell main .ss-page .ss-pick-opt.is-on { background: var(--rv-color-primary-soft); }
+.app-shell.stitch-shell main .ss-page .ss-pick-opt.is-on { background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); }
 .ss-page .ss-pick-opt b { display: block; font-size: 13px; font-weight: 500; }
 .ss-page .ss-pick-opt small { display: block; color: var(--rv-color-muted); font-size: 12px; }
 .ss-page .ss-pick-opt .ss-st { color: var(--ss-violet); }
@@ -346,7 +346,7 @@
 .ss-page .ss-sws.is-lg i { width: 16px; height: 26px; }
 .ss-page .ss-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
 .ss-page .ss-th { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px 8px 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
-.ss-page .ss-th.is-on { background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
+.ss-page .ss-th.is-on { background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 .app-shell.stitch-shell main .ss-page .ss-th-pick { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: auto; min-height: 0; padding: 0; color: var(--rv-color-ink); text-align: left; background: none; border: 0; box-shadow: none; cursor: pointer; font-weight: 400 !important; text-transform: none; }
 .ss-page .ss-th-pick > span:last-child, .ss-page .ss-th > span:last-child { min-width: 0; }
 .ss-page .ss-th b { display: block; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -406,7 +406,7 @@
 .ss-page .ss-mfa-rail { display: grid; align-content: start; gap: 2px; padding: 14px 0; background: var(--rv-color-surface-raised); border-right: 1px solid var(--rv-color-border); }
 .ss-page .ss-mfa-step { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 2px 10px; padding: 8px 16px; color: var(--rv-color-muted); border-left: 2px solid transparent; font-size: 13px; }
 .ss-page .ss-mfa-step small { grid-column: 2; color: var(--rv-color-subtle); font-size: 12px; }
-.ss-page .ss-mfa-step.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-left-color: var(--rv-color-primary); }
+.ss-page .ss-mfa-step.is-on { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-left-color: var(--rv-color-primary); }
 .ss-page .ss-mfa-step.is-on .ss-st { color: var(--ss-violet); }
 .ss-page .ss-mfa-step.is-done { color: var(--rv-color-ink); }
 .ss-page .ss-mfa-pane { display: grid; gap: 16px; align-content: start; min-width: 0; padding: 20px 24px; }

@@ -85,7 +85,7 @@
 
 /* Count chips that filter the list, the Excel button and the shared pager footer. */
 .jobs-reference-drawer .jc-counts .jc-chip { display: grid; gap: 2px; min-width: 0; min-height: 0; padding: 0; text-align: left; color: inherit; background: none; border: 0; border-radius: 0; font: inherit; cursor: pointer; }
-.jobs-reference-drawer .jc-counts li:has(.jc-chip.is-on) { border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+.jobs-reference-drawer .jc-counts li:has(.jc-chip.is-on) { border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); }
 .jobs-reference-drawer .jc-export { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .jobs-reference-drawer .jc-export-error { max-width: 320px; color: var(--rv-color-danger); font-size: 12px; text-align: right; }
 .jobs-reference-drawer .jc-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
