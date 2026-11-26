@@ -141,6 +141,34 @@ public sealed class ExternalEffectProductSitesPostgreSqlTests(PostgreSqlTenantIs
         Assert.Equal(1, port.Archives);
     }
 
+    // B-10.5: Pazarama confirmed the barcode in another letter case than the panel's link holds ("ABC" for "abc"). The
+    // success is matched to the link case-insensitively (K28), so the variant's offer follows the sale status.
+    [PostgreSqlFact]
+    public async Task PazaramaSaleStatus_ASuccessInAnotherLetterCase_ClosesTheOffer()
+    {
+        var seed = await SeedCardAsync("ef-pzr-case", "PAZARAMA", "LIVE", "LIVE");
+        var jobId = Guid.CreateVersion7();
+        Guid offerId;
+        await using (var db = fixture.CreateContext())
+        {
+            var variantId = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seed.TenantId).Select(x => x.Id).SingleAsync();
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, VariantId = variantId, ExternalId = "pzr-Case-0", Version = 1 });
+            var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, VariantId = variantId, ListPrice = 100m, SalePrice = 90m, Currency = "TRY", VatRate = 20m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", SafetyStock = 0, Status = "ACTIVE", PriceVersion = 1, Version = 1 };
+            db.ChannelOffers.Add(offer);
+            offerId = offer.Id;
+            await db.SaveChangesAsync();
+        }
+        var payload = JsonSerializer.Serialize(new PazaramaSaleStatusJobPayload(jobId, ["PZR-CASE-0"], true, DateTimeOffset.UtcNow));
+        await AddJobAsync(seed, jobId, MarketplaceJobTypes.ProductArchive, payload);
+        var port = new Port(null) { SaleLines = [new("PZR-CASE-0", true, null, null, false)] };
+
+        var result = await RunAsync(seed, port, MarketplaceJobTypes.ProductArchive, payload, jobId);
+
+        Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
+        await using var check = fixture.CreateContext();
+        Assert.Equal("INACTIVE", (await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offerId)).Status);
+    }
+
     // After an unclear answer the record blocks a resend; after a quota answer the request goes again.
     private static async Task AssertSecondRunAsync(string outcome, Func<Task<JobExecutionResult>> run, Func<int> calls)
     {
