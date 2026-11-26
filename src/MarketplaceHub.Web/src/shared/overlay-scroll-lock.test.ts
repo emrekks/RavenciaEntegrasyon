@@ -20,6 +20,15 @@ describe('overlay scroll lock', () => {
     uninstall()
   })
 
+  it('does not pin the page for the phone full-screen menu (it keeps the bottom bar where the page left it)', async () => {
+    const uninstall = installOverlayScrollLock()
+    const menu = document.createElement('div'); menu.className = 'rv-fullmenu'; menu.setAttribute('aria-modal', 'true')
+    document.body.append(menu)
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    expect(document.body.style.position).toBe('')
+    uninstall()
+  })
+
   // A class or attribute change on <html> restyles every element of the page (10 000 on Siparişler): opening a window must
   // leave the root as it was.
   it('leaves the root element untouched while an overlay is open', async () => {

@@ -9,7 +9,9 @@ export const OVERLAY_SELECTOR = [
   '.value-mapping-quick-value-backdrop',
   '.rv-overlay',
   '.rr-overlay',
-  '[aria-modal="true"]',
+  // The phone's full-screen menu is aria-modal but covers the page itself and keeps the bottom bar: pinning body (position: fixed) for it
+  // made a Home Screen app measure the fixed layers against a different box than with the menu closed.
+  '[aria-modal="true"]:not(.rv-fullmenu)',
 ].join(', ')
 
 let pinned: { y: number; body: [string, string, string, string, string] } | null = null
