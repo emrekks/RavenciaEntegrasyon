@@ -82,11 +82,16 @@ describe('phone bottom navigation (CSS)', () => {
     expect(layer).toContain('pointer-events: none')
     expect(layer).toContain('bottom: var(--rv-dock-bottom)')
     expect(layer).toContain('padding: 0 8px')
-    // One floating glass capsule (light frost, 10 px blur at most): a thin line and a light shadow, no frosted band, no indicator line.
+    // One floating glass capsule (light frost, 8 px blur (10 at most)): a thin line and a light shadow, no frosted band, no indicator line.
     expect(phone).toContain('--rv-dock-shadow: 0 0 1.25px rgb(0 0 0 / 40%), 0 0 24px rgb(0 0 0 / 10%), 0 4px 12px rgb(0 0 0 / 6%)')
     expect(phone).toContain('--rv-dock-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%), 0 0 24px rgb(0 0 0 / 40%), 0 4px 12px rgb(0 0 0 / 30%)')
-    expect(phone).toContain('.rv-dock, .rv-dock-panel { background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha), transparent); box-shadow: var(--rv-dock-glass-shadow); -webkit-backdrop-filter: blur(10px) saturate(1.3); backdrop-filter: blur(10px) saturate(1.3); }')
+    expect(phone).toContain('.rv-dock, .rv-dock-panel { background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha), transparent); box-shadow: var(--rv-dock-glass-shadow); -webkit-backdrop-filter: blur(8px) saturate(1.3); backdrop-filter: blur(8px) saturate(1.3); }')
+    expect(phone).toContain('--rv-dock-glass-alpha: 30%')
     expect(phone).toContain('--rv-dock-glass-alpha: 88%')
+    expect(phone).toContain('inset 0 0 0 1px rgb(0 0 0 / 10%)')
+    expect(phone).toContain('inset 0 0 0 1px rgb(255 255 255 / 14%)')
+    expect(phone).toContain('text-shadow: 0 0 6px var(--rv-dock-halo)')
+    expect(phone).toContain('color: var(--rv-color-ink); background: none; border: 0; border-radius: 999px')
     expect(phone).toContain('prefers-reduced-transparency: reduce')
     expect(phone).toContain(':root:has(.rv-fullmenu) .rv-dock { background: var(--rv-color-surface);')
     expect(phone).toContain(':root { --rv-dock-w: min(calc(100vw - 20px), 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
