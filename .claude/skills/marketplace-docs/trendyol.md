@@ -424,8 +424,18 @@ purpose (`TurkeyTime.cs`).
 - Live 16 Nov 2026 (read-only SQL): 216 of 1845 Trendyol orders have `micro: true`, always with `3pByTrendyol: false`;
   none has `3pByTrendyol: true`, `microExport`, a micro `shipmentPackageType`/`orderType`, or `micro: true` anywhere but
   the top level. The 216 are exactly the SA/AZ/BG/RO/GR/AE storefront orders.
-- The panel's one rule is `OrderMicroExportRules` (any positive indicator, any field order); the invoice keeps its own
-  `InvoiceIssuePolicy.IsMicroExport`.
+- Live 27 Nov 2026 (read-only SQL): 2136 Trendyol orders; 1839 `micro: false` + `3pByTrendyol: false` on TR, 277
+  `micro: true` + `3pByTrendyol: false` on SA/AE/AZ/BG/GR/RO, 20 return-claim-built orders (August) with neither field
+  and no storefront. Every order has at most one `micro` key; no other marketplace's order carries a micro signal.
+- Micro-export countries (docs ~l.314-318): Gulf SA, AE, QA, KW, OM, BH; Europe RO, BG, GR, UA, MD, RS; AZ. The country
+  code table (~l.4197-4211) adds SK and CZ. The docs ask not to match `micro` with the address `countryCode` (~l.802).
+- Undocumented: `microExport`, a `shipmentPackageType`/`orderType` naming MICRO/İHRAC (in the docs `shipmentPackageType`
+  is only a cargo-invoice item type, ~l.12774) and PM3/ARVATO buyer names (Trendyol's former export partner). They
+  never decide alone.
+- The one rule (`MicroExportRule`, owner 27 Nov 2026, C-11.9) for invoice, list label, row flag, filters and card:
+  Trendyol only (others Domestic); top-level `micro`/`3pByTrendyol` decide; nested or duplicate flag keys, a missing or
+  non-boolean `micro`, both true, a TR storefront on an export flag, a micro-export storefront or an undocumented
+  indicator on `micro: false` give Unknown, and the invoice then stops with `INVOICE_MICRO_EXPORT_UNKNOWN`.
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),

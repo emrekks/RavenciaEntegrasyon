@@ -168,6 +168,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.ConfigureCommissionTariffModels();
         builder.ConfigureMarketplaceFinanceModels();
         builder.ConfigureManualResendModels();
+        OrderMicroExportRules.MapFunctions(builder);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

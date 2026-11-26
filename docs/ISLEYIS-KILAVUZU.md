@@ -608,8 +608,14 @@ eşitleme kuralları, depo, fatura kuralları) bir sıfırlamada asla silinmez (
 - **Ülke kuralı** (sahip): SA, AZ, BG, RO, GR, AE siparişleri Trendyol'un **İstanbul ihracat deposuna** gider ama raporlarda
   ve dünya haritasında **vitrinin ülkesinde** sayılır; il dağılımına girmez. Kod TR dışındaki her vitrini böyle sayar
   (`ReportBuilder.cs:175-193`). İadeden kurulmuş ve vitrini hiçbir okumada görülmemiş sipariş "Bilinmiyor" sayılır.
-- Sipariş listesindeki **Mikro İhracat** işareti yalnız Trendyol `micro=true` ile gelir; ülke fatura adresinden okunur
-  (`OrderQueryService.OrderSummary.cs` `MicroExportCountry`).
+- **Tek mikro ihracat kuralı** (`MicroExportRule.cs`, sahip kararı 27 Kas 2026, C-11.9): fatura, liste etiketi, satır
+  işareti, Bölge / Mikro İhracat filtreleri ve kart aynı kuralı okur; üç cevap verir: Mikro İhracat, Yurt İçi, Bilinmiyor.
+  Belgeli sinyaller: paketin üst düzeyindeki `micro` (true/false) ve `3pByTrendyol` (true ise ihracat ortaklığı, mikro
+  ihracat sayılır); okunan vitrin yalnız çelişki gösterir (TR'de mikro ihracat ya da SA/AE/AZ/RO/BG/GR… vitrininde
+  `micro=false`). `micro` yoksa, değeri true/false değilse, alan iç içe ya da iki kez geçiyorsa veya sinyaller çelişiyorsa
+  sonuç **Bilinmiyor**: liste etiket koymaz, sipariş Türkiye bölgesine de girmez, fatura türü tahmin edilmez ve fatura
+  `INVOICE_MICRO_EXPORT_UNKNOWN` gerekçesiyle sahibin incelemesini bekler. Trendyol dışı pazaryerleri hep Yurt İçi'dir.
+  Ülke fatura adresinden okunur (`OrderQueryService.OrderSummary.cs` `MicroExportCountry`).
 - Hakediş: Azerbaycan ödemeleri ayrı şirket (10,99 TL KDV'siz platform bedeli, stopaj yok); Avrupa ayın 4. pazartesisi ödenir.
 
 ### 2.9 Platform farkları tablosu
@@ -1505,7 +1511,8 @@ yazması açıksa gider; bugün kapalı.
   belgelenmiş "bulunamadı" yanıtından çıkar.
 - Sorgu sonucu 24 saat saklanır ("bilinmiyor" saklanmaz); fatura kesen istek her zaman taze sorgu yapar; kayıtlı tür
   uyuşmazsa `EINVOICE_TAXPAYER_STATUS_CHANGED`.
-- Diğer engeller: mikro ihracat ya da TRY dışı para (`INVOICE_EXPORT_FLOW_REQUIRED`), okunamayan ürün satırı
+- Diğer engeller: mikro ihracat ya da TRY dışı para (`INVOICE_EXPORT_FLOW_REQUIRED`), mikro ihracat mı yurt içi mi
+  olduğu belli olmayan sipariş (`INVOICE_MICRO_EXPORT_UNKNOWN`, gerekçesiyle), okunamayan ürün satırı
   (`ORDER_LINE_UNREADABLE`), tamamen iade edilmiş sipariş.
 - **Son kontrol** (sağlayıcıya gitmeden hemen önce; `InvoicePreIssueCheck.cs:7-102`): sipariş ya da paket iptal, iade,
   teslim edilmemiş ya da ödeme bekliyor; KDV bilinmiyor; satır, adet, fiyat ya da toplam onaylanandan farklıysa kesim durur

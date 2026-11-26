@@ -176,7 +176,8 @@ internal sealed partial class OrderQueryService
                 .FirstOrDefault(x => x is not null)
                 ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-            var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport, order.BuyerType);
+            var microExport = IsMicroExport(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson);
+            var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, microExport, order.BuyerType);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
             var unverifiedWithoutPackage = OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
                 connection?.PlatformCode,
@@ -200,7 +201,7 @@ internal sealed partial class OrderQueryService
                 order.Id, order.OrderNumber, displayStatus, order.Currency, order.NetAmount, order.OrderedAt,
                 orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
-                customer.Name, buyer.OrderType, customer.IsMicroExport, dueAt,
+                customer.Name, buyer.OrderType, microExport, dueAt,
                 OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), PackageInvoiceLabel(package, invoice, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => catalog.CatalogImageUrl(catalog.Variant(x))).FirstOrDefault(x => x is not null),
@@ -369,10 +370,11 @@ internal sealed partial class OrderQueryService
         var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
         // The region follows the "Mikro İhracat" label (OrderMicroExportRules, also the row flag and the card), not a text search over the
         // whole package: a company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product is no export (SIPARIS-STOK-3).
+        // "Türkiye" is the orders the rule calls domestic: an order whose kind is unknown (MicroExportRule) is in neither region.
         if (invoiceRegion == "MICRO_EXPORT")
-            query = query.Where(OrderMicroExportRules.InDatabase);
+            query = query.Where(OrderMicroExportRules.InDatabase(db));
         else if (invoiceRegion == "TR")
-            query = query.Where(OrderMicroExportRules.NotInDatabase);
+            query = query.Where(OrderMicroExportRules.DomesticInDatabase(db));
 
         var status = options.Status?.Trim().ToUpperInvariant();
         // The dashboard's "Geciken Siparişler" card opens this view: exactly the orders that card counts.
@@ -506,7 +508,7 @@ internal sealed partial class OrderQueryService
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
         // Micro-export orders: the "Mikro İhracat" label's rule (OrderMicroExportRules), as the row flag and the card read it.
         if (options.MicroExport == true)
-            query = query.Where(OrderMicroExportRules.InDatabase);
+            query = query.Where(OrderMicroExportRules.InDatabase(db));
         // Orders with some products cancelled that were not cancelled whole, open or closed.
         if (options.PartialCancel == true)
             query = query.Where(x => x.DerivedStatus != "CANCELLED" && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0));

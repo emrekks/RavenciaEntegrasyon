@@ -475,7 +475,7 @@ public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsol
             NetAmount = gross - discount,
             OrderedAt = fixture.Now.AddDays(-5),
             LastRemoteModifiedAt = fixture.Now.AddDays(-5),
-            CustomerSnapshotJson = "{\"customerFirstName\":\"Test\",\"customerLastName\":\"Müşteri\"}",
+            CustomerSnapshotJson = "{\"customerFirstName\":\"Test\",\"customerLastName\":\"Müşteri\",\"micro\":false}",
             ShipmentAddressSnapshotJson = "{}",
             InvoiceAddressSnapshotJson = "{}",
             DerivedStatus = "DELIVERED",

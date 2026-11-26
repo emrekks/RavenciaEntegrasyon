@@ -288,7 +288,7 @@ public sealed class PostgreSqlInvoiceDeliveryIdentityTests(PostgreSqlTenantIsola
             NetAmount = 120m,
             OrderedAt = now.AddDays(-3),
             LastRemoteModifiedAt = now.AddDays(-3),
-            CustomerSnapshotJson = "{}",
+            CustomerSnapshotJson = "{\"micro\":false}",
             ShipmentAddressSnapshotJson = "{}",
             InvoiceAddressSnapshotJson = "{}",
             DerivedStatus = "DELIVERED",

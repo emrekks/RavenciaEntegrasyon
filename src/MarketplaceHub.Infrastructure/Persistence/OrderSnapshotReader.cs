@@ -83,23 +83,26 @@ internal static class OrderSnapshotReader
         return (buyer, isMicroExport ? "MIKRO_IHRACAT" : buyer.Kind == OrderBuyerTypeView.Individual ? "BIREYSEL" : "KURUMSAL");
     }
 
-    internal static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
+    internal static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
     {
         var name = ResolveCustomerName(customerJson, invoiceAddressJson, shipmentAddressJson);
         var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email") ?? JsonText(shipmentAddressJson, "email");
         var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone") ?? JsonText(shipmentAddressJson, "phone", "phoneNumber", "mobilePhone");
         var tax = ResolveCustomerTaxOrIdentityNumber(customerJson, invoiceAddressJson, shipmentAddressJson);
-        // The "Mikro İhracat" label: the one micro-export rule, which the list's filters and card read too.
-        var micro = OrderMicroExportRules.Matches(customerJson);
         var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
-        return (name, email, phone, tax, micro, eInvoice);
+        return (name, email, phone, tax, eInvoice);
     }
+
+    // The "Mikro İhracat" label: the one micro-export rule (MicroExportRule), which the invoice, the list's filters and the
+    // card read too. Only an order the rule calls micro export is labelled; an Unknown one is not.
+    internal static bool IsMicroExport(string? platformCode, string? storeFrontCode, string? customerJson) =>
+        MicroExportRule.Classify(platformCode, storeFrontCode, customerJson).IsMicroExport;
 
     internal static readonly HashSet<string> FastDeliveryTypes = new(["TodayDelivery", "SameDayShipping", "FastDelivery"], StringComparer.OrdinalIgnoreCase);
 
     // The order row's marks, read from the package fields the marketplace sent (top level of the customer snapshot only,
     // never from a line). A field that is missing or holds another value leaves its mark out.
-    // - Micro export: the one micro-export rule (OrderMicroExportRules, the "Mikro İhracat" label's), on every platform. micro
+    // - Micro export: the one micro-export rule (MicroExportRule, the "Mikro İhracat" label's and the invoice's). micro
     //   and countryCode are independent (Trendyol docs), so a foreign country alone is no micro export. The country is
     //   the invoice address's: the shipment address of a micro order is Trendyol's Istanbul export depot (TR); the
     //   storefront is the fallback.
@@ -117,7 +120,7 @@ internal static class OrderSnapshotReader
             string? TopText(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
             bool? TopBool(string name) => root.TryGetProperty(name, out var value) ? value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null } : null;
 
-            var micro = OrderMicroExportRules.Matches(customerJson);
+            var micro = IsMicroExport(platformCode, storeFrontCode, customerJson);
             var country = micro ? MicroExportCountry(invoiceAddressJson, storeFrontCode) : null;
             OrderRowMarks marks;
             if (platform == "N11")

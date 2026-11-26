@@ -1,69 +1,82 @@
+using System.Data;
 using System.Linq.Expressions;
-using System.Text.RegularExpressions;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 /// <summary>
-/// The one rule for a micro-export order (owner, 16 Nov 2026, SIPARIS-STOK-3: the "Mikro İhracat" type label's rule is
-/// the rule). An order is micro export when its package (the customer snapshot) says so in any of three ways:
-/// <list type="bullet">
-/// <item>a flag micro, microExport or 3pByTrendyol is true (Trendyol's 3P partner exports send micro = false with
-/// 3pByTrendyol = true);</item>
-/// <item>shipmentPackageType or orderType names it (MICRO, İHRAC);</item>
-/// <item>the buyer is Trendyol's former export partner (PM3 and ARVATO in the buyer's name), for old snapshots that
-/// predate the flags.</item>
-/// </list>
-/// Any one positive indicator makes the order micro export, whatever the order of the fields: an explicit micro = false
-/// does not cancel 3pByTrendyol = true (Trendyol documents exactly that pair for its export partnership). A missing field
-/// says nothing. The label read the flags by first match before (JsonText), so {"micro":false,"3pByTrendyol":true} was
-/// domestic and the same fields the other way round export; live on 16 Nov 2026 no order carried such a pair (0). The
-/// indicators are read at any depth of the package, as the label always did: Trendyol sends them at the package's top
-/// level (docs: the package fields micro and 3pByTrendyol) and live no order has micro = true anywhere but there (0 of
-/// 1845 Trendyol orders), so top level and any depth are the same orders; any depth is what both engines can match alike.
-/// The label (OrderSnapshotReader.Customer), the row's flag (RowMarks), the list's Mikro İhracat and Fatura Bölgesi filters
-/// and the micro-export card all read this rule: the label and the flag in memory (Matches), the filters and the card in
-/// the database (InDatabase), which are the same expression (OrderMicroExportRulesTests). The invoice keeps its own rule
-/// (InvoiceIssuePolicy.IsMicroExport): which invoice an order gets is the owner's tax rule, not this one.
+/// The one micro-export rule (MicroExportRule; owner's decision of 27 Nov 2026, finding C-11.9) as database conditions on
+/// an order. The order list's Mikro İhracat and Fatura Bölgesi filters and the micro-export card read these; the label,
+/// the row flag and the invoice read MicroExportRule.Classify in memory. Both are the same rule (MicroExportRuleTests run
+/// every case through both engines). The order's marketplace comes from its connection.
 /// </summary>
 internal static class OrderMicroExportRules
 {
-    // Written for both engines alike: case is spelled out letter by letter ([mM][iI]…) rather than left to a case-insensitive
-    // match, because PostgreSQL folds İ and ı by its collation and .NET by its own table; JSON whitespace is listed
-    // (space, tab, CR, LF) rather than \s, whose set differs between the two.
-    private const string Space = "[ \t\r\n]*";
+    private static readonly RelationalTypeMapping TextMapping = new StringTypeMapping("text", DbType.String);
+    private static readonly RelationalTypeMapping JsonbMapping = new StringTypeMapping("jsonb", DbType.String);
+    private static readonly RelationalTypeMapping BoolMapping = new BoolTypeMapping("boolean");
+    private static readonly RelationalTypeMapping IntMapping = new IntTypeMapping("integer");
 
-    private static string Letters(string word) => string.Concat(word.Select(letter =>
-        char.IsAsciiLetter(letter) ? $"[{char.ToLowerInvariant(letter)}{char.ToUpperInvariant(letter)}]" : Regex.Escape(letter.ToString())));
+    /// <summary>
+    /// Maps the rule's two helpers to PostgreSQL: TopLevelJson(json, key) is
+    /// <c>CASE WHEN pg_input_is_valid(json, 'jsonb') THEN jsonb_extract_path(json::jsonb, key)::text END</c> (a text that
+    /// is no JSON reads as missing, as JsonDocument does in memory, and never fails the query); SignalKeyCount(json) is
+    /// <c>regexp_count(json, SignalKeyPattern)</c>.
+    /// </summary>
+    internal static void MapFunctions(ModelBuilder builder)
+    {
+        builder.HasDbFunction(typeof(MicroExportRule).GetMethod(nameof(MicroExportRule.TopLevelJson), [typeof(string), typeof(string)])!)
+            .HasTranslation(arguments =>
+            {
+                var json = Text(arguments[0]);
+                var key = Text(arguments[1]);
+                var valid = new SqlFunctionExpression("pg_input_is_valid", [json, new SqlConstantExpression("jsonb", typeof(string), TextMapping)],
+                    nullable: true, argumentsPropagateNullability: [true, false], typeof(bool), BoolMapping);
+                var value = new SqlUnaryExpression(ExpressionType.Convert,
+                    new SqlFunctionExpression("jsonb_extract_path", [new SqlUnaryExpression(ExpressionType.Convert, json, typeof(string), JsonbMapping), key],
+                        nullable: true, argumentsPropagateNullability: [true, true], typeof(string), JsonbMapping),
+                    typeof(string), TextMapping);
+                return new CaseExpression([new CaseWhenClause(valid, value)], elseResult: null);
+            });
+        builder.HasDbFunction(typeof(MicroExportRule).GetMethod(nameof(MicroExportRule.SignalKeyCount), [typeof(string)])!)
+            .HasTranslation(arguments => new SqlFunctionExpression("regexp_count",
+                [Text(arguments[0]), new SqlConstantExpression(MicroExportRule.SignalKeyPattern, typeof(string), TextMapping)],
+                nullable: true, argumentsPropagateNullability: [true, false], typeof(int), IntMapping));
+    }
 
-    private static string Key(params string[] names) => $"\"(?:{string.Join("|", names.Select(Letters))})\"{Space}:{Space}";
+    private static SqlExpression Text(SqlExpression expression) => expression switch
+    {
+        { TypeMapping: not null } => expression,
+        SqlConstantExpression constant => new SqlConstantExpression(constant.Value, typeof(string), TextMapping),
+        _ => expression
+    };
 
-    // A flag that reads as true: the JSON literal, the number 1, or the text "true" (any case, padded), "1", "YES", "EVET".
-    internal static readonly string FlagPattern =
-        Key("microExport", "micro", "3pByTrendyol") + $"(?:{Letters("true")}|1|\"{Space}{Letters("true")}{Space}\"|\"1\"|\"YES\"|\"EVET\"){Space}[,}}\\]]";
+    /// <summary>The rule's answer for an order, as the database runs it.</summary>
+    internal static Expression<Func<Order, MicroExportState>> State(AppDbContext db)
+    {
+        Expression<Func<Order, string?>> platform = order => db.PlatformConnections.Where(connection => connection.Id == order.ConnectionId)
+            .Select(connection => connection.PlatformCode).FirstOrDefault();
+        Expression<Func<Order, string?>> storefront = order => order.StoreFrontCode;
+        Expression<Func<Order, string?>> json = order => order.CustomerSnapshotJson;
+        var row = Expression.Parameter(typeof(Order), "order");
+        var arguments = new[] { platform, storefront, json }
+            .Select(field => Microsoft.EntityFrameworkCore.Query.ReplacingExpressionVisitor.Replace(field.Parameters[0], row, field.Body)).ToArray();
+        return Expression.Lambda<Func<Order, MicroExportState>>(PolicyExpressions.Inline(MicroExportRule.StateRule, arguments), row);
+    }
 
-    // The package type's text naming a micro export (MICRO, İHRAC; the ASCII letters in any case).
-    internal static readonly string TypePattern = Key("shipmentPackageType", "orderType") + $"\"[^\"]*(?:{Letters("MICRO")}|İ{Letters("HRAC")})";
+    /// <summary>The orders the rule calls micro export: the "Mikro İhracat" filter and card.</summary>
+    internal static Expression<Func<Order, bool>> InDatabase(AppDbContext db) => Is(db, MicroExportState.MicroExport);
 
-    // Trendyol's former export partner as the buyer: PM3 and ARVATO in the buyer's name fields.
-    private static readonly string NameKey = Key("customerFirstName", "customerLastName", "customerName", "customerFullName", "buyerName", "fullName");
-    internal static readonly string PartnerPm3Pattern = NameKey + $"\"[^\"]*{Letters("PM3")}";
-    internal static readonly string PartnerArvatoPattern = NameKey + $"\"[^\"]*{Letters("ARVATO")}";
+    /// <summary>The orders the rule calls domestic: the "Türkiye" invoice region. An Unknown order is in neither region.</summary>
+    internal static Expression<Func<Order, bool>> DomesticInDatabase(AppDbContext db) => Is(db, MicroExportState.Domestic);
 
-    /// <summary>The rule on a customer snapshot, as the database runs it (Npgsql writes Regex.IsMatch as ~).</summary>
-    internal static readonly Expression<Func<string, bool>> SnapshotIsMicroExport = json =>
-        Regex.IsMatch(json, FlagPattern)
-        || Regex.IsMatch(json, TypePattern)
-        || (Regex.IsMatch(json, PartnerPm3Pattern) && Regex.IsMatch(json, PartnerArvatoPattern));
-
-    private static readonly Func<string, bool> Compiled = SnapshotIsMicroExport.Compile();
-
-    /// <summary>The rule in memory: the same expression, compiled.</summary>
-    internal static bool Matches(string? customerSnapshotJson) => !string.IsNullOrWhiteSpace(customerSnapshotJson) && Compiled(customerSnapshotJson);
-
-    /// <summary>The rule as a database condition on an order.</summary>
-    internal static readonly Expression<Func<Order, bool>> InDatabase = PolicyExpressions.On<Order, string>(SnapshotIsMicroExport, order => order.CustomerSnapshotJson);
-
-    /// <summary>An order that is no micro export: the "Türkiye" invoice region.</summary>
-    internal static readonly Expression<Func<Order, bool>> NotInDatabase = Expression.Lambda<Func<Order, bool>>(Expression.Not(InDatabase.Body), InDatabase.Parameters);
+    private static Expression<Func<Order, bool>> Is(AppDbContext db, MicroExportState state)
+    {
+        var rule = State(db);
+        return Expression.Lambda<Func<Order, bool>>(Expression.Equal(rule.Body, Expression.Constant(state)), rule.Parameters);
+    }
 }

@@ -124,7 +124,7 @@ public sealed class HepsiburadaCorporateBuyerTests
 
         Assert.Empty(provider.TaxIds);
         Assert.Equal(InvoiceIssuePolicy.RecipientKindUnknown, decision.Refusal);
-        Assert.Equal(InvoiceIssuePolicy.RecipientKindUnknown, InvoiceIssuePolicy.Refusal(decision.InvoiceType, "TRY", CorporateCustomer, decision));
+        Assert.Equal(InvoiceIssuePolicy.RecipientKindUnknown, InvoiceIssuePolicy.Refusal(decision.InvoiceType, "TRY", MicroExportRule.Classify("HEPSIBURADA", null, CorporateCustomer), decision));
         Assert.Equal(InvoiceIssuePolicy.RecipientKindUnknown, InvoicingBillingService.RecipientIdentityRefusal("EARSIVFATURA", CorporateCustomer, address));
         Assert.Equal(InvoiceIssuePolicy.RecipientKindUnknownCode,
             Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), Canonical("EARSIVFATURA", CorporateCustomer, address))).Message);
@@ -143,7 +143,7 @@ public sealed class HepsiburadaCorporateBuyerTests
         Assert.True(TrendyolEFaturamCanonicalPayload.SendsPlaceholderToCorporateTaxNumber(customer, address, "EARSIVFATURA"));
         var decision = await Resolve(new LookupOnlyProvider(EInvoiceTaxpayerLookup.NotRegistered()), "SHOPIFY", customer, address);
         Assert.Equal(InvoiceIssuePolicy.RecipientPlaceholderForCorporate, decision.Refusal);
-        Assert.Equal(InvoiceIssuePolicy.RecipientPlaceholderForCorporate, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", customer, decision));
+        Assert.Equal(InvoiceIssuePolicy.RecipientPlaceholderForCorporate, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", MicroExportRule.Classify("HEPSIBURADA", null, customer), decision));
         Assert.Equal(InvoiceIssuePolicy.RecipientPlaceholderForCorporate, InvoicingBillingService.RecipientIdentityRefusal("EARSIVFATURA", customer, address));
         Assert.Equal(InvoiceIssuePolicy.RecipientPlaceholderForCorporateCode,
             Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), Canonical("EARSIVFATURA", customer, address))).Message);

@@ -16,7 +16,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
     public async Task CreateDraft_RefusesEInvoiceRecipientFromFlatTrendyolSnapshotAndExportOrders()
     {
         var seed = NewSeed("audit-draft-gates");
-        seed.Order.CustomerSnapshotJson = "{\"commercial\":true}";
+        seed.Order.CustomerSnapshotJson = "{\"commercial\":true,\"micro\":false}";
         seed.Order.InvoiceAddressSnapshotJson = "{\"company\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"eInvoiceAvailable\":true}";
         var exportOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-export-order");
         exportOrder.Currency = "EUR";
@@ -881,7 +881,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
     public async Task AnOrderWithACompanyVknIsNeverPreviewedOrDraftedTo11111111111()
     {
         var seed = NewSeed("audit-placeholder-guard");
-        seed.Order.CustomerSnapshotJson = """{"commercial":false}""";
+        seed.Order.CustomerSnapshotJson = """{"commercial":false,"micro":false}""";
         seed.Order.InvoiceAddressSnapshotJson = $$"""{"address":"Örnek Cadde No:1","firstName":"Ayşe","lastName":"Örnek","city":"Konya","district":"Selçuklu","taxNumber":"{{HepsiburadaCorporateBuyerTests.Vkn}}"}""";
         await SeedAsync(seed, db => db.OrderLines.Add(NewLine(seed.Tenant.Id, seed.Order.Id)));
 
@@ -906,6 +906,152 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
             await DeleteTenantAsync(seed.Tenant.Id);
         }
     }
+
+    // C-11.9 (owner, 27 Nov 2026): a Trendyol order the one micro-export rule cannot call micro export or domestic (no
+    // micro flag, a nested flag against the top-level one, a domestic flag read under a micro-export storefront) gets no
+    // invoice type by guess: the preview cannot confirm it, the draft is refused with the reason, nothing is created.
+    [PostgreSqlTheory]
+    [InlineData(null, """{"commercial":false}""", "micro) yok")]
+    [InlineData("TR", """{"commercial":false,"micro":false,"lines":[{"micro":true}]}""", "üst düzeyi dışında")]
+    [InlineData("SA", """{"commercial":false,"micro":false,"3pByTrendyol":false}""", "(SA)")]
+    public async Task AnOrderWhoseMicroExportKindIsUnknownIsNeverPreviewedForConfirmationOrDrafted(string? storefront, string customer, string reason)
+    {
+        var seed = NewSeed($"audit-micro-unknown-{storefront ?? "none"}");
+        seed.Order.StoreFrontCode = storefront;
+        seed.Order.CustomerSnapshotJson = customer;
+        seed.Order.InvoiceAddressSnapshotJson = DomesticIndividualAddress;
+        await SeedAsync(seed, db => db.OrderLines.Add(NewLine(seed.Tenant.Id, seed.Order.Id)));
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewBillingService(db, new LookupOnlyProvider(EInvoiceTaxpayerLookup.NotRegistered()));
+            var preview = await service.PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            var draft = await service.CreateDraftAsync(seed.Tenant.Id,
+                new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), $"audit-micro-unknown-{storefront}", CancellationToken.None);
+
+            var item = Assert.Single(preview.Value ?? []);
+            Assert.False(item.CanConfirm);
+            Assert.Contains(reason, item.BlockedReason, StringComparison.Ordinal);
+            Assert.Contains("tahmin edilmedi", item.BlockedReason, StringComparison.Ordinal);
+            Assert.Equal(InvoiceIssuePolicy.MicroExportUnknownCode, draft.Error?.Code);
+            Assert.Equal(422, draft.Error?.Status);
+            Assert.Contains(reason, draft.Error!.Message, StringComparison.Ordinal);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Invoices.AnyAsync(invoice => invoice.TenantId == seed.Tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // The same orders when the rule is clear behave as before the one rule: a domestic order is previewed and drafted as
+    // an e-Arşiv invoice, a micro-export order is refused for the export flow.
+    [PostgreSqlTheory]
+    [InlineData("TR", """{"commercial":false,"micro":false,"3pByTrendyol":false}""", null)]
+    [InlineData("SA", """{"commercial":false,"micro":true,"3pByTrendyol":false}""", InvoiceIssuePolicy.ExportFlowRequiredCode)]
+    [InlineData("RO", """{"commercial":false,"micro":false,"3pByTrendyol":true}""", InvoiceIssuePolicy.ExportFlowRequiredCode)]
+    public async Task AClearDomesticOrMicroExportOrderIsTreatedAsBefore(string storefront, string customer, string? refusalCode)
+    {
+        var seed = NewSeed($"audit-micro-clear-{storefront}");
+        seed.Order.StoreFrontCode = storefront;
+        seed.Order.CustomerSnapshotJson = customer;
+        seed.Order.InvoiceAddressSnapshotJson = DomesticIndividualAddress;
+        await SeedAsync(seed, db => db.OrderLines.Add(NewLine(seed.Tenant.Id, seed.Order.Id)));
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewBillingService(db, new LookupOnlyProvider(EInvoiceTaxpayerLookup.NotRegistered()));
+            var preview = await service.PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            var draft = await service.CreateDraftAsync(seed.Tenant.Id,
+                new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), $"audit-micro-clear-{storefront}", CancellationToken.None);
+
+            var item = Assert.Single(preview.Value ?? []);
+            Assert.Equal("EARSIVFATURA", item.InvoiceType);
+            if (refusalCode is null)
+            {
+                // The draft is made as an e-Arşiv invoice. The preview passes every fiscal gate and stops only at sending
+                // readiness: this test's provider connection holds no credentials (no provider is ever called here).
+                Assert.Equal("Seçilen E-Faturam bağlantısında etkin kimlik bilgisi yok.", item.BlockedReason);
+                Assert.True(draft.Succeeded, draft.Error?.Message);
+                Assert.Equal("EARSIVFATURA", draft.Value!.InvoiceType);
+            }
+            else
+            {
+                Assert.False(item.CanConfirm);
+                Assert.Equal(InvoiceIssuePolicy.ExportFlowRequired.Message, item.BlockedReason);
+                Assert.Equal(refusalCode, draft.Error?.Code);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // A draft made while the order read as domestic, whose order now reads as unknown: validating stops it with the reason
+    // kept on the invoice (Doğrulama Başarısız, for the owner to review) and the submission is refused; nothing is sent,
+    // the invoice is not cancelled or deleted.
+    [PostgreSqlFact]
+    public async Task AnExistingDraftWhoseOrderTurnedUnknownWaitsForTheOwner()
+    {
+        var seed = NewSeed("audit-micro-draft");
+        seed.Order.StoreFrontCode = "TR";
+        seed.Order.CustomerSnapshotJson = """{"commercial":false}""";
+        seed.Order.InvoiceAddressSnapshotJson = DomesticIndividualAddress;
+        var draft = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Draft);
+        draft.PackageId = seed.Package.Id;
+        draft.ExternalReference = null;
+        draft.InvoiceNumber = null;
+        draft.IssuedAt = null;
+        var readyOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-micro-draft-ready");
+        readyOrder.StoreFrontCode = "TR";
+        readyOrder.CustomerSnapshotJson = """{"commercial":false}""";
+        readyOrder.InvoiceAddressSnapshotJson = DomesticIndividualAddress;
+        var readyPackage = NewPackage(seed.Tenant.Id, seed.Marketplace.Id, readyOrder.Id, "audit-micro-draft-ready-package");
+        var ready = NewInvoice(seed, readyOrder.Id, InvoiceStatus.Ready);
+        ready.PackageId = readyPackage.Id;
+        ready.ExternalReference = null;
+        ready.InvoiceNumber = null;
+        ready.IssuedAt = null;
+        await SeedAsync(seed, db =>
+        {
+            db.Orders.Add(readyOrder);
+            db.ShipmentPackages.Add(readyPackage);
+            db.OrderLines.AddRange(NewLine(seed.Tenant.Id, seed.Order.Id), NewLine(seed.Tenant.Id, readyOrder.Id));
+            db.Invoices.AddRange(draft, ready);
+        });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var service = NewBillingService(db, new LookupOnlyProvider(EInvoiceTaxpayerLookup.NotRegistered()));
+                var validated = await service.ValidateAsync(seed.Tenant.Id, draft.Id, draft.Version, CancellationToken.None);
+                Assert.Equal(InvoiceIssuePolicy.MicroExportUnknownCode, validated.Error?.Code);
+                Assert.Contains("micro) yok", validated.Error!.Message, StringComparison.Ordinal);
+                var submitted = await service.EnqueueSubmitAsync(seed.Tenant.Id, ready.Id, ready.Version, "audit-micro-submit", "audit-micro-submit", CancellationToken.None);
+                Assert.Equal(InvoiceIssuePolicy.MicroExportUnknownCode, submitted.Error?.Code);
+            }
+
+            await using var verification = fixture.CreateContext();
+            var stopped = await verification.Invoices.AsNoTracking().SingleAsync(invoice => invoice.Id == draft.Id);
+            Assert.Equal((InvoiceStatus.ValidationFailed, InvoiceIssuePolicy.MicroExportUnknownCode), (stopped.Status, stopped.LastErrorCode));
+            Assert.Equal(InvoiceStatus.Ready, (await verification.Invoices.AsNoTracking().SingleAsync(invoice => invoice.Id == ready.Id)).Status);
+            Assert.False(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceSubmit));
+            Assert.Equal(InvoiceIssuePolicy.MicroExportUnknown.Message, InvoiceIssuePolicy.DescribeValidationCode(stopped.LastErrorCode));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private const string DomesticIndividualAddress = """{"address":"Örnek Cadde No:1","firstName":"Ayşe","lastName":"Örnek","city":"Konya","district":"Selçuklu"}""";
 
     [PostgreSqlFact]
     public async Task ALineWhoseVatRateTrendyolDidNotReportBlocksThePreviewAndTheDraft()
@@ -1370,7 +1516,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         NetAmount = 120m,
         OrderedAt = fixture.Now.AddDays(-3),
         LastRemoteModifiedAt = fixture.Now.AddDays(-3),
-        CustomerSnapshotJson = "{\"customerFirstName\":\"Test\",\"customerLastName\":\"Müşteri\"}",
+        CustomerSnapshotJson = "{\"customerFirstName\":\"Test\",\"customerLastName\":\"Müşteri\",\"micro\":false}",
         ShipmentAddressSnapshotJson = "{}",
         InvoiceAddressSnapshotJson = "{}",
         DerivedStatus = "DELIVERED",

@@ -191,39 +191,47 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
-    // SIPARIS-STOK-3 (owner, 16 Nov 2026): the "Mikro İhracat" label's rule is the rule. "Fatura Bölgesi", the Mikro
-    // İhracat filter, the micro-export card and the row's flag all give the label's answer, for every way the label reads a
-    // micro export; not a text search over the package: a domestic company named "... İthalat İhracat Ltd." or a
-    // "MICRO FIBER" product stays in Türkiye.
+    // C-11.9 (owner, 27 Nov 2026): one micro-export rule (MicroExportRule). "Fatura Bölgesi", the Mikro İhracat filter,
+    // the micro-export card, the label and the row's flag all give its answer; not a text search over the package: a
+    // domestic company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product stays in Türkiye. An order whose kind is
+    // unknown (missing flag, contradictory signals) is in neither region and carries no Mikro İhracat label.
     [PostgreSqlFact]
     public async Task TheInvoiceRegionFilterMatchesTheRowMicroExportFlag()
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"rg-{Guid.NewGuid():N}"[..16], DisplayName = "rg", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "rg", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
-        var customers = new[]
+        var hepsiburada = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "HEPSIBURADA", Environment = "STAGE", DisplayName = "rg-hb", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var customers = new (PlatformConnection Connection, string? Storefront, string Customer)[]
         {
-            """{"micro":false,"invoiceAddress":{"company":"ABC TEKSTİL İTHALAT İHRACAT LTD. ŞTİ."},"lines":[{"productName":"MICRO FIBER HAVLU"}]}""",
-            """{"micro":true,"countryCode":"AZ"}""",
-            // Micro export by the label before 16 Nov 2026 too, but "Türkiye" in the filter: the 3P partner export, the
-            // package type, Trendyol's former export partner, the flag as text.
-            """{"micro":false,"3pByTrendyol":true}""",
-            """{"micro":false,"shipmentPackageType":"MICRO_EXPORT"}""",
-            """{"customerFirstName":"PM3","customerLastName":"ARVATO EXPORT"}""",
-            """{"micro":"true"}""",
+            (connection, "TR", """{"micro":false,"invoiceAddress":{"company":"ABC TEKSTİL İTHALAT İHRACAT LTD. ŞTİ."},"lines":[{"productName":"MICRO FIBER HAVLU"}]}"""),
+            (connection, "AZ", """{"micro":true,"countryCode":"AZ"}"""),
+            // The 3P partner export (documented: micro false, 3pByTrendyol true).
+            (connection, "RO", """{"micro":false,"3pByTrendyol":true}"""),
+            // Unknown: micro false against a micro package type, no flag at all, the flag as text, a domestic flag
+            // read under a micro-export storefront, a micro flag read under TR.
+            (connection, "TR", """{"micro":false,"shipmentPackageType":"MICRO_EXPORT"}"""),
+            (connection, null, """{"customerFirstName":"PM3","customerLastName":"ARVATO EXPORT"}"""),
+            (connection, "TR", """{"micro":"true"}"""),
+            (connection, "SA", """{"micro":false}"""),
+            (connection, "TR", """{"micro":true}"""),
+            // Another marketplace: domestic.
+            (hepsiburada, null, "{}"),
         };
-        var microIndexes = new[] { 1, 2, 3, 4, 5 };
-        var orders = customers.Select((customer, index) => new Order
+        var microIndexes = new[] { 1, 2 };
+        var domesticIndexes = new[] { 0, 8 };
+        var orders = customers.Select((item, index) => new Order
         {
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
-            ConnectionId = connection.Id,
+            ConnectionId = item.Connection.Id,
+            StoreFrontCode = item.Storefront,
             ExternalOrderId = $"rg-{index}",
             OrderNumber = $"RG{index}",
             Currency = "TRY",
             OrderedAt = now.AddMinutes(-index),
             LastRemoteModifiedAt = now,
-            CustomerSnapshotJson = customer,
+            CustomerSnapshotJson = item.Customer,
             ShipmentAddressSnapshotJson = "{}",
             InvoiceAddressSnapshotJson = "{}",
             DerivedStatus = "NEW",
@@ -236,7 +244,7 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
             await using (var db = fixture.CreateContext())
             {
                 db.Tenants.Add(tenant);
-                db.PlatformConnections.Add(connection);
+                db.PlatformConnections.AddRange(connection, hepsiburada);
                 db.Orders.AddRange(orders);
                 await db.SaveChangesAsync();
             }
@@ -250,8 +258,13 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
             var counter = await sales.OrderSummaryAsync(tenant.Id, new OrderListQuery(MicroExport: true), CancellationToken.None, ["ALL"]);
 
             var expected = microIndexes.Select(index => orders[index].Id).Order().ToList();
-            Assert.Equal(orders[0].Id, Assert.Single(domestic.Items).Id);
+            Assert.Equal(domesticIndexes.Select(index => orders[index].Id).Order(), domestic.Items.Select(row => row.Id).Order());
+            Assert.Equal(customers.Length, all.TotalCount);
             Assert.Equal(expected, micro.Items.Select(row => row.Id).Order());
+            // Each row says what the rule in memory says of its order (the invoice reads the same).
+            Assert.All(orders.Select((order, index) => (order, index)), pair =>
+                Assert.Equal(microIndexes.Contains(pair.index) ? MicroExportState.MicroExport : domesticIndexes.Contains(pair.index) ? MicroExportState.Domestic : MicroExportState.Unknown,
+                    MicroExportRule.Classify(customers[pair.index].Connection.PlatformCode, customers[pair.index].Storefront, customers[pair.index].Customer).State));
             Assert.Equal(expected, microCard.Items.Select(row => row.Id).Order());
             Assert.Equal(expected.Count, counter.MicroExport);
             // The label (Mikro İhracat type) and the row's flag say the same of every order.
