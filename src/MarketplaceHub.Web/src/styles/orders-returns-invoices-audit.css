@@ -34,7 +34,7 @@
 /* Faturalar filter card at tablet width (900-1099px): it stacked all eight fields in two columns (400px tall) above
    the list; the head filters already cover the extra ones, so it keeps the one row of 1100px and up. */
 @media (min-width: 900px) and (max-width: 1099px) {
-  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid { grid-template-columns: minmax(120px, 1fr) minmax(156px, .9fr) minmax(190px, 1.1fr) minmax(150px, 1fr) auto; }
+  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid { grid-template-columns: minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1.1fr) minmax(0, 1fr) auto; }
   :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid > :is(.rr-search, .rr-fbtns) { grid-column: auto; }
   :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid > .rr-fbtns { align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
   :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid > .rr-sheet-only { display: none; }
