@@ -97,7 +97,7 @@
 /* Phones, every list ("tek satıra indir, heryerde", owner 10 Nov 2026): "Toplam N adet" is the one line above, the
    pages and the jump control share the line under it (pages left, jump right). The pages show the current one and its
    neighbours (the jump reaches the rest), the "Sayfaya Git" label hides (the input keeps its aria-label) and the input
-   is 56 px. The bare pager drops the phone gutter its host already has, so it lines up with "Toplam". */
+   is 52 px (three digits fit; it shows the current page). The bare pager drops the phone gutter its host already has, so it lines up with "Toplam". */
 @media (max-width: 760px) {
   :root:root:root:root :is(.rr-pager:not(.rr-pager-bare), .order-pagination) { flex-wrap: nowrap; align-items: center; gap: 6px; }
   :root:root:root:root :is(.rr-pager:not(.rr-pager-bare), .order-pagination) > span:first-child { flex: 0 0 auto; white-space: nowrap; font-size: 12px; }
@@ -106,7 +106,7 @@
   :root:root:root:root .rr-pager .rr-pages > button { min-width: 30px; padding-inline: 4px !important; }
   :root:root:root:root .rr-pager .rr-pages > :not(:first-child, :last-child, .rr-on) { display: none; }
   :root:root:root:root .rr-pager .rr-jump { margin-left: auto; padding-left: 0; border-left: 0; }
-  :root:root:root:root .rr-pager .rr-jump .rr-in { width: 40px; }
+  :root:root:root:root .rr-pager .rr-jump .rr-in { width: 52px; }
   :root:root:root:root .rr-pager .rr-jump .rr-btn { padding-inline: 8px !important; }
   :root:root:root:root .rr-pager .rr-jump-label { display: none; }
 }
