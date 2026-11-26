@@ -1,7 +1,7 @@
 import { TabSlidePanel } from '../../../shared/tab-slide'
 import { change, formatCount, formatNumber, formatPercent, formatTl, type ReportGroup, type ReportSales } from '../report-format'
 import { SalesMap } from '../SalesMap'
-import { type OpsSub, SubTabs, Panel, Bars, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, previousText, percent, previousMoney, netProfitTip, netLossTip, netSalesTip, returnRateTip, UnlinkedDeductions, profitSteps, topGroups } from './report-parts'
+import { type OpsSub, SubTabs, Panel, Bars, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, previousText, previousRate, percent, previousMoney, netProfitTip, netLossTip, netSalesTip, returnRateTip, UnlinkedDeductions, profitSteps, topGroups } from './report-parts'
 import { Platforms, Cities, Movers, Products, BrandsAndCategories, Returns, Cancellations, Cargo, TimeOfDay, Customers, CostAndProfit, Invoices } from './SalesTables'
 
 type ProductSub = 'products' | 'brands'
@@ -99,10 +99,10 @@ export function ProfitView({ data }: { data: ReportSales }) {
       delta: change(profit, earlierProfit), note: profit === null && profitReason(money, noAmount) ? profitReason(money, noAmount)! : previousText(earlierProfit === null ? null : signedTl(earlierProfit), '₺0'), tone: tone(profit),
       tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}` },
     { key: 'margin', label: 'Net Kâr / Satış Fiyatı Oranı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
-      note: previousText(formatPercent(earlier?.margin), '%0'), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
+      note: previousRate(earlier?.margin, then.ordersWithAmount > 0), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
       tip: 'Net kârın Net Ciro\'ya oranı; Genel Bakış\'taki Kâr Marjı ile aynı.' },
     { key: 'onCost', label: 'Net Kâr / Ürün Maliyeti Oranı', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
-      note: previousText(formatPercent(earlierOnCost), '%0'), tone: (onCost ?? 0) < 0 ? 'bad' : undefined,
+      note: previousRate(earlierOnCost, then.ordersWithAmount > 0), tone: (onCost ?? 0) < 0 ? 'bad' : undefined,
       tip: 'Net kârın ürün maliyetine oranı; Genel Bakış\'taki Maliyete Göre Kâr ile aynı.' }
   ]
   return <div className="reports-summary">

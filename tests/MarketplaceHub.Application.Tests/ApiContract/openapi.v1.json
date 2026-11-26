@@ -24461,6 +24461,16 @@
             "items": {
               "$ref": "#/components/schemas/AdReportStoreView"
             }
+          },
+          "totals": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdReportTotals"
+              }
+            ]
           }
         }
       },

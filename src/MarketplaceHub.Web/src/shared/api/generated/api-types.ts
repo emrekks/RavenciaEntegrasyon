@@ -42,6 +42,7 @@ export type AdReportStoreView = {
 export type AdReportsView = {
   reports: AdReportView[]
   stores: AdReportStoreView[]
+  totals?: null | AdReportTotals
 }
 
 export type AdReportTotals = {

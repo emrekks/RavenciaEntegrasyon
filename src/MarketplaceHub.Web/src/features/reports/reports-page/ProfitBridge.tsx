@@ -41,7 +41,9 @@ export function ProfitBridge({ data, money, onMore }: { data: ReportSales; money
     { key: 'stoppage', label: 'Stopaj', value: stoppage, note: explain('stoppage', coveredNote(data, 'STOPPAGE')) },
     { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', vatMore(money.tax)) },
     // The product cost only with the profit: with part of it missing the bridge ends at what the deductions leave.
-    { key: 'cost', label: 'Ürün Maliyeti', value: money.profit === null ? 0 : money.cost ?? 0, note: explain('cost', money.estimate) },
+    // C-11: the entered cost and the estimated cost of the units without one are two rows, the estimate never hidden in a note.
+    { key: 'cost', label: 'Ürün Maliyeti', value: money.profit === null ? 0 : (money.cost ?? 0) - money.estimated, note: explain('cost') },
+    { key: 'costEstimated', label: 'Tahmini Ürün Maliyeti', value: money.profit === null ? 0 : money.estimated, note: money.estimate },
     { key: 'unlinked', label: unlinkedTitle, value: money.unlinked, note: `${unlinkedNote} Net Kâr'dan düşülür.` }
   ].filter(item => item.value !== 0)
   const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: salesTip + ' Platformlara göre görmek için tıklayın.' }]

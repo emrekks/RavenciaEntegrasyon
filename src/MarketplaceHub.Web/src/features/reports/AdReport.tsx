@@ -22,7 +22,7 @@ export type AdTotals = {
   cpc: number | null; ctr: number | null; sales: number; directSales: number; indirectSales: number
 }
 export type AdReport = { id: string; connectionId: string; storeName: string; fileName: string; exportedAt: string; exportedAtFromFileName: boolean; uploadedAt: string; totals: AdTotals; campaigns: AdCampaign[] }
-export type AdReports = { reports: AdReport[]; stores: Array<{ connectionId: string; storeName: string }> }
+export type AdReports = { reports: AdReport[]; stores: Array<{ connectionId: string; storeName: string }>; totals?: AdTotals | null }
 
 export const adReportQuery = { queryKey: queryKeys.reports('ad-report'), queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getReportsAdReport'>>('/reports/ad-report', { signal }) }
 
@@ -35,23 +35,13 @@ export const reportAge = (report: AdReport, now = Date.now()) => Math.floor((now
 export const roasText = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const when = (value: string) => formatIstanbul(value, { dateStyle: 'medium', timeStyle: 'short' })
 
-// The stores' newest reports added up: with one store its own totals; with more, the sums and the rates from them.
-export function combined(reports: AdReport[]): AdTotals | null {
-  if (!reports.length) return null
-  if (reports.length === 1) return reports[0].totals
-  const sum = (pick: (totals: AdTotals) => number) => reports.reduce((total, report) => total + pick(report.totals), 0)
-  const spent = sum(totals => totals.spent), revenue = sum(totals => totals.revenue), clicks = sum(totals => totals.clicks), impressions = sum(totals => totals.impressions)
-  return {
-    spent, revenue, directRevenue: sum(totals => totals.directRevenue), indirectRevenue: sum(totals => totals.indirectRevenue), clicks, impressions,
-    roas: spent > 0 ? revenue / spent : null, cpc: clicks > 0 ? spent / clicks : null, ctr: impressions > 0 ? clicks / impressions : null,
-    sales: sum(totals => totals.sales), directSales: sum(totals => totals.directSales), indirectSales: sum(totals => totals.indirectSales)
-  }
-}
+// The stores' newest reports added up, as the server sends them (C-11: ROAS has one formula, computed on the server).
+export const combined = (data: AdReports | undefined): AdTotals | null => data?.reports.length ? data.totals ?? null : null
 
 // The card's row: ROAS and the ads' revenue of the newest report, or that none was uploaded; an old report is marked.
 export function adReportRow(data: AdReports | undefined, failed: boolean, now = Date.now()) {
   const reports = data?.reports ?? []
-  const totals = combined(reports)
+  const totals = combined(data)
   const oldest = reports.length ? Math.max(...reports.map(report => reportAge(report, now))) : null
   const stale = oldest !== null && oldest > staleDays
   const value = failed ? '—' : !data ? '…' : !totals ? 'Yüklenmedi' : totals.roas === null ? 'ROAS —' : `ROAS ${roasText(totals.roas)}`
@@ -93,7 +83,7 @@ export function AdReportModal({ open, onClose, data }: { open: boolean; onClose:
     upload.mutate(file)
   }
   const reports = data?.reports ?? []
-  const totals = combined(reports)
+  const totals = combined(data)
   const now = Date.now()
   const figures: Array<[string, string, string]> = totals ? [
     ['Harcanan', formatTl(totals.spent), 'Kampanyalarda tıklamalara harcanan bütçe.'],
@@ -122,7 +112,7 @@ export function AdReportModal({ open, onClose, data }: { open: boolean; onClose:
           <td>{campaign.name}{reports.length > 1 && <small> · {report.storeName}</small>}</td><td>{campaign.status ?? '—'}</td>
           <td className="is-num">{campaign.spent === null ? '—' : formatTl(campaign.spent)}</td>
           <td className="is-num">{campaign.totalRevenue === null ? '—' : formatTl(campaign.totalRevenue)}</td>
-          <td className="is-num">{campaign.spent && campaign.totalRevenue !== null ? roasText(campaign.totalRevenue / campaign.spent) : '—'}</td>
+          <td className="is-num">{campaign.roas === null ? '—' : roasText(campaign.roas)}</td>
         </tr>))}</tbody>
       </table></div>}
       <div className="reports-ad-upload">

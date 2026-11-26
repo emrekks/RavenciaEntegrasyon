@@ -26,7 +26,8 @@ public sealed class AdReportService(AppDbContext db, TimeProvider timeProvider) 
         var newest = heads.GroupBy(x => x.ConnectionId).Select(group => group.OrderByDescending(x => x.ExportedAt).ThenByDescending(x => x.UploadedAt).First().Id).ToArray();
         var files = await db.AdReportFiles.AsNoTracking().Where(x => x.TenantId == tenantId && newest.Contains(x.Id)).ToListAsync(cancellationToken);
         var names = stores.ToDictionary(store => store.ConnectionId, store => store.StoreName);
-        return ServiceResult<AdReportsView>.Ok(new(files.OrderByDescending(x => x.ExportedAt).Select(file => View(file, names.GetValueOrDefault(file.ConnectionId) ?? Trendyol)).ToList(), stores));
+        var reports = files.OrderByDescending(x => x.ExportedAt).Select(file => View(file, names.GetValueOrDefault(file.ConnectionId) ?? Trendyol)).ToList();
+        return ServiceResult<AdReportsView>.Ok(new(reports, stores, reports.Count > 0 ? Totals(reports.SelectMany(report => report.Campaigns).ToList()) : null));
     }
 
     public async Task<ServiceResult<AdReportUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, string correlationId, CancellationToken cancellationToken)
@@ -80,7 +81,8 @@ public sealed class AdReportService(AppDbContext db, TimeProvider timeProvider) 
 
     internal static AdReportView View(AdReportFile file, string storeName)
     {
-        var campaigns = JsonSerializer.Deserialize<List<AdCampaignRow>>(file.CampaignsJson, Json) ?? [];
+        var campaigns = (JsonSerializer.Deserialize<List<AdCampaignRow>>(file.CampaignsJson, Json) ?? [])
+            .Select(campaign => campaign with { Roas = campaign.Spent is { } spent && campaign.TotalRevenue is { } revenue ? Roas(revenue, spent) : null }).ToList();
         return new(file.Id, file.ConnectionId, storeName, file.FileName, file.ExportedAt, file.ExportedAtFromFileName, file.UploadedAt, Totals(campaigns), campaigns);
     }
 
@@ -97,11 +99,14 @@ public sealed class AdReportService(AppDbContext db, TimeProvider timeProvider) 
         var seen = campaigns.Where(x => x.Clicks is not null && x.Impressions is not null).ToList();
         var seenImpressions = seen.Sum(x => x.Impressions!.Value);
         return new(MoneyRounding.Round(spent), MoneyRounding.Round(revenue), MoneyRounding.Round(campaigns.Sum(x => x.DirectRevenue ?? 0m)), MoneyRounding.Round(campaigns.Sum(x => x.IndirectRevenue ?? 0m)),
-            bothSpent > 0 ? PercentRounding.Percent(both.Sum(x => x.TotalRevenue!.Value) / bothSpent) : null, clicks, impressions,
+            Roas(both.Sum(x => x.TotalRevenue!.Value), bothSpent), clicks, impressions,
             paidClicks > 0 ? MoneyRounding.Round(clickSpent.Sum(x => x.Spent!.Value) / paidClicks) : null,
             seenImpressions > 0 ? PercentRounding.Rate((decimal)seen.Sum(x => x.Clicks!.Value) / seenImpressions) : null,
             campaigns.Sum(x => x.TotalSales ?? 0m), campaigns.Sum(x => x.DirectSales ?? 0m), campaigns.Sum(x => x.IndirectSales ?? 0m));
     }
+
+    // ROAS, the one formula the panel shows (AdReportContracts): ad revenue ÷ spent, null when nothing was spent.
+    internal static decimal? Roas(decimal revenue, decimal spent) => spent > 0 ? PercentRounding.Percent(revenue / spent) : null;
 
     // The tenant's Trendyol stores that are not test environments.
     private async Task<List<AdReportStoreView>> StoresAsync(Guid tenantId, CancellationToken cancellationToken) =>

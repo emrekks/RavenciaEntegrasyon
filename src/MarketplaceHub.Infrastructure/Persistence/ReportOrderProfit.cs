@@ -142,7 +142,10 @@ internal static class ReportOrderProfit
                 paymentFee = MoneyRounding.Round(estimate.PaymentFee);
                 vatFees = order.PlatformCode == "SHOPIFY" ? 0m : estimate.ServiceFee;
                 costs.Add(new("cargo", "Kargo", orderCargo, true, ReportPlatformCosts.UnknownCarrier(order.PlatformCode, carriers.GetValueOrDefault(id))
-                    ? "Kargo firması bilinmiyor; hepsiJET desi tablosundan (barem uygulanmadan) varsayıldı" : "Platformun 2026 kargo tarifesinden"));
+                    ? "Kargo firması bilinmiyor; hepsiJET desi tablosundan (barem uygulanmadan) varsayıldı"
+                    : ReportPlatformCosts.UnstatedDesi(order.PlatformCode, desi, carriers.GetValueOrDefault(id))
+                        ? "Bu desinin fiyatı tarifede yok; tarifedeki son fiyattan varsayıldı, gerçek tutar daha yüksek olabilir"
+                        : "Platformun 2026 kargo tarifesinden"));
                 costs.Add(new("serviceFee", "Hizmet Bedeli", serviceFee, true, "Platformun 2026 tarifesinden"));
                 costs.Add(new("stoppage", "Stopaj", stoppage, true, "KDV hariç satışın %1'i"));
                 if (paymentFee != 0m) costs.Add(new("paymentFee", "Ödeme Komisyonu", paymentFee, true, "Ödeme kuruluşunun oranından"));
