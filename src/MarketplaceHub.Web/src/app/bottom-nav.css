@@ -25,6 +25,10 @@
   /* The smallest viewport (100svh), which does not change while a browser toolbar shows or hides during a scroll (the dynamic viewport unit did, and a page that
      re-lays-out in every frame makes sticky heads jump on iOS); the page colour fills the rest, so no band shows under the bar. */
   html body, html body .app-shell.stitch-shell, html body .app-shell.stitch-shell > main { min-height: 100svh; }
+  /* Home Screen app (owner, 26 Nov 2026, iPhone 16 Pro: the bar sat lifted with a gap under it on pages other than Ana Sayfa): there are no browser bars
+     to hide, and there 100svh is the screen less the safe areas, so a short page ended above the screen bottom. The full 100vh instead. A trial: the
+     cause is not measured on a device yet (dockDiagnostic). */
+  @media (display-mode: standalone) { html body, html body .app-shell.stitch-shell, html body .app-shell.stitch-shell > main { min-height: 100vh; } }
   /* The phone keeps the page's top bar as it was (breadcrumb, bell, theme, search); only its hamburger is gone: Menü is in the dock. */
   html body .app-shell.stitch-shell .rv-topbar .rv-mobile-menu-toggle { display: none; }
   /* The top bar and the status bar (clock): while the bar shows, one piece in the bar's surface colour - it starts at the very top edge (sticky top 0, no gap
