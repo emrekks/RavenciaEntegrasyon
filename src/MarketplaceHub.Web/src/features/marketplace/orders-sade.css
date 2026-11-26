@@ -338,3 +338,11 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl td:has(> .rr-actcell) { text-align: center; }
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl td > .rr-actcell { text-align: left; vertical-align: middle; }
 }
+
+/* Phone, owner 26 Nov 2026: the order detail's actions take the look and the place of the dock's task bar (app/bottom-nav.css: the same glass
+   capsule, 56 px high, 12 px from the sides, the dock's gap above the screen edge) instead of a band glued to the bottom; the content scrolls under it. */
+@media (max-width: 760px) {
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f { position: absolute; right: 12px; bottom: var(--rv-dock-bottom, 12px); left: 12px; z-index: 2; flex-wrap: nowrap; align-items: center; gap: 6px; box-sizing: border-box; height: 56px; padding: 0 10px; border: 0; border-radius: 28px; background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha, 88%), transparent); box-shadow: var(--rv-dock-glass-shadow, 0 4px 12px rgb(0 0 0 / 20%)); -webkit-backdrop-filter: blur(5px) saturate(1.3); backdrop-filter: blur(5px) saturate(1.3); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-b.rr-sheet-b { padding-bottom: calc(var(--rv-dock-bottom, 12px) + 56px + 12px); }
+@media (prefers-reduced-transparency: reduce) { :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f { background: var(--rv-color-surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+}
