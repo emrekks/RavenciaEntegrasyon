@@ -632,7 +632,7 @@
   .invoice-dropzone b { color: var(--rv-color-primary); }
   .invoice-upload-icon { display: grid; width: 48px; height: 48px; place-items: center; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: var(--rv-radius-md); }
   .invoice-upload-icon .ui-icon { width: 24px; height: 24px; }
-  .integration-settings-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: flex; align-items: stretch; justify-content: flex-end; background: rgb(5 16 29 / 72%); backdrop-filter: blur(8px); }
+  .integration-settings-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: flex; align-items: stretch; justify-content: flex-end; background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .integration-settings-modal { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(760px, 100%); height: 100%; max-height: none; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 0; border-left: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg) 0 0 var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .integration-settings-modal > header { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); background: var(--rv-color-surface); border-bottom: 1px solid var(--rv-color-border); }
   .integration-inline-workspace { min-width: 0; padding: var(--rv-space-5) var(--rv-space-6) var(--rv-space-6); }

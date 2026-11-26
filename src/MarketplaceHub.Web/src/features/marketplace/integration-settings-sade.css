@@ -2,7 +2,7 @@
    its own head, a section list on the left and one section at a time on the right. */
 
 /* Drawer frame */
-.integration-settings-modal-backdrop { background: rgb(5 6 12 / 55%); backdrop-filter: none; }
+.integration-settings-modal-backdrop { background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
 .app-shell.stitch-shell main .integration-settings-modal { grid-template-rows: minmax(0, 1fr); width: min(900px, 100%); background: var(--rv-color-surface); border-left: 1px solid var(--rv-color-border-strong); border-radius: 0; box-shadow: -12px 0 32px rgb(0 0 0 / 22%); }
 .app-shell.stitch-shell main .integration-settings-modal > .integration-inline-workspace.cs-workspace { display: grid; gap: 0; grid-template-rows: auto minmax(0, 1fr); min-height: 0; padding: 0; overflow: hidden; }
 .cs-workspace:not(.is-inline) { display: grid; gap: 0; padding: 0; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
