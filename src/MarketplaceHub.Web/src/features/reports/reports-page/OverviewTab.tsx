@@ -6,7 +6,7 @@ import { PanelSelect } from '../../../shared/PanelSelect'
 import { change, noValue, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, platformName, type Change, type ReportGroup, type ReportReason, type ReportSales } from '../report-format'
 import { AdReportModal, adReportQuery, adReportRow, combined, reportAge, roasText, staleDays, type AdReports } from '../AdReport'
 import { Columns, Donut, Progress, useReveal, type ColumnPoint, type Part } from '../report-visuals'
-import { MetricSourceContext, type DetailKey, Delta, type OpenDetail, TipMark, TipText, previousLine, Card, type Money, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, wholeLiras, previousText, percent, previousMoney, explain, commissionGap, cargoGap, vatMore, netProfitTip, netLossTip, netSalesTip, returnRateTip, unlinkedDeductions, financeCosts, trendyolRead, feeCategories, costFigure, coveredNote, profitSteps, weightedHours, weekdays } from './report-parts'
+import { MetricSourceContext, type DetailKey, Delta, type OpenDetail, TipMark, TipText, previousLine, previousRate, Card, type Money, moneyBreakdown, profitReason, missingCostTip, profitLabel, estimateLine, signedTl, type Kpi, KpiStrip, wholeLiras, previousText, percent, previousMoney, explain, commissionGap, cargoGap, vatMore, netProfitTip, netLossTip, netSalesTip, returnRateTip, unlinkedDeductions, financeCosts, trendyolRead, feeCategories, costFigure, coveredNote, profitSteps, weightedHours, weekdays } from './report-parts'
 import { ProfitBridge } from './ProfitBridge'
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
@@ -138,16 +138,18 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
       tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit), '₺0')}`,
       tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
     { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
-      note: `Reklam öncesi ${beforeAds === null ? '%0' : formatPercent(beforeAds)}`,
-      tip: `Net kârın Net Ciro'ya oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.${estimateLine(money)}\n${previousLine(formatPercent(earlier?.margin), '%0')}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
+      // C-11: unknown (the ads or the profit not known) is a dash; "%0" only when nothing was ordered at all.
+      note: `Reklam öncesi ${beforeAds === null ? empty ? '%0' : '—' : formatPercent(beforeAds)}`,
+      tip: `Net kârın Net Ciro'ya oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.${estimateLine(money)}\n${previousRate(earlier?.margin, then.ordersWithAmount > 0)}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: `Ürün maliyeti ${money?.cost && money.profit !== null ? formatTl(money.cost) : '₺0'}`,
-      tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousLine(formatPercent(earlierOnCost), '%0')}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
+      tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousRate(earlierOnCost, then.ordersWithAmount > 0)}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
     { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '₺0' : formatTl(now.averageOrderValue)}`,
       tip: `Dönemde gelen sipariş sayısı; iptal edilenler sayılmaz, tutarı okunmayan ve TL dışındaki siparişler sayılır. Ana sayfadaki Toplam Sipariş yalnız tutarı olanları sayar; sepet de tutarı olan siparişlere bölünür.\n${previousLine(formatCount(then.orders))}`, split: split(row => row.orders, formatCount) },
     // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
     // the Satış card under the strip leads with the same figure (owner, 7 Nov 2026: the strip as 3 + 3).
-    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
+    // C-11: beside Net Ciro (returns taken off) the label says this count keeps the returns in.
+    { key: 'sold', label: 'Satılan Adet (İade Dahil)', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
       note: `Net ${formatNumber(now.keptQuantity)} · ${formatNumber(now.returnedQuantity)} iade`,
       tip: `Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmez. Net adet, iadeler düşülünce müşteride kalandır.\n${previousLine(formatNumber(then.soldQuantity))}`,
       split: split(row => row.soldQuantity, formatNumber) }
@@ -491,7 +493,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   // Reklam: the statement's spend with its share of Trendyol's revenue against the 5 % line, and the uploaded report.
   const trendyol = data.platforms.find(item => item.key.toUpperCase() === 'TRENDYOL' && item.ordersWithAmount > 0)
   const tacos = spend !== null && trendyol && trendyol.netRevenue > 0 ? spend / trendyol.netRevenue : null
-  const adTotals = combined(ads?.reports ?? [])
+  const adTotals = combined(ads)
   const adOld = (ads?.reports ?? []).some(report => reportAge(report) > staleDays)
   const adRow = adReportRow(ads, adsFailed)
   const adRows: HeroRow[] = adTotals

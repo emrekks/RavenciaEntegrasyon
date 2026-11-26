@@ -108,6 +108,18 @@ public sealed class ReportPlatformCostsTests
         Assert.False(ReportPlatformCosts.UnknownCarrier("N11", null));
     }
 
+    // C-10: the tariff source prices a Hepsiburada parcel up to 31 desi (30 for Kolay Gelsin); a heavier one is flagged.
+    [Fact]
+    public void Hepsiburada_desi_over_the_stated_tariff_is_an_assumption()
+    {
+        Assert.False(ReportPlatformCosts.UnstatedDesi("HEPSIBURADA", 30m, "Kolay Gelsin"));
+        Assert.True(ReportPlatformCosts.UnstatedDesi("HEPSIBURADA", 31m, "Kolay Gelsin"));
+        Assert.False(ReportPlatformCosts.UnstatedDesi("HEPSIBURADA", 31m, "Yurtiçi Kargo"));
+        Assert.True(ReportPlatformCosts.UnstatedDesi("HEPSIBURADA", 32m, "hepsiJET"));
+        Assert.False(ReportPlatformCosts.UnstatedDesi("HEPSIBURADA", 40m, null));
+        Assert.False(ReportPlatformCosts.UnstatedDesi("N11", 40m, "Aras Kargo"));
+    }
+
     // Review of 25 Nov 2026: with one Trendyol store read and another not, the unread store's fees stay out of the cost
     // lines (no estimate is invented for them) and the note names every cost missing, not only its VAT, so the cost
     // total and the net profit are not read as complete.

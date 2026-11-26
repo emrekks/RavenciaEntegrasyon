@@ -132,6 +132,9 @@
      position: fixed layers above the screen's bottom edge by about the safe area, so a backdrop set by inset: 0 stopped short. It hangs from the top
      with the full screen height instead (100lvh). A trial, not measured on a device. */
   @media (display-mode: standalone) { html body .rr-overlay.rr-overlay.rr-overlay, html body :is(.rv-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop) { bottom: auto; height: 100lvh; } }
+  /* In that app the page behind a window is held by refusing touch moves, not by pinning body (shared/overlay-scroll-lock.ts): what scrolls inside a
+     window keeps its overscroll, so reaching its end does not drag the page. */
+  @media (display-mode: standalone) { :is(.rr-overlay, .rv-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop, [aria-modal="true"]), :is(.rr-overlay, .rv-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop, [aria-modal="true"]) * { overscroll-behavior: contain; } }
 }
 
 /* Phones, every window whose body ends in a framed card (order and return details, invoice details, quick edit…): the

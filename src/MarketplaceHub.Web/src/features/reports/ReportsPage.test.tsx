@@ -96,7 +96,7 @@ const requests = vi.hoisted(() => [] as string[])
 const connectionsFixture = vi.hoisted(() => ({ items: undefined as Array<{ id: string; platformCode: string; status: string }> | undefined }))
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
 // Trendyol's ad report: none uploaded unless a test sets one.
-const adReports = vi.hoisted(() => ({ current: { reports: [] as unknown[], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] } }))
+const adReports = vi.hoisted(() => ({ current: { reports: [] as unknown[], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }], totals: null as unknown } }))
 const payouts: ApiAnswer<'getReportsPayouts'> = {
   paidUnread: 0, paidUnreadRecords: 0, otherCurrencies: null,
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0, pendingDelivery: 1450.5, pendingDeliveryOrders: 3,
@@ -163,7 +163,7 @@ const tipOf = (page: HTMLElement, card: string, label: string) => [...heroCard(p
 const cargoTip = (page: HTMLElement) => [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Kargo'))?.querySelector('.reports-hover-tip')?.textContent
 const bridgeRows = (page: HTMLElement) => [...page.querySelectorAll('.reports-bridge > li')].map(row => `${row.querySelector('.reports-bridge-label')?.textContent ?? ''} ${row.querySelector('b')?.textContent ?? ''}`)
 
-afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0; adReports.current = { reports: [], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] } })
+afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0; adReports.current = { reports: [], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }], totals: null } })
 
 describe('ReportsPage', () => {
   it('asks for the last 30 days and shows the overview: the six figures, the costs, the bridge, the days and the metric cards', async () => {
@@ -199,7 +199,7 @@ describe('ReportsPage', () => {
     expect(figures[3]).toContain('%158,8')
     expect(figures[4]).toContain('+%100')
     // Satılan Adet: 5 sold (returns not taken off), the 4 kept and 1 return under it; the Satış card leads with it too.
-    expect(figures[5]).toContain('Satılan Adet5')
+    expect(figures[5]).toContain('Satılan Adet (İade Dahil)5')
     expect(figures[5]).toContain('Net 4 · 1 iade')
     expect(figures[5]).toContain('iptaller sayılmaz, iadeler düşülmez')
     // Every figure against the previous period: the profit against its 160, the margin against 80,0 % (160 over 200 of Net Ciro) (a rate's change
@@ -294,11 +294,12 @@ describe('ReportsPage', () => {
   // is a campaign total, never the period's figure, kept apart from the statement's ad charge, and old after 7 days.
   it('shows the uploaded Trendyol ad report as a campaign total, with its campaigns in a window', async () => {
     const campaign = (name: string, spent: number, totalRevenue: number) => ({ name, status: 'Yayında', start: '2026-10-20 10:00', end: null, productCount: 3, totalBudget: null, dailyBudget: 500,
-      remainingBudget: null, spent, cpcBid: null, actualCpc: null, clicks: 900, impressions: 50000, directSales: 2, indirectSales: 9, totalSales: 11, directRevenue: null, indirectRevenue: null, totalRevenue, roas: null })
+      remainingBudget: null, spent, cpcBid: null, actualCpc: null, clicks: 900, impressions: 50000, directSales: 2, indirectSales: 9, totalSales: 11, directRevenue: null, indirectRevenue: null, totalRevenue, roas: Math.round(totalRevenue / spent * 100) / 100 })
+    const totals = { spent: 3250.1, revenue: 16000.75, directRevenue: 3500.5, indirectRevenue: 12500.25, roas: 4.92, clicks: 1800, impressions: 100000, cpc: 1.81, ctr: 0.018, sales: 22, directSales: 7, indirectSales: 15 }
     adReports.current = { reports: [{ id: 'r1', connectionId: 'c1', storeName: 'Ravencia Trendyol', fileName: 'Ürün Reklamları Raporum - 02.11.2026-09.00.xlsx', exportedAt: new Date(Date.now() - 10.5 * 86_400_000).toISOString(),
       exportedAtFromFileName: true, uploadedAt: '2026-11-02T07:00:00Z', campaigns: [campaign('Ürün-A', 2000, 6000.75), campaign('Ürün-B', 1250.1, 10000)],
-      totals: { spent: 3250.1, revenue: 16000.75, directRevenue: 3500.5, indirectRevenue: 12500.25, roas: 4.92, clicks: 1800, impressions: 100000, cpc: 1.81, ctr: 0.018, sales: 22, directSales: 7, indirectSales: 15 } }],
-      stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] }
+      totals }],
+      stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }], totals }
       const page = await open()
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
       expect(heroTiles(page, 'ads')).toEqual(['Sipariş Başına Reklam —', 'ROAS (kampanya) 4,92', 'Reklam Cirosu (Kampanya) ₺16.001'])
@@ -713,7 +714,8 @@ describe('ReportsPage', () => {
     expect(figures[1].textContent).toContain(sentence)
     expect(figures[2].textContent).toContain(sentence)
     expect(figures[3].textContent).toContain('Ürün maliyeti ₺84')
-    expect(bridgeRows(page).slice(-2)).toEqual(['− Ürün Maliyeti − ₺84,00', 'Tahmini Net Kâr ₺123,00'])
+    // C-11: the entered cost and the estimated cost are two rows of the bridge.
+    expect(bridgeRows(page).slice(-3)).toEqual(['− Ürün Maliyeti − ₺80,00', '− Tahmini Ürün Maliyeti − ₺4,00', 'Tahmini Net Kâr ₺123,00'])
     expect(texts(page, '.reports-card-bridge .reports-bridge-gaps > div')).toContain('Maliyeti Girili1 adet eksik, maliyeti tahmini%95,0')
   })
 

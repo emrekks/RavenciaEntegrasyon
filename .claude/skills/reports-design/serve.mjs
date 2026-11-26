@@ -46,7 +46,8 @@ createServer(async (req, res) => {
     if (path.startsWith('/reports/payouts')) return json(payouts)
     if (path.startsWith('/reports/order-profitability')) return json(orderProfit)
     // A made-up Trendyol ad report (two campaigns, figures as large as a real store's), uploaded yesterday.
-    if (path === '/reports/ad-report') return json({ stores: [{ connectionId: 'c-ty', storeName: 'Trendyol Mağaza' }], reports: [{ id: 'ad1', connectionId: 'c-ty', storeName: 'Trendyol Mağaza',
+    if (path === '/reports/ad-report') return json({ stores: [{ connectionId: 'c-ty', storeName: 'Trendyol Mağaza' }],
+      totals: { spent: 12545.31, revenue: 124357.98, directRevenue: 25178.07, indirectRevenue: 99179.91, roas: 9.91, clicks: 11787, impressions: 470337, cpc: 1.06, ctr: 0.0251, sales: 139, directSales: 29, indirectSales: 110 }, reports: [{ id: 'ad1', connectionId: 'c-ty', storeName: 'Trendyol Mağaza',
       fileName: 'Ürün Reklamları Raporum - 06.11.2026-09.00.xlsx', exportedAt: new Date(Date.now() - 86_400_000).toISOString(), exportedAtFromFileName: true, uploadedAt: new Date().toISOString(),
       totals: { spent: 12545.31, revenue: 124357.98, directRevenue: 25178.07, indirectRevenue: 99179.91, roas: 9.91, clicks: 11787, impressions: 470337, cpc: 1.06, ctr: 0.0251, sales: 139, directSales: 29, indirectSales: 110 },
       campaigns: [{ name: 'Ürün-Kampanya A', status: 'Yayında', start: '2026-10-20 10:00', end: null, productCount: 27, totalBudget: 10000, dailyBudget: null, remainingBudget: 0, spent: 10000, cpcBid: null, actualCpc: 1.02, clicks: 9800, impressions: 400000, directSales: 20, indirectSales: 80, totalSales: 100, directRevenue: 18000, indirectRevenue: 80000, totalRevenue: 98000, roas: 9.8 },

@@ -1408,7 +1408,7 @@ public sealed partial class InvoicingBillingService(
             FiscalDeliveryPackage = selectedPackage is null ? null : new InvoiceFiscalDeliveryPackageSnapshot(
                 selectedPackage.ExternalPackageId,
                 selectedPackage.CargoProviderExternalId,
-                selectedPackage.StatusOccurredAt)
+                await FiscalSentAtAsync(db, tenantId, selectedPackage.Id, selectedPackage.StatusOccurredAt, cancellationToken))
         });
         db.InvoicePartySnapshots.Add(Snapshot(invoice, "RECEIVER", receiverJson, now));
         try
@@ -1533,7 +1533,8 @@ public sealed partial class InvoicingBillingService(
                     .Select(x => new { x.ExternalPackageId, x.CargoProviderExternalId, x.StatusOccurredAt })
                     .SingleOrDefaultAsync(cancellationToken);
                 if (package is not null)
-                    deliveryPackage = new(package.ExternalPackageId, package.CargoProviderExternalId, package.StatusOccurredAt);
+                    deliveryPackage = new(package.ExternalPackageId, package.CargoProviderExternalId,
+                        await FiscalSentAtAsync(db, tenantId, packageId, package.StatusOccurredAt, cancellationToken));
             }
 
             if (deliveryPackage is null)
@@ -1920,6 +1921,14 @@ public sealed partial class InvoicingBillingService(
         status == InvoiceStatus.Rejected
         && lastErrorCode is "EFATURAM_FISCAL_PAYLOAD_INVALID" or "EFATURAM_REQUEST_REJECTED" or "EFATURAM_APPLICATION_NOT_ACTIVE"
         && string.IsNullOrWhiteSpace(externalReference);
+
+    // The e-Archive's sent date (deliveryInfo.sentAt): when the package was handed to the carrier, its first "shipped"
+    // status as the reports read it (scan C-11). Without a recorded shipped status it stays the time of the package's
+    // latest status, as before; no shipped time is guessed.
+    internal static async Task<DateTimeOffset> FiscalSentAtAsync(AppDbContext db, Guid tenantId, Guid packageId, DateTimeOffset statusOccurredAt, CancellationToken cancellationToken) =>
+        await db.OrderStatusHistory.AsNoTracking()
+            .Where(history => history.TenantId == tenantId && history.PackageId == packageId && history.CanonicalStatus == "SHIPPED")
+            .MinAsync(history => (DateTimeOffset?)history.OccurredAt, cancellationToken) ?? statusOccurredAt;
 
     internal static bool IsValidFiscalDeliveryPackage(InvoiceFiscalDeliveryPackageSnapshot? package) =>
         package is not null

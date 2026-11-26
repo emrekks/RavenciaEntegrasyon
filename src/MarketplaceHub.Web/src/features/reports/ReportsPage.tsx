@@ -156,7 +156,7 @@ function reportTabs(data: ReportSales): ReportTab[] {
   const margin = moneyBreakdown(data, profitSteps(data))?.margin ?? null
   return [
     { value: 'overview', label: 'Genel Bakış', icon: 'dashboard' },
-    { value: 'profit', label: 'Kârlılık', icon: 'trend', count: margin === null ? '%0' : formatPercent(margin), warn: margin !== null && margin < 0 },
+    { value: 'profit', label: 'Kârlılık', icon: 'trend', count: margin === null ? now.ordersWithAmount > 0 ? '—' : '%0' : formatPercent(margin), warn: margin !== null && margin < 0 },
     { value: 'payouts', label: 'Hakediş', icon: 'wallet' },
     { value: 'orders', label: 'Sipariş Kârlılığı', icon: 'orders' },
     { value: 'products', label: 'Ürünler', icon: 'products' },

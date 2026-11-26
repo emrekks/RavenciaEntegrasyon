@@ -54,19 +54,29 @@ internal static class InvoiceDeliveryRetryReader
             .Select(connection => connection.Id).ToHashSet();
         var uncertainRetried = stateRows.GroupBy(state => state.InvoiceId)
             .ToDictionary(group => group.Key, group => group.All(state => uncertainRetriedConnections.Contains(state.ConnectionId)));
+        // Every invoice job is keyed "{type}:{invoiceId}:..." (InvoicingBillingService.AddJob, EnqueueAutomaticJob,
+        // the delivery recovery), so the key prefix finds an invoice's fetch and delivery jobs. All candidates' jobs are
+        // read in one query and handed out by their prefix.
+        var prefixOwners = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (var candidateId in candidateIds)
+        {
+            prefixOwners[$"{InvoicingJobTypes.InvoiceDocumentFetch}:{candidateId}:"] = candidateId;
+            prefixOwners[$"{InvoicingJobTypes.MarketplaceDelivery}:{candidateId}:"] = candidateId;
+            prefixOwners[$"{InvoicingJobTypes.InvoiceReconcile}:{candidateId}:"] = candidateId;
+        }
+        var jobPrefixes = prefixOwners.Keys.ToArray();
+        var jobRows = await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.TenantId == tenantId && jobPrefixes.Any(prefix => job.JobDedupKey.StartsWith(prefix)))
+            .Select(job => new { job.JobDedupKey, job.JobType, job.Status, job.CreatedAt })
+            .ToListAsync(cancellationToken);
+        var jobsByInvoice = jobRows
+            .Select(job => (Owner: OwnerOf(job.JobDedupKey, prefixOwners), Job: job))
+            .Where(row => row.Owner is not null)
+            .ToLookup(row => row.Owner!.Value, row => row.Job);
         var entries = new Dictionary<Guid, Entry>();
         foreach (var invoice in invoices)
         {
-            // Every invoice job is keyed "{type}:{invoiceId}:..." (InvoicingBillingService.AddJob, EnqueueAutomaticJob,
-            // the delivery recovery), so the key prefix finds this invoice's fetch and delivery jobs.
-            var fetchPrefix = $"{InvoicingJobTypes.InvoiceDocumentFetch}:{invoice.Id}:";
-            var deliveryPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:";
-            var reconcilePrefix = $"{InvoicingJobTypes.InvoiceReconcile}:{invoice.Id}:";
-            var jobs = await db.IntegrationJobs.AsNoTracking()
-                .Where(job => job.TenantId == tenantId
-                    && (job.JobDedupKey.StartsWith(fetchPrefix) || job.JobDedupKey.StartsWith(deliveryPrefix) || job.JobDedupKey.StartsWith(reconcilePrefix)))
-                .Select(job => new { job.JobType, job.Status, job.CreatedAt })
-                .ToListAsync(cancellationToken);
+            var jobs = jobsByInvoice[invoice.Id].ToList();
             var hasActiveJob = jobs.Any(job => job.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled);
             // An Accepted or MarketplaceFailed invoice is retried only after a delivery that failed retryably: the latest
             // delivery job used up its retries (Dead). One that was refused (Blocked: a missing package, a refused
@@ -94,6 +104,14 @@ internal static class InvoiceDeliveryRetryReader
             entries[invoice.Id] = new(invoice.Id, need, hasActiveJob, view, ownerNeed);
         }
         return entries;
+    }
+
+    // The invoice whose "{type}:{invoiceId}:" prefix opens the key: the key up to and including its second colon.
+    private static Guid? OwnerOf(string dedupKey, IReadOnlyDictionary<string, Guid> prefixOwners)
+    {
+        var first = dedupKey.IndexOf(':');
+        var second = first < 0 ? -1 : dedupKey.IndexOf(':', first + 1);
+        return second >= 0 && prefixOwners.TryGetValue(dedupKey[..(second + 1)], out var owner) ? owner : null;
     }
 
     // A fetch of the stored invoice's document, keyed per attempt so an earlier fetch (the one after acceptance, a

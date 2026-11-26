@@ -103,6 +103,17 @@ internal static class ReportPlatformCosts
     // assumption the report and the order profit say as such (unknown stays unknown, never shown as the carrier's price).
     internal static bool UnknownCarrier(string platformCode, string? carrier) => platformCode == "HEPSIBURADA" && HepsiburadaCarrier(carrier) == Unknown;
 
+    // C-10: a Hepsiburada parcel over 30 desi whose price docs/KARGO-TARIFELERI-2026.md does not state. The source gives the
+    // 31 desi price (not Kolay Gelsin's) and a per-desi charge above 100 desi without the 100 desi price it adds to, so
+    // nothing over 31 desi (over 30 for Kolay Gelsin) has a stated price: For() keeps the last stated price as a floor and
+    // the report and the order profit say that cargo is an assumption, as for an unknown carrier.
+    internal static bool UnstatedDesi(string platformCode, decimal? desi, string? carrier)
+    {
+        var parcel = desi is > 0 ? desi.Value : DefaultDesi;
+        var company = HepsiburadaCarrier(carrier);
+        return platformCode == "HEPSIBURADA" && company != Unknown && parcel > 30m && (parcel > 31m || !HepsiburadaOver30.ContainsKey(company));
+    }
+
     internal static string HepsiburadaCarrier(string? carrier) => Fold(carrier) switch
     {
         var name when name.Contains("ARAS") => "ARAS",
@@ -116,7 +127,8 @@ internal static class ReportPlatformCosts
     };
 
     // The 5 Oct 2026 PDF's 31 desi price (TL without VAT), the least a parcel over 30 desi costs; Kolay Gelsin's is not
-    // in the source (docs/KARGO-TARIFELERI-2026.md), so its parcel keeps the 30 desi price.
+    // in the source (docs/KARGO-TARIFELERI-2026.md), so its parcel keeps the 30 desi price. A parcel over 31 desi (over
+    // 30 for Kolay Gelsin) has no stated price: UnstatedDesi flags its cargo as an assumption.
     private static readonly Dictionary<string, decimal> HepsiburadaOver30 = new()
     {
         ["HEPSIJET"] = 390.99m,

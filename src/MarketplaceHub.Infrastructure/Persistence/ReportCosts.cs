@@ -429,6 +429,27 @@ internal static class ReportCosts
     {
         foreach (var note in NotesOfCosts(costs, input)) yield return note;
         if (orders is not null && UnknownCarrierNote(input, orders) is { } unknownCarrier) yield return unknownCarrier;
+        if (orders is not null && UnstatedDesiNote(input, orders) is { } unstatedDesi) yield return unstatedDesi;
+    }
+
+    // C-10: the Hepsiburada orders whose parcel is over the desi the tariff source prices (ReportPlatformCosts.UnstatedDesi)
+    // take the last stated price as a floor; the note says that cargo is an assumption.
+    private static string? UnstatedDesiNote(ReportInput input, IReadOnlyList<ReportBuilder.OrderFact> orders)
+    {
+        var carriers = Carriers(input);
+        var desiInput = input.Desi ?? ReportDesiInput.None;
+        var count = orders.Count(order =>
+        {
+            if (order.PlatformCode != "HEPSIBURADA" || order.Currency != "TRY" || order.Amount <= 0) return false;
+            var (desi, _) = ReportParcelDesi.ForOrder(
+                desiInput.DeclaredByOrder.TryGetValue(order.Order.Id, out var declared) ? declared : null,
+                order.Lines.Select(line => (line.Row.Desi, line.Row.ProductId, line.Row.CategoryId, line.Active)),
+                desiInput.Learned);
+            return ReportPlatformCosts.UnstatedDesi(order.PlatformCode, desi, carriers.GetValueOrDefault(order.Order.Id));
+        });
+        return count > 0
+            ? $"Eksik: kargo fiyatı. {count.ToString("N0", CultureInfo.GetCultureInfo("tr-TR"))} Hepsiburada siparişinin desisi kargo tarifesinde fiyatı verilen desinin üstünde; kargosu tarifedeki son fiyattan varsayıldı, gerçek tutar daha yüksek olabilir."
+            : null;
     }
 
     // Each package's carrier by order (the first named).

@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { isHomeScreenApp } from '../phone-shell'
 
 type MainLockState = { count: number; previousOverflow: string }
 type ScrollLock = { main: HTMLElement | null; root: boolean; layer: boolean; hold: boolean }
@@ -70,7 +71,8 @@ function acquire(lockMain: boolean, { root = false, layer = true, hold = true }:
 
   const lock = { main, root, layer, hold }
   activeLocks.add(lock)
-  if (hold) document.body.style.overflow = 'hidden'
+  // A Home Screen app takes no body overflow lock (phone-shell.ts isHomeScreenApp); the overlay lock holds its touches instead.
+  if (hold && !isHomeScreenApp()) document.body.style.overflow = 'hidden'
   syncLayerMark()
   return () => release(lock)
 }

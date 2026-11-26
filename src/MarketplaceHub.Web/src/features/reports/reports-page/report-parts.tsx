@@ -124,6 +124,10 @@ export function TipText({ title, text }: { title: string; text: string }) {
 const isNothing = (value: string) => /^(₺|%)?0([,.]0+)?$/u.test(value.trim())
 // zero: the figure's own zero ("₺0", "%0"); a sub-line with no data reads zero, only a card's main value is a dash.
 export const previousLine = (value: string | null, zero = '0') => value === null || value === '—' || isNothing(value) ? `Önceki dönem: ${zero}` : `Önceki dönem: ${value}`
+// C-11: a previous period's profit rate that is unknown (it sold, but its profit could not be worked out) reads "—", never
+// "%0"; with nothing sold it is the rate's zero, as above.
+export const previousRate = (rate: number | null | undefined, sold: boolean) =>
+  sold && (rate === null || rate === undefined) ? 'Önceki dönem: —' : previousLine(formatPercent(rate), '%0')
 
 // A board card: its icon and title, its actions, and its content, which learns when the card first came into view so
 // its chart can play then.

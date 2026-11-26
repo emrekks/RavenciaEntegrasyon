@@ -5,7 +5,9 @@ namespace MarketplaceHub.Application;
 // Trendyol's product ads report (an uploaded "Ürün Reklamları Raporum" export). Every figure is a campaign total since
 // the campaign started, as of ExportedAt: never a report period's figure. Totals add the campaigns up: Spent and Revenue
 // over the campaigns that write them, Roas = Revenue ÷ Spent over the campaigns that write both, Cpc = Spent ÷ Clicks,
-// Ctr = Clicks ÷ Impressions (null when the divisor is 0 or unknown).
+// Ctr = Clicks ÷ Impressions (null when the divisor is 0 or unknown). C-11: ROAS is computed here only, with that one
+// formula: a campaign row's Roas in the view is its TotalRevenue ÷ Spent (not the file's column), and AdReportsView.Totals
+// adds up the campaigns of every store's newest report, so the panel shows the server's ROAS and computes none.
 public sealed record AdReportTotals(decimal Spent, decimal Revenue, decimal DirectRevenue, decimal IndirectRevenue, decimal? Roas, long Clicks, long Impressions,
     decimal? Cpc, decimal? Ctr, decimal Sales, decimal DirectSales, decimal IndirectSales);
 
@@ -15,8 +17,9 @@ public sealed record AdReportView(Guid Id, Guid ConnectionId, string StoreName, 
 // A Trendyol store a report can be uploaded for.
 public sealed record AdReportStoreView(Guid ConnectionId, string StoreName);
 
-// The newest report of each Trendyol store, and the stores a report can be uploaded for.
-public sealed record AdReportsView(IReadOnlyList<AdReportView> Reports, IReadOnlyList<AdReportStoreView> Stores);
+// The newest report of each Trendyol store, the stores a report can be uploaded for, and the newest reports' campaigns
+// added up (null when no report was uploaded).
+public sealed record AdReportsView(IReadOnlyList<AdReportView> Reports, IReadOnlyList<AdReportStoreView> Stores, AdReportTotals? Totals);
 
 public sealed record AdReportUploadResult(AdReportView Report, IReadOnlyList<string> Warnings);
 
