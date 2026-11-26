@@ -253,6 +253,35 @@ async function questionHeadStep() {
     await context.close()
   }
 }
+// Siparişler' summary cards on tablets and phones: no text runs past its card (the İptal card's "N Paket | N Kısmi İptal | N Adet Ürün" line
+// used to be cut at 761-1099 px).
+async function orderCardsStep() {
+  for (const width of [375, 761, 900, 1024, 1050, 1099]) {
+    const context = await browser.newContext({ viewport: { width, height: width < 768 ? 812 : 900 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce' })
+    await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+    const page = await context.newPage()
+    await page.clock.setFixedTime(frozenNow)
+    await installApiMock(page, { unhandled: new Set() })
+    try {
+      await page.goto(server.origin + '/orders')
+      await page.locator('.rr-metrics > article').first().waitFor({ timeout: 15000 })
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
+      const bad = await page.evaluate(() => {
+        const problems = []
+        for (const card of document.querySelectorAll('.rr-metrics > article')) {
+          const box = card.getBoundingClientRect()
+          for (const el of card.querySelectorAll(':scope > :not(.rv-card-bg):not(.rr-metric-tip) *, :scope > :not(.rv-card-bg):not(.rr-metric-tip)')) {
+            const rect = el.getBoundingClientRect()
+            if (rect.width && getComputedStyle(el).display !== 'none' && rect.right > box.right + 0.5) problems.push((card.querySelector('small')?.textContent ?? 'card') + ': ' + (el.className && String(el.className).split(' ')[0] || el.tagName.toLowerCase()) + ' +' + (rect.right - box.right).toFixed(1) + 'px')
+          }
+        }
+        return problems
+      })
+      if (bad.length) failures.push('order cards @' + width + ': ' + [...new Set(bad)].slice(0, 6).join(', '))
+    } catch (error) { failures.push('order cards @' + width + ': ' + String(error.message).split(String.fromCharCode(10))[0]) }
+    await context.close()
+  }
+}
 try {
   await Promise.all(Array.from({ length: 4 }, worker))
   if (!only) await badgeStep()
@@ -260,6 +289,7 @@ try {
   if (!only) await questionDetailStep()
   if (!only) await questionSyncStripStep()
   if (!only) await questionHeadStep()
+  if (!only) await orderCardsStep()
   if (!only) {
     await layerStep('filter sheet', '/orders', page => page.getByRole('button', { name: /^Filtre/ }).first().click(), page => page.getByRole('button', { name: /^Filtrele$/ }).first().click())
     await layerStep('window', '/orders', page => page.getByRole('button', { name: /Detayları Aç/ }).first().click(), page => page.keyboard.press('Escape'))

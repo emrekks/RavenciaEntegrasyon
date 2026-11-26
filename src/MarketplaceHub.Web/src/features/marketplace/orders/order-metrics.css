@@ -122,3 +122,13 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop[data-flip="up"] { top: auto; bottom: calc(100% + 6px); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-reminder-pop) { position: relative; z-index: 90; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:has(.rr-reminder-pop) { z-index: 3; }
+
+/* Tablets and narrow laptops (761-1099 px): the cards are 165-265 px wide, too narrow for "N Paket | N Kısmi İptal | N Adet Ürün" on one line (the
+   chip ran up to 67 px past the card). The İptal card stacks its partial-cancel line under the count, as on a phone, without the
+   leading bar, and the line may wrap rather than be cut. */
+@media (min-width: 761px) and (max-width: 1099px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped { grid-template-columns: minmax(0, 1fr); }
+  html body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics article.rr-metric-chipped .rr-metric-chip.rr-metric-chip.rr-metric-chip.rr-metric-chip.rr-metric-chip { --rr-chip-fs: 12px; justify-content: flex-start; max-width: 100%; padding: 0 0 4px; flex-wrap: wrap; white-space: normal; }
+  html body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics article.rr-metric-chipped .rr-metric-chip.rr-metric-chip.rr-metric-chip.rr-metric-chip.rr-metric-chip::before { content: none; }
+  html body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics article.rr-metric-chipped .rr-metric-chip.rr-metric-chip.rr-metric-chip.rr-metric-chip .rr-metric-sep { margin: 0 4px; }
+}
