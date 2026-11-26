@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { change, periodPresets, desiSourcesNote, formatPercent, formatTlShort, moneyOrMissing, profitCost, reportQuery, sortRows, toCsv, type ReportSales } from './report-format'
+import { change, periodPresets, desiSourcesNote, formatPercent, formatTlShort, moneyOrMissing, profitCost, reportQuery, sortRows, toCsv, trNumber, type ReportSales } from './report-format'
 
 describe('report formatting', () => {
+  it('writes a number exactly as toLocaleString does, with a formatter kept per set of options', () => {
+    const values = [0, -0.04, 0.05, 1, 12.345, -1234.5, 99999.995, 1_638_267.4, 0.1 + 0.2, -7.25, 1e9]
+    const optionSets: Intl.NumberFormatOptions[] = [{}, { maximumFractionDigits: 1 }, { minimumFractionDigits: 1, maximumFractionDigits: 1 }, { maximumFractionDigits: 1, minimumFractionDigits: 1 },
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 }, { minimumFractionDigits: 0, maximumFractionDigits: 0 }, { useGrouping: false, maximumFractionDigits: 4 }]
+    for (const options of optionSets) for (const value of values) expect(trNumber(value, options)).toBe(value.toLocaleString('tr-TR', options))
+    expect(formatPercent(0.12345, 2)).toBe(`%${(12.345).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+  })
   it('writes an axis zero as ₺0 like the short figures beside it', () => {
     expect(formatTlShort(0)).toBe(new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(0))
     expect(formatTlShort(0)).not.toContain(',00')

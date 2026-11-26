@@ -4,6 +4,8 @@ import { change, downloadCsv, variantColourAndSize, formatCount, formatHours, fo
 import { Columns, StackedBar, useReveal, type ColumnPoint, type Part } from '../report-visuals'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { Delta, Panel, RevealPanel, type Column, DataTable, Bars, TipMark, TipText, moneyBreakdown, type Kpi, KpiStrip, previousText, percent, unlinkedLabels, returnRateTip, financeCosts, trendyolRead, profitSteps, weightedHours, type BarItem, topGroups, NoAmountNote, TotalRow, weekdays } from './report-parts'
+import { Deferred } from './Deferred'
+import { tableEstimate } from './deferred-estimates'
 import { EstimateGaps, ProfitLedger } from './ProfitBridge'
 
 // İade ve İptal: the return rate, what came back (units, claims and the amount paid for them), then the cancel rate
@@ -352,8 +354,8 @@ function stockColumns(days: number): Column<ReportStockRow>[] {
 
 export function BestSellerTables({ data }: { data: ReportSales }) {
   return <>
-    <div className="is-wide"><DataTable title="En Çok Satanların Stoğu" description="Ana depodaki güncel kullanılabilir stok ve dönemin satış hızıyla kalan gün; 7 günden azı işaretli." csvName="rapor-stok" rows={data.stock.bestSellers} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} /></div>
-    <div className="is-wide"><DataTable title="Satıp Stoğu Biten Ürünler" csvName="rapor-stok-biten" rows={data.stock.soldOut} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} empty="Dönemde satılıp stoğu sıfır olan ürün yok." /></div>
+    <Deferred name="stockBestSellers" className="is-wide" estimate={tableEstimate(data.stock.bestSellers.length, 61)}><div className="is-wide"><DataTable title="En Çok Satanların Stoğu" description="Ana depodaki güncel kullanılabilir stok ve dönemin satış hızıyla kalan gün; 7 günden azı işaretli." csvName="rapor-stok" rows={data.stock.bestSellers} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} /></div></Deferred>
+    <Deferred name="stockSoldOut" className="is-wide" estimate={tableEstimate(data.stock.soldOut.length, 61)}><div className="is-wide"><DataTable title="Satıp Stoğu Biten Ürünler" csvName="rapor-stok-biten" rows={data.stock.soldOut} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} empty="Dönemde satılıp stoğu sıfır olan ürün yok." /></div></Deferred>
   </>
 }
 
