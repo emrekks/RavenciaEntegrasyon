@@ -174,7 +174,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         var readyBefore = now.AddDays(-1);
         var since = now.AddDays(-Setting("BackfillDays", 90, 1, 365));
         // B-9 (25 Nov 2026): a payout whose records failed for a reason of its own (the payout was not found or its query
-        // refused) is held back for PayoutRetryHours behind its open issue, so the payouts after it are still read; before,
+        // refused, its answer broke the contract or ran past the page cap) is held back for PayoutRetryHours behind its open issue, so the payouts after it are still read; before,
         // the newest payout failed first on every run and the older ones were never reached.
         var lineIssues = await new IssueRecorder(db).ByPrefixAsync(request.TenantId, PayoutLinesFailureCode, PayoutLinesKeyPrefix(request.ConnectionId), cancellationToken);
         await MarkPayoutsOutOfWindowAsync(request, lineIssues, since, cancellationToken);
@@ -221,11 +221,14 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     if (LastPage(page, value.Items.Count + value.Skipped.Count, value.TotalPages, TrendyolFinanceRequestContract.PageSize)) { pagesEnded = true; break; }
                 }
                 if (heldBack) break;
-                // The payout is not marked read with records left unread.
+                // The payout is not marked read with records left unread: one that runs past the page cap is held back
+                // like a payout Trendyol does not know (closure audit, 26 Nov 2026), so the older payouts are still read.
                 if (!pagesEnded)
                 {
-                    db.ChangeTracker.Clear();
-                    return await PayoutFailureAsync(request, PageCap("ödeme kayıtları"), now, cancellationToken);
+                    await HoldBackPayoutAsync(request, payout.ExternalId, new(AdapterErrorClass.ContractViolation, PageCapCode,
+                        $"kayıtlar {MaximumPages} sayfayı aştı, hiçbiri kaydedilmedi", null, null, null), now, cancellationToken);
+                    heldBack = true;
+                    break;
                 }
             }
             // Nothing of a held-back payout is stored; its issue is saved and the next payout is read.
@@ -265,9 +268,10 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         return new(false, lasting ? null : error);
     }
 
-    // A failure of one payout's own query: the payout is unknown to Trendyol or its query is refused. A sign-in, service or
-    // network failure is the connection's and stops the payout reads as before.
-    internal static bool OfThePayout(AdapterError error) => error.Class is AdapterErrorClass.NotFound or AdapterErrorClass.Validation;
+    // A failure of one payout's own query: the payout is unknown to Trendyol, its query is refused, or its answer breaks the
+    // contract (closure audit, 26 Nov 2026: before, such a payout failed first on every run and blocked the older ones). A
+    // sign-in, rate limit, service or network failure is the connection's and stops the payout reads as before.
+    internal static bool OfThePayout(AdapterError error) => error.Class is AdapterErrorClass.NotFound or AdapterErrorClass.Validation or AdapterErrorClass.ContractViolation;
 
     private Task HoldBackPayoutAsync(JobRequest request, string payoutId, AdapterError error, DateTimeOffset now, CancellationToken cancellationToken) =>
         UpsertIssueAsync(request.TenantId, PayoutLinesKey(request.ConnectionId, payoutId), PayoutLinesFailureCode,

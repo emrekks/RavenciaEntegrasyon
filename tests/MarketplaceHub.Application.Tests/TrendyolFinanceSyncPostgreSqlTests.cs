@@ -172,13 +172,18 @@ public sealed class TrendyolFinanceSyncPostgreSqlTests(PostgreSqlTenantIsolation
 
     // B-9 (25 Nov 2026): the newest payout's records fail on every run (Trendyol does not know it); the older payout is
     // read all the same, and the failing one waits a day behind its issue instead of being asked again at once.
-    [PostgreSqlFact]
-    public async Task A_payout_that_keeps_failing_is_held_back_and_the_older_one_is_read()
+    // Closure audit (26 Nov 2026): a payout whose answer breaks the contract, or runs past the page cap, is held back the same
+    // way; before, it stopped the payout reads and blocked the older payouts.
+    [PostgreSqlTheory]
+    [InlineData("NOT_FOUND")]
+    [InlineData("CONTRACT")]
+    [InlineData("PAGE_CAP")]
+    public async Task A_payout_that_keeps_failing_is_held_back_and_the_older_one_is_read(string failure)
     {
         var (tenantId, connectionId) = await SeedAsync("fin-payout-held");
         try
         {
-            var port = new FakeFinancePort { OlderPayout = true, FailRecordsOf = "PO-1" };
+            var port = new FakeFinancePort { OlderPayout = true, FailRecordsOf = "PO-1", FailRecordsWith = failure };
             JobOutcome outcome;
             var slices = 0;
             do
@@ -197,6 +202,7 @@ public sealed class TrendyolFinanceSyncPostgreSqlTests(PostgreSqlTenantIsolation
                 var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.DedupeKey == TrendyolFinanceSyncJobHandler.PayoutLinesKey(connectionId, "PO-1"));
                 Assert.Equal(IssueStatus.Open, issue.Status);
                 Assert.Equal(TrendyolFinanceSyncJobHandler.PayoutLinesFailureCode, issue.Code);
+                if (failure == "PAGE_CAP") Assert.Contains("sayfayı aştı", issue.Summary, StringComparison.Ordinal);
             }
 
             // An hour later the held-back payout is not asked again; a day later it is.
@@ -281,8 +287,10 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         public bool PayoutReadAskedSubType { get; private set; }
         // A second payout, three days older than PO-1 (B-9).
         public bool OlderPayout { get; init; }
-        // The payout whose records Trendyol answers 404 for, and how often it was asked.
+        // The payout whose records fail, how (NOT_FOUND: a 404; CONTRACT: an answer that breaks the contract; PAGE_CAP: pages
+        // that never end), and how often it was asked (first pages only).
         public string? FailRecordsOf { get; init; }
+        public string FailRecordsWith { get; init; } = "NOT_FOUND";
         public int FailedRecordReads { get; private set; }
 
         public Task<AdapterResult<RemoteStatementPage>> GetSettlementsAsync(AdapterContext context, string transactionType, DateTimeOffset start, DateTimeOffset end, int page, CancellationToken cancellationToken)
@@ -330,8 +338,14 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
             PayoutRecordReads++;
             if (paymentOrderId == FailRecordsOf)
             {
-                FailedRecordReads++;
-                return Task.FromResult(AdapterResult<RemoteStatementPage>.Failure(new(AdapterErrorClass.NotFound, "NOT_FOUND", "Kayıt bulunamadı.", 404, null, null)));
+                if (page == 0) FailedRecordReads++;
+                return Task.FromResult(FailRecordsWith switch
+                {
+                    "CONTRACT" => AdapterResult<RemoteStatementPage>.Failure(new(AdapterErrorClass.ContractViolation, "CONTRACT_VIOLATION", "Yanıt beklenen biçimde değil.", 200, null, null)),
+                    "PAGE_CAP" => AdapterResult<RemoteStatementPage>.Success(new([new($"cap-{page}", source, transactionType, null, "Satış", PaidDay, null, null, null, null,
+                        1m, 0m, null, null, null, paymentOrderId, null, $$"""{"id":"cap-{{page}}"}""")], page, int.MaxValue, int.MaxValue)),
+                    _ => AdapterResult<RemoteStatementPage>.Failure(new(AdapterErrorClass.NotFound, "NOT_FOUND", "Kayıt bulunamadı.", 404, null, null))
+                });
             }
             PayoutReadAskedSubType |= transactionSubType is not null;
             payoutsRead = true;
