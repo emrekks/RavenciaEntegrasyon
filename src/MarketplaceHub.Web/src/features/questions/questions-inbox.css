@@ -256,6 +256,11 @@
   .app-shell.stitch-shell main .qi-page .qi-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
   .app-shell.stitch-shell main .qi-page .qi-acts > button { width: 100%; min-width: 0; justify-content: center; }
 }
+/* 320 px: each button is 144 px wide and Hazır Cevaplar (label 100 px, count 22 px) no longer fits with its icon: its icon steps aside, the label and count stay whole (Yenile has room and keeps its icon). */
+@media (max-width: 340px) {
+  .app-shell.stitch-shell main .qi-page .qi-acts > button { gap: 5px; padding-inline: 6px; white-space: nowrap; }
+  .app-shell.stitch-shell main .qi-page .qi-acts > button:first-child > svg { display: none; }
+}
 /* Phones: the history state is a small tip that opens on the platform name (tap or hover) instead of a line of its own. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync { overflow: visible; }
