@@ -130,7 +130,7 @@
   :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop > .workspace-modal) img:not(.rr-logo):not([class*="logo"]):not(.rv-view-tab-logo) { max-height: calc(100dvh - 260px); object-fit: contain; }
   /* Home Screen app (owner, 26 Nov 2026, iPhone 16 Pro: a band stayed under an open window): while the page is held still for a window, WebKit ends
      position: fixed layers above the screen's bottom edge by about the safe area, so a backdrop set by inset: 0 stopped short. It hangs from the top
-     with the full screen height instead (100lvh). A trial, not measured on a device. */
+     with the full screen height instead (100lvh); confirmed on the owner's phone (27 Nov 2026). */
   @media (display-mode: standalone) { html body .rr-overlay.rr-overlay.rr-overlay, html body :is(.rv-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop) { bottom: auto; height: 100lvh; } }
   /* In that app the page behind a window is held by refusing touch moves, not by pinning body (shared/overlay-scroll-lock.ts): what scrolls inside a
      window keeps its overscroll, so reaching its end does not drag the page. */
