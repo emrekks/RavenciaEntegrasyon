@@ -292,7 +292,9 @@ purpose (`TurkeyTime.cs`).
   listPrice ≥ salePrice (~8425, product create); the panel checks it before sending (CHANNEL_OFFER_INVALID).
 - Owner decision 27 Nov 2026 (`TrendyolPriceRefusal`): a FAILED item whose every failure reason names the price (fiyat,
   salePrice, listPrice, price, PSF, TSF) and none names the stock, the barcode/product, approval/archive/lock/sale state,
-  the request (per-minute limit, 15-minute repeat) or authorisation counts as a price refusal; the row then goes stock-only
+  the request (any limit, sınır, aşıldı, exceed, frequent, sık, throttle, 429, later/sonra, tekrar dene, 15-minute repeat),
+  an error (hata, error, exception, timeout, geçici) or authorisation counts as a price refusal (texts compared lower-cased
+  in tr-TR and invariant, Turkish letters folded to ASCII); the mark is exempt from the 30-day stale pass; the row then goes stock-only
   on the next send that happens anyway while the price to send is the refused one (issue `TRENDYOL_PRICE_REFUSED`, key
   `trendyol-price-refused:{connection:N}:{variant:N}`). Any other refusal is handled as before. Check the first live
   refusal's text in the worker log ("failure reasons") against this rule.

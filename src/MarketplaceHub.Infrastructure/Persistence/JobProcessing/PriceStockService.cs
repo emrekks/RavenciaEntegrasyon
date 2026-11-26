@@ -241,6 +241,8 @@ internal sealed class PriceStockService(
         var success = 0; var failed = 0; var superseded = 0; var uncertain = 0; var notSent = 0;
         var unknownCodes = new Dictionary<Guid, string>();
         var confirmedCodes = new List<Guid>();
+        // The connection's open refused-price marks (TrendyolPriceRefusal), read once for the whole answer.
+        var refusedPrices = isTrendyol ? await TrendyolPriceRefusal.OpenIssuesAsync(db, tenantId, connectionId, cancellationToken) : [];
         foreach (var line in payload.Lines)
         {
             var found = isHepsiburada
@@ -336,8 +338,12 @@ internal sealed class PriceStockService(
                 offer.Version++; success++;
                 // Trendyol took a price for the row: a refused price it held back before (TrendyolPriceRefusal) is no
                 // longer the case, so the row goes with its price again. A stock-only line says nothing of the price.
-                if (isTrendyol && !line.PriceOmitted)
-                    await issues.ResolveIfOpenAsync(tenantId, TrendyolPriceRefusal.Key(connectionId, line.VariantId), timeProvider, cancellationToken);
+                if (isTrendyol && !line.PriceOmitted && refusedPrices.TryGetValue(line.VariantId, out var mark) && mark.Status != IssueStatus.Resolved
+                    && TrendyolPriceRefusal.AcceptanceEnds(mark, TrendyolPriceRefusal.Fingerprint(line.Barcode, line.PriceHash, line.SalePrice, line.ListPrice), priceCurrent, payload.SubmittedAt))
+                {
+                    mark.Status = IssueStatus.Resolved;
+                    mark.ResolvedAt = timeProvider.GetUtcNow();
+                }
                 if (!stockCurrent || !priceCurrent)
                 {
                     superseded++;

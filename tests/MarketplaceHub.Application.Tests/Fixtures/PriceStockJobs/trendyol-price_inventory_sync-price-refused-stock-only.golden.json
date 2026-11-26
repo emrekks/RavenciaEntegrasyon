@@ -506,7 +506,7 @@
           "OccurrenceCount": 1,
           "ResolvedAt": null,
           "Status": "Open",
-          "Summary": "Trendyol 869200000002 için fiyatı reddetti (satış 120.00 TL, liste 150.00 TL): Girilen satış fiyatı geçersiz. Stok fiyatsız gönderilmeye devam ediyor; fiyat, panel fiyatı veya Özel Fiyat değişene kadar gönderilmeyecek. [reddedilen fiyat: 3B726E9D308FB312]",
+          "Summary": "Trendyol 869200000002 için fiyatı reddetti (satış 120,00 TL, liste 150,00 TL): Girilen satış fiyatı geçersiz. Stok fiyatsız gönderilmeye devam ediyor; fiyat, panel fiyatı veya Özel Fiyat değişene kadar gönderilmeyecek. [reddedilen fiyat: 3B726E9D308FB312]",
           "TenantId": "tenant"
         }
       ]
@@ -596,7 +596,7 @@
           "CreatedAt": "T+00:00:35",
           "Currency": "TRY",
           "ErrorCode": "TRENDYOL_PRICE_REFUSED",
-          "ErrorMessage": "Trendyol 869200000002 için fiyatı reddetti (satış 120.00 TL, liste 150.00 TL): Girilen satış fiyatı geçersiz. Stok fiyatsız gönderilmeye devam ediyor; fiyat, panel fiyatı veya Özel Fiyat değişene kadar gönderilmeyecek. [reddedilen fiyat: 3B726E9D308FB312]",
+          "ErrorMessage": "Trendyol 869200000002 için fiyatı reddetti (satış 120,00 TL, liste 150,00 TL): Girilen satış fiyatı geçersiz. Stok fiyatsız gönderilmeye devam ediyor; fiyat, panel fiyatı veya Özel Fiyat değişene kadar gönderilmeyecek. [reddedilen fiyat: 3B726E9D308FB312]",
           "ExternalRequestId": "batch-1",
           "Id": "id6",
           "JobId": "job-first",

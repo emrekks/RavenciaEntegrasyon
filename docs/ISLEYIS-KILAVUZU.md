@@ -487,8 +487,9 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   fiyat işaretini ve iki fiyatı parmak izi olarak tutar (migration yok). Gönderilecek fiyat değişince (panel fiyatı, Özel
   Fiyat, yeni kod) satır yine fiyat+stokla gider; Trendyol bir fiyatı kabul edince sorun kapanır. O varyant için panelden
   tek varyant gönderimi fiyatı yine dener; sorunu elle kapatmak da fiyatı bir kez daha denetir. Varyant, teklif, kod ya da
-  bağlantı silinince günlük bakım sorunu kapatır. Yalnız açıkça fiyata ait ret sayılır: her ret nedeni fiyatı anar ve stok,
-  barkod/ürün, onay/arşiv/kilit, istek sınırı ya da yetki anmaz; başka her ret bugünkü gibi işler. Bu değişiklik kendiliğinden
+  bağlantı silinince günlük bakım sorunu kapatır; 30 günlük "eskimiş sorun" kapatması bu sorunu kapatmaz. Eski bir
+  gönderimin geç gelen kabulü yeni reddedilen fiyatın işaretini kaldırmaz. Yalnız açıkça fiyata ait ret sayılır: her ret
+  nedeni fiyatı anar ve stok, barkod/ürün, onay/arşiv/kilit, sınır/limit/sıklık, "sonra deneyin", hata ya da yetki anmaz; başka her ret bugünkü gibi işler. Bu değişiklik kendiliğinden
   gönderim başlatmaz, otomatik yazma anahtarına dokunmaz (`TrendyolPriceRefusal`, `PriceInventoryComposer`, `PriceStockService`).
 - **Panel fiyatı ilk pazaryerinden** (sahip kararı, 18 Kas 2026): bir varyant ilk kez bir pazaryerinden içe aktarılırken
   panel liste ve satış fiyatı o pazaryerinin fiyatıyla kaydedilir (fiyat boş ya da 0 ise yazılmaz); sonraki çekimler

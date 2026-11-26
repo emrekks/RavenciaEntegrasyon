@@ -15,12 +15,16 @@ public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvid
     // however long it waits; the import resolves it.
     public const string OrderNotImportedCode = "ORDER_NOT_IMPORTED";
 
+    // A refused Trendyol price (TrendyolPriceRefusal) is state, not a sighting: it is seen only when Trendyol refuses, and
+    // while it is open the row goes stock-only. Closed as stale, the refused price would go again with the stock and the
+    // stock would be refused with it; it closes when Trendyol takes a price or its subject is gone. Only resolved issues
+    // are ever deleted (DeleteResolvedAsync), so an open mark is never removed.
     public async Task<int> ResolveStaleAsync(TimeSpan staleAfter, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var cutoff = now - staleAfter;
         return await db.OperationalIssues
-            .Where(issue => issue.Status == IssueStatus.Open && issue.LastSeenAt < cutoff && issue.Code != OrderNotImportedCode)
+            .Where(issue => issue.Status == IssueStatus.Open && issue.LastSeenAt < cutoff && issue.Code != OrderNotImportedCode && issue.Code != TrendyolPriceRefusal.Code)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(issue => issue.Status, IssueStatus.Resolved)
                 .SetProperty(issue => issue.ResolvedAt, now), cancellationToken);

@@ -27,6 +27,10 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
         public List<string> Pushes { get; } = [];
         public string Reason { get; set; } = PriceReason;
         public bool RefusePrice { get; set; } = true;
+        // Only this sale price is refused; null refuses any price of the refused barcode.
+        public decimal? RefusedSalePrice { get; set; }
+        // The send time the answer names (the adapter's clock); the run's clock when given.
+        public GoldenClock? Clock { get; set; }
 
         public GoldenMarketplace Port()
         {
@@ -37,7 +41,7 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
                 Pushes.Add(json);
                 var id = $"batch-{Pushes.Count}";
                 payloads[id] = json;
-                return AdapterResult<RemoteOperationRef>.Success(new(id, "PRICE_INVENTORY", Start.AddMinutes(1)));
+                return AdapterResult<RemoteOperationRef>.Success(new(id, "PRICE_INVENTORY", Clock?.GetUtcNow() ?? Start.AddMinutes(1)));
             };
             port.Answers["products.GetOperation"] = args =>
             {
@@ -45,7 +49,7 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
                 var lines = JsonNode.Parse(payloads[id])!["items"]!.AsArray().Select(item =>
                 {
                     var barcode = item!["barcode"]!.GetValue<string>();
-                    var refused = RefusePrice && barcode == Refused && item["salePrice"] is not null;
+                    var refused = RefusePrice && barcode == Refused && item["salePrice"] is { } sale && (RefusedSalePrice is null || sale.GetValue<decimal>() == RefusedSalePrice);
                     // As TrendyolJsonMapper.Batch reads a FAILED item: the first reason as the error code, every reason kept.
                     return refused ? new RemoteOperationLine(barcode, false, null, Reason, false, Reasons: [Reason]) : new RemoteOperationLine(barcode, true, null, null, false);
                 }).ToList();
@@ -94,7 +98,10 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
     }
 
     // A user's "Fiyat ve Stok Gönder" for the product (or one variant), built by the panel's own composer, run until it ends.
-    private async Task<JobExecutionResult> SendFromPanelAsync(GoldenRun run, GoldenMarketplace port, Guid productId, string label, Guid? variantId = null)
+    private async Task<JobExecutionResult> SendFromPanelAsync(GoldenRun run, GoldenMarketplace port, Guid productId, string label, Guid? variantId = null) =>
+        await RunToEndAsync(run, port, await QueueFromPanelAsync(run, productId, label, variantId), label);
+
+    private async Task<Guid> QueueFromPanelAsync(GoldenRun run, Guid productId, string label, Guid? variantId = null)
     {
         var jobId = run.NewId();
         run.Known[jobId] = $"job-{label}";
@@ -106,8 +113,14 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
             db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = run.Tenant.Id, ConnectionId = run.Connection.Id, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"golden-pi:{jobId:N}", EffectIdempotencyKey = $"price-inventory:{label}", Status = JobStatus.Leased, AvailableAt = Start, CorrelationId = "golden", CreatedAt = Start, Version = 1, TriggerType = "user" });
             await db.SaveChangesAsync();
         }
+        return jobId;
+    }
+
+    // The job run by the queue, each time with the payload its last run left on it, until it ends (or after maxRuns).
+    private async Task<JobExecutionResult> RunToEndAsync(GoldenRun run, GoldenMarketplace port, Guid jobId, string label, int maxRuns = 4)
+    {
         JobExecutionResult result = null!;
-        for (var index = 0; index < 4; index++)
+        for (var index = 0; index < maxRuns; index++)
         {
             string payloadJson;
             await using (var db = fixture.CreateContext())
@@ -116,8 +129,11 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
             result = await run.RunAsync($"{label}-{index}", MarketplaceJobTypes.PriceInventorySync, port, payloadJson, jobId);
             if (result.Kind != JobCompletionKind.Retry) break;
         }
-        await using (var db = fixture.CreateContext())
+        if (result.Kind != JobCompletionKind.Retry)
+        {
+            await using var db = fixture.CreateContext();
             await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, result.Kind == JobCompletionKind.Succeeded ? JobStatus.Succeeded : JobStatus.ManualReview));
+        }
         return result;
     }
 
@@ -188,7 +204,7 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
     public async Task AChangedPriceGoesWithTheStockAgain_AndAnAcceptedPriceClearsTheMark()
     {
         var (run, productId, variants) = await SeedAsync(true, MarketplaceExternalWritePolicies.Manual);
-        var trendyol = new ScriptedTrendyol();
+        var trendyol = new ScriptedTrendyol { Clock = run.Clock };
         var port = trendyol.Port();
         await SendFromPanelAsync(run, port, productId, "first");
         Assert.Equal(IssueStatus.Open, (await RefusalIssueAsync(run, variants[1]))!.Status);
@@ -223,6 +239,59 @@ public sealed class TrendyolPriceRefusalStockOnlyPostgreSqlTests(PostgreSqlTenan
         await SendFromPanelAsync(run, port, productId, "variant", variantId: variants[1]);
         Assert.Equal(120m, Item(trendyol.Pushes[1], Refused)["salePrice"]!.GetValue<decimal>());
         Assert.Equal(IssueStatus.Resolved, (await RefusalIssueAsync(run, variants[1]))!.Status);
+    }
+
+    // Review ORTA-1: the 30-day stale pass and the retention's delete must not end an open mark.
+    [PostgreSqlFact]
+    public async Task AMarkOlderThanTheStaleWindowSurvivesRetention_AndTheThirdSendIsStillStockOnly()
+    {
+        var (run, productId, variants) = await SeedAsync(true, MarketplaceExternalWritePolicies.Manual);
+        var trendyol = new ScriptedTrendyol();
+        var port = trendyol.Port();
+        await SendFromPanelAsync(run, port, productId, "first");
+        await SendFromPanelAsync(run, port, productId, "second");
+        Assert.Null(Item(trendyol.Pushes[1], Refused)["salePrice"]);
+
+        var key = TrendyolPriceRefusal.Key(run.Connection.Id, variants[1]);
+        await using (var db = fixture.CreateContext())
+            await db.OperationalIssues.Where(x => x.TenantId == run.Tenant.Id && x.DedupeKey == key).ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.FirstSeenAt, Start.AddDays(-45)).SetProperty(x => x.LastSeenAt, Start.AddDays(-40)));
+        await using (var db = fixture.CreateContext())
+        {
+            var retention = new OperationalIssueRetentionService(db, new FrozenClock(Start.AddDays(1)));
+            await retention.ResolveStaleAsync(TimeSpan.FromDays(30), CancellationToken.None);
+            await retention.DeleteResolvedAsync(TimeSpan.FromDays(30), CancellationToken.None);
+        }
+        Assert.Equal(IssueStatus.Open, (await RefusalIssueAsync(run, variants[1]))!.Status);
+
+        await StockChangesAsync(run);
+        await SendFromPanelAsync(run, port, productId, "third");
+        Assert.Equal(4, Item(trendyol.Pushes[2], Refused)["quantity"]!.GetValue<int>());
+        Assert.Null(Item(trendyol.Pushes[2], Refused)["salePrice"]);
+    }
+
+    // Review: the late answer of an older send (its price no longer the offer's) must not end the mark of a newer refused price.
+    [PostgreSqlFact]
+    public async Task TheLateAcceptanceOfAnOlderPriceDoesNotEndTheMarkOfANewerRefusedPrice()
+    {
+        var (run, productId, variants) = await SeedAsync(true, MarketplaceExternalWritePolicies.Manual);
+        var trendyol = new ScriptedTrendyol { RefusedSalePrice = 110m, Clock = run.Clock };
+        var port = trendyol.Port();
+        // Send A (120) goes out and its answer is still pending.
+        var older = await QueueFromPanelAsync(run, productId, "older");
+        Assert.Equal(JobCompletionKind.Retry, (await RunToEndAsync(run, port, older, "older", maxRuns: 1)).Kind);
+        // The owner sets 110; send B carries it and Trendyol refuses that price.
+        await using (var db = fixture.CreateContext())
+            await db.ChannelOffers.Where(x => x.TenantId == run.Tenant.Id && x.VariantId == variants[1]).ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.SalePrice, 110m).SetProperty(x => x.PriceVersion, x => x.PriceVersion + 1));
+        await SendFromPanelAsync(run, port, productId, "newer");
+        Assert.Equal(IssueStatus.Open, (await RefusalIssueAsync(run, variants[1]))!.Status);
+        // A's answer arrives: 120 accepted. The refused 110 still waits.
+        await RunToEndAsync(run, port, older, "older-poll");
+        Assert.Equal(IssueStatus.Open, (await RefusalIssueAsync(run, variants[1]))!.Status);
+        await StockChangesAsync(run);
+        await SendFromPanelAsync(run, port, productId, "after");
+        Assert.Null(Item(trendyol.Pushes[^1], Refused)["salePrice"]);
     }
 
     public static TheoryData<string> AmbiguousReasons => new()
@@ -342,6 +411,8 @@ public sealed class TrendyolPriceRefusalClassificationTests
     [InlineData("salePrice must be greater than zero")]
     [InlineData("listPrice cannot be lower than salePrice")]
     [InlineData("PSF TSF'den küçük olamaz")]
+    [InlineData("SATIŞ FİYATI GEÇERSİZ")]
+    [InlineData("Satış fiyatı, liste fiyatından büyük olamaz")]
     public void APriceAloneIsAPriceRefusal(string reason) => Assert.True(TrendyolPriceRefusal.IsPriceRefusal([reason]));
 
     [Theory]
@@ -355,6 +426,13 @@ public sealed class TrendyolPriceRefusalClassificationTests
     [InlineData("quantity must be at most 20000")]
     [InlineData("İşlem başarısız.")]
     [InlineData("")]
+    // Review ORTA-2: a limit, a throttle or an error is about the request, in any casing.
+    [InlineData("Fiyat güncelleme sınırı aşıldı.")]
+    [InlineData("Price update limit exceeded, please try later")]
+    [InlineData("Too frequent price updates")]
+    [InlineData("Bu ürün için çok sık fiyat güncellemesi yapılamaz.")]
+    [InlineData("SİSTEM HATASI, fiyat güncellenemedi")]
+    [InlineData("FİYAT GÜNCELLEME SINIRI AŞILDI")]
     public void AnythingElseIsNot(string reason) => Assert.False(TrendyolPriceRefusal.IsPriceRefusal([reason]));
 
     [Fact]
@@ -375,5 +453,14 @@ public sealed class TrendyolPriceRefusalClassificationTests
         Assert.NotEqual(mark, TrendyolPriceRefusal.Fingerprint("X1", "H2", 120m, 150m));
         Assert.NotEqual(mark, TrendyolPriceRefusal.Fingerprint("X2", "H", 120m, 150m));
         Assert.Equal(mark, TrendyolPriceRefusal.FingerprintOf(TrendyolPriceRefusal.Summary("X1", 120m, 150m, "r", mark)));
+        // The owner reads Turkish amounts; the fingerprint stays on invariant values whatever the thread's culture.
+        Assert.Contains("satış 1.120,50 TL, liste 1.150,00 TL", TrendyolPriceRefusal.Summary("X1", 1120.5m, 1150m, "r", mark), StringComparison.Ordinal);
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+            Assert.Equal(mark, TrendyolPriceRefusal.Fingerprint("X1", "H", 120m, 150m));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = culture; }
     }
 }
