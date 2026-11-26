@@ -104,7 +104,7 @@
   --rv-shadow-popover: var(--rv-shadow-md);
   --rv-shadow-modal: var(--rv-shadow-lg);
   /* The one dimmed layer behind windows and drawers. */
-  --rv-color-backdrop: rgb(5 16 29 / 68%);
+  --rv-color-backdrop: rgb(5 16 29 / 50%); /* owner, 26 Nov 2026: lighter, so an empty page behind a window does not read as black */
   --rv-duration-fast: 160ms;
   --rv-ease-standard: cubic-bezier(.2, .8, .2, 1);
   /* Shared motion (styles/motion.css): measured, short and only on first appearance; all zero under reduced motion. */
