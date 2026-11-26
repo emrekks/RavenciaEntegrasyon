@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
@@ -19,7 +20,14 @@ public sealed partial class ShopifyHttpClient
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
     private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
     // taxesIncluded says whether the line prices carry the tax; each line's taxLines report its tax rates (fractions).
-    private const string OrderFinancialFields = " taxesIncluded currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } currentTotalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } taxLines { rate } variant { sku barcodes(first:1) { nodes { value } } } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    private const string OrderLineFields = "id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } taxLines { rate } variant { sku barcodes(first:1) { nodes { value } } }";
+    private const string FulfillmentLineFields = "id quantity lineItem { id }";
+    private const string OrderFinancialFields = " taxesIncluded currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } currentTotalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { " + OrderLineFields + " } pageInfo { hasNextPage endCursor } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { " + FulfillmentLineFields + " } pageInfo { hasNextPage endCursor } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    // B-10: an order's lines and a fulfillment's lines beyond the first 250 are read on by the parent's id and cursor.
+    internal const string OrderLineItemsContinuationQuery = "query($id:ID!, $after:String) { order(id:$id) { lineItems(first:250, after:$after) { nodes { " + OrderLineFields + " } pageInfo { hasNextPage endCursor } } } }";
+    internal const string FulfillmentLineItemsContinuationQuery = "query($id:ID!, $after:String) { fulfillment(id:$id) { fulfillmentLineItems(first:250, after:$after) { nodes { " + FulfillmentLineFields + " } pageInfo { hasNextPage endCursor } } } }";
+    internal const string OrderContinuationIncompleteCode = "SHOPIFY_ORDER_CONTINUATION_INCOMPLETE";
+    private static readonly AdapterError OrderContinuationIncomplete = new(AdapterErrorClass.ContractViolation, OrderContinuationIncompleteCode, "Shopify siparişinin devam eden satır sayfaları okunamadı; sipariş eksik satırla kaydedilmedi.", (int)HttpStatusCode.BadGateway, null, null);
 
     private static string OrderFields(string customerFields) => $"{OrderIdentityFields}{customerFields}{OrderFinancialFields}";
     private static string OrderPageQuery(string fields) => "query($first:Int!, $after:String, $query:String) { " + ShopDomainField + "orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { " + fields + " } } pageInfo { hasNextPage endCursor } } }";
@@ -75,6 +83,10 @@ public sealed partial class ShopifyHttpClient
             foreach (var edge in orders.GetProperty("edges").EnumerateArray())
             {
                 var node = edge.TryGetProperty("node", out var value) && value.ValueKind == JsonValueKind.Object ? value : default;
+                // A cut line list is never mapped: a continuation that fails stops the page, which is read again.
+                var whole = await ReadWholeOrderAsync(shop, node, cancellationToken);
+                if (!whole.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(whole.Error!, whole.RateLimit ?? result.RateLimit);
+                node = whole.Value;
                 try { items.Add(MapOrder(node, shopUrl)); }
                 catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException or FormatException)
                 {
@@ -103,6 +115,9 @@ public sealed partial class ShopifyHttpClient
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
         var order = result.Value!.RootElement.GetProperty("order");
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
+        var whole = await ReadWholeOrderAsync(shop, order, cancellationToken);
+        if (!whole.IsSuccess) return AdapterResult<RemoteOrder>.Failure(whole.Error!, whole.RateLimit ?? result.RateLimit);
+        order = whole.Value;
         RemoteOrder mapped;
         // Found but not readable: a contract error, not "not found" (RefusedOrders).
         try { mapped = MapOrder(order, ShopPrimaryDomainUrl(result.Value!.RootElement)); }
@@ -115,6 +130,32 @@ public sealed partial class ShopifyHttpClient
         mapped = AttachInvoiceMetafields(mapped, invoiceRead.Value!.PdfUrl?.Value, timeProvider.GetUtcNow());
         return AdapterResult<RemoteOrder>.Success(mapped, invoiceRead.RateLimit ?? result.RateLimit);
     }
+
+    // B-10: the order with its lineItems and every fulfillment's fulfillmentLineItems read to their end; returned as it
+    // came when no connection has a further page.
+    internal async Task<AdapterResult<JsonElement>> ReadWholeOrderAsync(ShopifyRequestContext shop, JsonElement order, CancellationToken cancellationToken)
+    {
+        var orderId = TextValue(order, "id");
+        var whole = await WithWholeConnectionAsync(order, "lineItems",
+            after => QueryAsync(shop, OrderLineItemsContinuationQuery, new { id = orderId, after }, cancellationToken),
+            root => root.GetProperty("order").GetProperty("lineItems"), OrderContinuationIncomplete);
+        if (!whole.IsSuccess || whole.Value.ValueKind != JsonValueKind.Object
+            || !whole.Value.TryGetProperty("fulfillments", out var fulfillments) || fulfillments.ValueKind != JsonValueKind.Array
+            || !fulfillments.EnumerateArray().Any(fulfillment => fulfillment.ValueKind == JsonValueKind.Object && fulfillment.TryGetProperty("fulfillmentLineItems", out var lines) && HasNextPage(lines)))
+            return whole;
+        var completed = new JsonArray();
+        foreach (var fulfillment in fulfillments.EnumerateArray())
+        {
+            var fulfillmentId = TextValue(fulfillment, "id");
+            var read = await WithWholeConnectionAsync(fulfillment, "fulfillmentLineItems",
+                after => QueryAsync(shop, FulfillmentLineItemsContinuationQuery, new { id = fulfillmentId, after }, cancellationToken),
+                root => root.GetProperty("fulfillment").GetProperty("fulfillmentLineItems"), OrderContinuationIncomplete);
+            if (!read.IsSuccess) return read;
+            completed.Add(JsonNode.Parse(read.Value.GetRawText()));
+        }
+        return AdapterResult<JsonElement>.Success(WithProperty(whole.Value, "fulfillments", completed));
+    }
+
     internal static string? BuildOrderQuery(OrderPollWindow window)
     {
         var terms = new List<string>(2);

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
@@ -86,8 +87,9 @@ public sealed partial class ShopifyHttpClient
     }
 
     // Follows a nested connection's pageInfo until it ends; nodes are cloned because each page owns its own document.
-    // Returns null when the connection was read whole, otherwise the error that stopped it.
-    private static async Task<AdapterError?> ContinueAsync(JsonElement connection, Func<string?, Task<AdapterResult<JsonDocument>>> next, Func<JsonElement, JsonElement> select, List<JsonElement> nodes)
+    // Returns null when the connection was read whole, otherwise the error that stopped it (incomplete when the cursor
+    // is missing or the page limit is reached; a return's error when none is given).
+    private static async Task<AdapterError?> ContinueAsync(JsonElement connection, Func<string?, Task<AdapterResult<JsonDocument>>> next, Func<JsonElement, JsonElement> select, List<JsonElement> nodes, AdapterError? incomplete = null)
     {
         var info = connection.TryGetProperty("pageInfo", out var pageInfo) && pageInfo.ValueKind == JsonValueKind.Object ? pageInfo : default;
         var pages = 0;
@@ -95,7 +97,7 @@ public sealed partial class ShopifyHttpClient
         {
             var after = TextValue(info, "endCursor");
             if (string.IsNullOrWhiteSpace(after) || ++pages > ReturnContinuationPageLimit)
-                return new(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CONTINUATION_INCOMPLETE", "Shopify iadesinin devam sayfaları okunamadı; iade eksik kaydedilmedi.", (int)HttpStatusCode.BadGateway, null, null);
+                return incomplete ?? new(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CONTINUATION_INCOMPLETE", "Shopify iadesinin devam sayfaları okunamadı; iade eksik kaydedilmedi.", (int)HttpStatusCode.BadGateway, null, null);
             var page = await next(after);
             if (!page.IsSuccess) return page.Error;
             var nested = select(page.Value!.RootElement);
@@ -103,6 +105,45 @@ public sealed partial class ShopifyHttpClient
             info = nested.TryGetProperty("pageInfo", out var nextInfo) && nextInfo.ValueKind == JsonValueKind.Object ? nextInfo.Clone() : default;
         }
         return null;
+    }
+
+    // True when a connection says more nodes follow its first page; a connection without pageInfo reads as whole.
+    internal static bool HasNextPage(JsonElement connection) =>
+        connection.ValueKind == JsonValueKind.Object && connection.TryGetProperty("pageInfo", out var info) && info.ValueKind == JsonValueKind.Object
+        && info.TryGetProperty("hasNextPage", out var hasNext) && hasNext.ValueKind == JsonValueKind.True;
+
+    // B-10: reads the parent's nested connection to its end (ContinueAsync) and returns the parent carrying every node, so
+    // a list cut at its first page is never taken as whole. The parent comes back as it was when nothing follows; a
+    // continuation that cannot be read whole fails with its own error, or with incomplete.
+    private static async Task<AdapterResult<JsonElement>> WithWholeConnectionAsync(JsonElement parent, string name, Func<string?, Task<AdapterResult<JsonDocument>>> next, Func<JsonElement, JsonElement> select, AdapterError incomplete)
+    {
+        if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty(name, out var connection) || !HasNextPage(connection))
+            return AdapterResult<JsonElement>.Success(parent);
+        var nodes = connection.TryGetProperty("nodes", out var firstNodes) && firstNodes.ValueKind == JsonValueKind.Array ? firstNodes.EnumerateArray().ToList() : new List<JsonElement>();
+        AdapterError? error;
+        try
+        {
+            error = await ContinueAsync(connection, next, select, nodes, incomplete);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            error = incomplete;
+        }
+        if (error is not null) return AdapterResult<JsonElement>.Failure(error);
+        var whole = new JsonObject
+        {
+            ["nodes"] = new JsonArray(nodes.Select(node => JsonNode.Parse(node.GetRawText())).ToArray()),
+            ["pageInfo"] = new JsonObject { ["hasNextPage"] = false, ["endCursor"] = null }
+        };
+        return AdapterResult<JsonElement>.Success(WithProperty(parent, name, whole));
+    }
+
+    // A copy of the object with one property set.
+    private static JsonElement WithProperty(JsonElement parent, string name, JsonNode? value)
+    {
+        var copy = JsonNode.Parse(parent.GetRawText())!.AsObject();
+        copy[name] = value;
+        return JsonSerializer.SerializeToElement(copy);
     }
 
     async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken)

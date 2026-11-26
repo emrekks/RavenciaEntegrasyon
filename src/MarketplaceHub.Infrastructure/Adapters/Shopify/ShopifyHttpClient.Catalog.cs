@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 
@@ -61,14 +62,21 @@ public sealed partial class ShopifyHttpClient
         // aggregate inventoryQuantity is retained here; per-location levels
         // are not requested in this product query because nesting them under
         // every variant can exceed Shopify's single-query cost limit.
-        const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } media(first:10) { nodes { ... on MediaImage { image { url } } } } priceRangeV2 { minVariantPrice { currencyCode } } variants(first:250) { nodes { id sku barcodes(first:1) { nodes { value } } price compareAtPrice inventoryQuantity selectedOptions { name value } image { url } } } } } pageInfo { hasNextPage endCursor } } }";
+        const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } media(first:10) { nodes { ... on MediaImage { image { url } } } } priceRangeV2 { minVariantPrice { currencyCode } } variants(first:250) { nodes { " + CatalogVariantFields + " } pageInfo { hasNextPage endCursor } } } } pageInfo { hasNextPage endCursor } } }";
         var variables = new { first, after = page.Cursor, query };
         var result = await QueryAsync(shop, gql, variables, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
         try
         {
             var products = result.Value!.RootElement.GetProperty("products");
-            var items = products.GetProperty("edges").EnumerateArray().Select(MapProduct).ToList();
+            var items = new List<RemoteCatalogProduct>();
+            foreach (var edge in products.GetProperty("edges").EnumerateArray())
+            {
+                // A product is never taken with a cut variant list: a continuation that fails stops the page.
+                var whole = await ReadWholeProductEdgeAsync(shop, edge, cancellationToken);
+                if (!whole.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(whole.Error!, whole.RateLimit ?? result.RateLimit);
+                items.Add(MapProduct(whole.Value));
+            }
             var info = products.GetProperty("pageInfo");
             var hasMore = info.GetProperty("hasNextPage").GetBoolean();
             var next = hasMore ? info.GetProperty("endCursor").GetString() : null;
@@ -78,6 +86,27 @@ public sealed partial class ShopifyHttpClient
         {
             return Fail<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CONTRACT_INVALID", "Shopify ürün yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
         }
+    }
+
+    private const string CatalogVariantFields = "id sku barcodes(first:1) { nodes { value } } price compareAtPrice inventoryQuantity selectedOptions { name value } image { url }";
+    // B-10: a product's variants beyond the first 250 are read on by the product's id and cursor.
+    internal const string ProductVariantsContinuationQuery = "query($id:ID!, $after:String) { product(id:$id) { variants(first:250, after:$after) { nodes { " + CatalogVariantFields + " } pageInfo { hasNextPage endCursor } } } }";
+    internal const string ProductVariantsIncompleteCode = "SHOPIFY_PRODUCT_VARIANTS_INCOMPLETE";
+    private static readonly AdapterError ProductVariantsIncomplete = new(AdapterErrorClass.ContractViolation, ProductVariantsIncompleteCode, "Shopify ürününün devam eden varyant sayfaları okunamadı; ürün eksik varyantla alınmadı.", (int)HttpStatusCode.BadGateway, null, null);
+
+    // The product edge with its node's variants read to their end; returned as it came when no further page follows.
+    internal async Task<AdapterResult<JsonElement>> ReadWholeProductEdgeAsync(ShopifyRequestContext shop, JsonElement edge, CancellationToken cancellationToken)
+    {
+        var product = edge.ValueKind == JsonValueKind.Object && edge.TryGetProperty("node", out var node) ? node : default;
+        if (product.ValueKind != JsonValueKind.Object || !product.TryGetProperty("variants", out var variants) || !HasNextPage(variants))
+            return AdapterResult<JsonElement>.Success(edge);
+        var productId = TextValue(product, "id");
+        var whole = await WithWholeConnectionAsync(product, "variants",
+            after => QueryAsync(shop, ProductVariantsContinuationQuery, new { id = productId, after }, cancellationToken),
+            root => root.GetProperty("product").GetProperty("variants"), ProductVariantsIncomplete);
+        return whole.IsSuccess
+            ? AdapterResult<JsonElement>.Success(WithProperty(edge, "node", JsonNode.Parse(whole.Value.GetRawText())))
+            : whole;
     }
 
     public async Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
