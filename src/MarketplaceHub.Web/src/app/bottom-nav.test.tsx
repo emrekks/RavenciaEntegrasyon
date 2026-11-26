@@ -85,7 +85,7 @@ describe('phone bottom navigation (CSS)', () => {
     // One floating glass capsule (light frost, 8 px blur (10 at most)): a thin line and a light shadow, no frosted band, no indicator line.
     expect(phone).toContain('--rv-dock-shadow: 0 0 1.25px rgb(0 0 0 / 40%), 0 0 24px rgb(0 0 0 / 10%), 0 4px 12px rgb(0 0 0 / 6%)')
     expect(phone).toContain('--rv-dock-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%), 0 0 24px rgb(0 0 0 / 40%), 0 4px 12px rgb(0 0 0 / 30%)')
-    expect(phone).toContain('.rv-dock, .rv-dock-panel { background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha), transparent); box-shadow: var(--rv-dock-glass-shadow); -webkit-backdrop-filter: blur(5px) saturate(1.3); backdrop-filter: blur(5px) saturate(1.3); }')
+    expect(phone).toContain('.rv-dock, .rv-dock-panel { background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha), transparent); box-shadow: var(--rv-dock-glass-shadow); -webkit-backdrop-filter: blur(3px) saturate(1.3); backdrop-filter: blur(3px) saturate(1.3); }')
     expect(phone).toContain('--rv-dock-glass-alpha: 22%')
     expect(phone).toContain('--rv-dock-glass-alpha: 88%')
     expect(phone).toContain('inset 0 0 0 1px rgb(0 0 0 / 10%)')
