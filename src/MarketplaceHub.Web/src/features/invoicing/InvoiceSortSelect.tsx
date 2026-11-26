@@ -5,6 +5,8 @@ type SortOption = { value: string; label: string }
 // One list, the direction inside each choice (as Siparişler's "En Yeni / En Eski Siparişler"): no field picked
 // twice and no separate arrow button. The values are the server's sort keys.
 export const invoiceSortOptions: SortOption[] = [
+  { value: 'INVOICE_DESC', label: 'En Yeni Faturalar' },
+  { value: 'INVOICE_ASC', label: 'En Eski Faturalar' },
   { value: 'ORDER_DESC', label: 'En Yeni Siparişler' },
   { value: 'ORDER_ASC', label: 'En Eski Siparişler' },
   { value: 'DELIVERY_DESC', label: 'Son Kargoya Verilenler' },

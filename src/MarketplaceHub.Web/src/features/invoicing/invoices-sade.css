@@ -369,7 +369,7 @@ html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-
    gap on its left and right (the row checkbox sits in the order cell's 12px gap, the order content 28px after it), a head's
    filter button follows its label, and the Alıcı column is wide enough for a typical full name on one line. */
 @media (min-width: 1025px) {
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(200px, 240px) minmax(100px, 1fr) minmax(150px, .8fr) minmax(150px, 1fr) minmax(160px, 1fr) minmax(104px, .6fr) minmax(124px, .6fr); }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(190px, 240px) minmax(130px, 1fr) minmax(144px, .8fr) minmax(146px, 1fr) minmax(150px, 1fr) minmax(104px, .6fr) minmax(124px, .6fr); }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: var(--ir-pl, 10px) var(--ir-pr, 10px); }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :first-child { --ir-pl: 12px; --ir-ji: start; --ir-jc: start; --ir-ta: left; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :last-child { --ir-pr: 10px; }
