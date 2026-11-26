@@ -55,3 +55,26 @@ describe('overlay scroll lock', () => {
     uninstall()
   })
 })
+
+// Home Screen app (iOS standalone): pinning body drew every window short of the screen's bottom edge, so the page is held by its touch moves instead.
+describe('overlay scroll lock in a Home Screen app', () => {
+  it('does not pin body and stops a touch move outside a scrolling part of the window', async () => {
+    const original = window.matchMedia
+    window.matchMedia = ((query: string) => ({ matches: query.includes('standalone'), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as typeof window.matchMedia
+    const uninstall = installOverlayScrollLock()
+    const overlay = document.createElement('div'); overlay.className = 'rr-overlay'
+    document.body.append(overlay)
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    expect(document.body.style.position).toBe('')
+    const move = new Event('touchmove', { bubbles: true, cancelable: true })
+    overlay.dispatchEvent(move)
+    expect(move.defaultPrevented).toBe(true)
+    overlay.remove()
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    const after = new Event('touchmove', { bubbles: true, cancelable: true })
+    document.body.dispatchEvent(after)
+    expect(after.defaultPrevented).toBe(false)
+    uninstall()
+    window.matchMedia = original
+  })
+})
