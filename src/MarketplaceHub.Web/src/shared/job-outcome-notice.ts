@@ -21,6 +21,21 @@ export function recordsJobOutcome(kind: JobOutcomeFeedback['kind'], interim: boo
 }
 
 /**
+ * A followed result as a screen's notice (Toplu Yayın, Toplu Güncelleme). An interim one ("Kısmen Aktarıldı" while jobs
+ * still run) says record: false, so only the final result is kept and the history gets one entry, not two.
+ */
+export function followedOutcomeNotice(outcome: JobOutcomeFeedback, interim: boolean) {
+  return {
+    title: outcome.title,
+    message: outcome.lines.join(' '),
+    lines: outcome.lines,
+    kind: outcome.kind,
+    persistent: outcome.kind === 'error',
+    record: interim ? false : recordsJobOutcome(outcome.kind, false)
+  }
+}
+
+/**
  * The notification of a followed result. A final result (aktarıldı, Kısmen Aktarıldı, İnceleme Bekliyor, aktarılamadı)
  * is kept in the history whatever its wording; a "still running" note stays a toast.
  */

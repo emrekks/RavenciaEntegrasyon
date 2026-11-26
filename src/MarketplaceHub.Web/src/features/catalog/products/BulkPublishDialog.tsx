@@ -6,7 +6,7 @@ import { hubApi } from '../../../shared/api'
 import { DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey, newSendCorrelationId, sendCorrelationHeader } from '../../../shared/idempotency'
 import { followJobOutcomes, groupedOutcomeFeedback, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
-import { recordsJobOutcome } from '../../../shared/job-outcome-notice'
+import { followedOutcomeNotice } from '../../../shared/job-outcome-notice'
 import type { NotificationDetail } from '../../../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import type { MarketplaceConnection, Product } from '../shared'
@@ -141,7 +141,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     }))
     if (followed.length) {
       const target = outcomeTarget(followed)
-      void followJobOutcomes(followed, target, (outcome, interim) => onDone({ title: outcome.title, message: outcome.lines.join(' '), lines: outcome.lines, kind: outcome.kind, persistent: outcome.kind === 'error', record: recordsJobOutcome(outcome.kind, interim) }), {
+      void followJobOutcomes(followed, target, (outcome, interim) => onDone(followedOutcomeNotice(outcome, interim)), {
         summarize: outcomes => groupedOutcomeFeedback(followed, outcomes, target),
         pollMs: 5_000
       })

@@ -13,7 +13,7 @@ import { CardBackgroundIcon, StickyActionBar, TitleHint, useDockHost, useConfirm
 import { CountUp } from '../../../shared/components/CountUp'
 import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../../shared/ui/rr-components'
-import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
+import { appendNotification, noticeRecord, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
 import { productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState, withProductPlatformWork } from '../product-platform-status'
 import { readStickySort, rememberSort, storedPageSize } from '../../../shared/sticky-sort'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
@@ -500,8 +500,8 @@ export function ProductsPage() {
   // Each result lands below the toasts already shown and goes to the notification history.
   function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info' | 'warning', context?: NotificationContext, shape: { lines?: string[]; persistent?: boolean } = {}) {
     // D-8: a finished warning (skipped cards, a partial result) is kept in the history like a job's final result; a
-    // persistent one is work in progress and stays a toast.
-    appendNotification({ ...context, title, message, kind, record: context?.record ?? (kind === 'warning' && !shape.persistent ? true : undefined) })
+    // persistent one is work in progress, and validation or local feedback stays a toast (noticeRecord).
+    appendNotification({ ...context, title, message, kind, record: noticeRecord(context?.record, `${title} ${message}`, kind, shape.persistent) })
     toastStack.show({ kind, title, message, lines: shape.lines, durationMs: shape.persistent ? undefined : shape.lines?.length ? 8000 : 4000 })
   }
   function openProductImport() {

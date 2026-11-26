@@ -310,7 +310,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       // later toasts.
       if (createOnly) operationToasts.dismiss(productSaveToastKey)
       // A "sending" toast with no job to follow (the server named none) does not spin forever.
-      else setFeedback({ message, kind: result.kind, persistent: result.persistent && (result.title !== 'Aktarım Başladı' || followedJobs.length > 0), title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
+      else setFeedback({ message, kind: result.kind, persistent: result.persistent && (result.title !== 'Aktarım Başladı' || followedJobs.length > 0), title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey, record: result.record, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
       // "Aktarım Başladı" turns into how the jobs ended; a toast that already names a refusal keeps its place and the
       // result comes below it. The result also goes to the notification center, so it is not lost if the page is left.
       if (followedJobs.length && !createOnly) {

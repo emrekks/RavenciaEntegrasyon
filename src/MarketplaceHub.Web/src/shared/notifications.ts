@@ -242,6 +242,17 @@ export function shouldRecordNotification(message: string, kind: AppNotification[
   return kind === 'success' && consequential.test(text)
 }
 
+/**
+ * D-8: whether a screen's notice is kept in the history. An explicit choice wins (true for a final result, false for an
+ * interim note, which the wording policy then decides). Unset, a finished warning about the work (a skipped card, a
+ * partial result, a marketplace's warning) is kept; a persistent one is work in progress, and validation or local
+ * feedback stays a toast.
+ */
+export function noticeRecord(record: boolean | undefined, message: string, kind: AppNotification['kind'], persistent?: boolean): boolean | undefined {
+  if (record !== undefined) return record
+  return kind === 'warning' && !persistent && !validationOrLocal.test(message.toLocaleLowerCase('tr-TR')) ? true : undefined
+}
+
 // Failures caused by a closed external-write switch are fixed on the integration, not on the page that failed.
 export function isExternalWriteMessage(message: string): boolean {
   return /(dış yazma|yazma anahtar|yazma kapı|yetenek kanıtı|external_write)/iu.test(message)

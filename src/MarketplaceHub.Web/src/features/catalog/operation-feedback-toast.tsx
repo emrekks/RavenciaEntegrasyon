@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo } from 'react'
 import { useToastStack } from '../../shared/components/toast-stack-context'
-import { appendNotification, normalizeNotificationKind, type NotificationContext, type NotificationDetail } from '../../shared/notifications'
+import { appendNotification, normalizeNotificationKind, noticeRecord, type NotificationContext, type NotificationDetail } from '../../shared/notifications'
 import type { ToastInput } from '../../shared/toast-stack'
 
 export const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
@@ -38,7 +38,7 @@ export function recordOperationFeedback(feedback: OperationFeedback) {
   const details = [...feedbackLineDetails(feedback.lines), ...(context.details ?? [])]
   // D-8: the wording policy keeps no warning, so a finished warning or partial result is recorded here, as the job
   // outcome notices do; a persistent one is work in progress and stays a toast.
-  const record = feedback.record ?? context.record ?? (feedback.kind === 'warning' && !feedback.persistent ? true : undefined)
+  const record = noticeRecord(feedback.record ?? context.record, `${feedback.title ?? context.title ?? ''} ${feedback.message}`, feedback.kind, feedback.persistent)
   return appendNotification({ ...context, title: feedback.title ?? context.title, message: feedback.message, kind: feedback.kind, details: details.length > 0 ? details : undefined, record })
 }
 
