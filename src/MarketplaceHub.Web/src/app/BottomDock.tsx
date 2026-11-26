@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
 import { useLayerOpen, useScrollLock } from '../shared/hooks/useScrollLock'
+import { createTapCounter } from './dockDiagnosticFormat'
+import { dockDiagnosticEvent } from './DockDiagnosticHost'
 
 // The phone's bottom navigation (owner, 24 Nov 2026; bottom-nav.css): one panel, the "Ravencia Dock" (Ana Sayfa,
 // Siparişler, Ara, Ürünler, Menü) and, in its place and shape, the task bar of a page that has actions to offer
@@ -180,6 +182,7 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
   pathname: string
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const tapped = useRef(createTapCounter())
   // The menu is an opaque full-screen layer (position fixed, inset 0): it needs no body overflow lock, and that lock moved the dock in a Home Screen app (hold: false, useScrollLock.ts).
   useScrollLock(true, false, { layer: false, hold: false })
   useEffect(() => {
@@ -223,7 +226,9 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
   }
   // The profile card is only a picture of who is signed in: the person's picture (or initials), name and, when the session has
   // them, role and e-mail. A plain block: no link, no arrow, not in the tab order; a screen reader reads it as text.
-  const profileCard = <div className="rv-fullmenu-profile">
+  // TEMPORARY DIAGNOSTIC (remove after the standalone bottom-gap fix): five taps within 3 seconds toggle the measurement panel.
+  // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- hidden tap trigger of the temporary diagnostic, not a control
+  const profileCard = <div className="rv-fullmenu-profile" onClick={() => { if (tapped.current(Date.now())) window.dispatchEvent(new Event(dockDiagnosticEvent)) }}>
     <UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} />
     <span className="rv-fullmenu-profile-copy"><strong>{profile.name}</strong>{profile.role || profile.email ? <small>{profile.role ? <span className="rv-fullmenu-role">{profile.role}</span> : null}{profile.email ? <span className="rv-fullmenu-email">{profile.role ? ' · ' : ''}{profile.email}</span> : null}</small> : null}</span>
   </div>
