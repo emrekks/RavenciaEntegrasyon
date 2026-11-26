@@ -123,6 +123,8 @@
   .rv-taskbar-group [data-dock-step] { flex: 1 0 auto; }
   .rv-taskbar-group [data-dock-step] > span { display: none; }
   .rv-taskbar-group [data-dock-step]::before { content: attr(data-dock-step); }
+  /* The step back to the previous screen stands at the left, the screen's own action at the right (owner, 26 Nov 2026). */
+  .rv-taskbar-group [data-dock-step-back] { order: -1; }
   @media (max-width: 370px) {
     .rv-taskbar-group [data-dock-step][data-dock-step-short]::before { content: attr(data-dock-step-short); }
   }
