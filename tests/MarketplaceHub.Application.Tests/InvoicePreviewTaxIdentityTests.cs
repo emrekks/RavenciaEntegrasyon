@@ -23,4 +23,14 @@ public sealed class InvoicePreviewTaxIdentityTests
         Assert.Equal(invoice.TaxId, preview);
         Assert.Equal(invoice.IsCorporate, TrendyolEFaturamCanonicalPayload.IsCorporateRecipient(customer, address, preview));
     }
+
+    // Scan 25 Nov 2026 C-11: a blank tax number field does not hide the identity number beside it.
+    [Fact]
+    public void A_blank_tax_number_field_does_not_hide_the_identity_number_of_the_same_address()
+    {
+        var address = JsonSerializer.Serialize(new { fullName = "Ayşe Örnek", city = "İstanbul", taxNumber = "", identityNumber = "10000000146" });
+        var customer = JsonSerializer.Serialize(new { customerFirstName = "Ayşe" });
+
+        Assert.Equal("10000000146", TrendyolEFaturamCanonicalPayload.RecipientTaxId(customer, address));
+    }
 }
