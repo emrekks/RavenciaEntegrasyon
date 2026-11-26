@@ -63,7 +63,7 @@
 .value-mapping-editor .value-mapping-savebar > span { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
 .value-mapping-editor .value-mapping-savebar > span strong { color: var(--rv-color-warning); font-weight: 600; }
 .value-mapping-editor .value-mapping-savebar > span em { color: var(--rv-color-subtle); font-style: normal; }
-.value-mapping-editor .value-mapping-savebar > button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 18px; white-space: nowrap; }
+.value-mapping-editor .value-mapping-savebar > button { display: inline-flex; align-items: center; gap: 8px; min-height: var(--rv-control-height-md); padding: 0 18px; white-space: nowrap; }
 .value-mapping-editor .value-mapping-savebar > button > svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); }
 
 .value-mapping-editor .value-mapping-share-switch > i {
