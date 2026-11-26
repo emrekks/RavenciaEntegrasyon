@@ -358,10 +358,10 @@
 .ss-page .ss-cgrid > .ss-cf:nth-child(-n + 2) { border-top: 0; }
 .ss-page .ss-cf b { display: block; font-size: 13px; font-weight: 500; }
 .ss-page .ss-cf small { display: block; color: var(--rv-color-muted); font-size: 12px; }
-.ss-page .ss-cctl { display: inline-flex; align-items: center; gap: 8px; height: 36px; margin: 0; padding: 0 10px 0 4px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; }
-.app-shell.stitch-shell main .ss-page .ss-cctl input[type="color"] { width: 28px; min-width: 28px; height: 26px; min-height: 26px; padding: 0; background: none; border: 0; box-shadow: none; cursor: pointer; }
+.ss-page .ss-cctl { display: inline-flex; align-items: center; gap: 8px; height: 36px; margin: 0; padding: 0; background: none; border: 0; cursor: pointer; }
+.app-shell.stitch-shell main .ss-page .ss-cctl input[type="color"] { box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 3px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; }
 .ss-page .ss-cctl input::-webkit-color-swatch-wrapper { padding: 0; }
-.ss-page .ss-cctl input::-webkit-color-swatch { border: 1px solid rgb(255 255 255 / 14%); border-radius: 5px; }
+.ss-page .ss-cctl input::-webkit-color-swatch { border: 1px solid rgb(255 255 255 / 14%); border-radius: 4px; }
 .ss-page .ss-cctl code { width: 62px; color: var(--rv-color-ink); background: none; font: 500 12px/1 ui-monospace, Consolas, monospace; }
 .ss-page .ss-ntest { display: flex; flex-wrap: wrap; gap: 8px; }
 .ss-page .ss-ntest .ss-st { width: 14px; height: 14px; }
