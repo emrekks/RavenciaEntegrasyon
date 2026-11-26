@@ -169,7 +169,7 @@
 }
 
 @layer features {
-  .panel-category-picker [role="option"][aria-selected="true"] { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
+  .panel-category-picker [role="option"][aria-selected="true"] { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); }
 }
 
 @layer features {
@@ -281,7 +281,7 @@
 }
 
 @layer features {
-  .category-chip-list > span.active { color: var(--rv-color-ink); border-color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface-raised)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 24%, transparent); }
+  .category-chip-list > span.active { color: var(--rv-color-ink); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 24%, transparent); }
 }
 
 @layer features {
@@ -497,7 +497,7 @@
 }
 
 @layer features {
-  .panel-library-section .panel-attribute-records > article.selected { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+  .panel-library-section .panel-attribute-records > article.selected { background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 }
 
 @layer features {
@@ -669,7 +669,7 @@
 }
 
 @layer features {
-  .web-color-panel-value.selected { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+  .web-color-panel-value.selected { background: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-fill), transparent); border-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-select-line), transparent); }
 }
 
 @layer features {
