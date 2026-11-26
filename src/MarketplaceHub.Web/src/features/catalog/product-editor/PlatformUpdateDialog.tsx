@@ -151,7 +151,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
           {previewCards && <Suspense fallback={null}><PlatformUpdatePreview targets={selected.map(target => ({ connectionId: target.connection.id, productIds: previewCards(target.connection) }))} fields={visibleFields} unsaved={previewUnsaved} /></Suspense>}
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
-          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : !sendsAnything ? 'Seçili mağazalara gidecek bir bilgi seçilmedi.' : sendBlocked || writeClosedNote || (onSave ? 'Kaydet seçimi saklar; Gönder saklayıp hemen gönderir.' : 'Gönder seçili bilgileri seçili mağazalara hemen gönderir.')}</small></div>
+          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : !sendsAnything ? 'Seçili mağazalara gidecek bir bilgi seçilmedi.' : sendBlocked || writeClosedNote || (onSave ? '' : 'Gönder seçili bilgileri seçili mağazalara hemen gönderir.')}</small></div>
           {!selected.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
           {selected.length > 0 && !sendsAnything && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir bilgi seçin</span>}
           {sendsAnything && writeClosed.length > 0 && <span className="publish-selection-warning"><UiIcon name="alert" /> Yazma Kapalı</span>}
