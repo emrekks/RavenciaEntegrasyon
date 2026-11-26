@@ -24,7 +24,7 @@
 .rv-notification-mark-all:disabled, .rv-notification-clear:disabled { cursor: not-allowed; opacity: .45; }
 .rv-notification-confirm { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 12px 8px; padding: 8px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 13px; }
 .rv-notification-confirm > span { flex: 1 1 160px; }
-.rv-notification-confirm > button { height: 32px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; }
+.rv-notification-confirm > button { height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; }
 .rv-notification-confirm > button.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border-strong)); }
 
 /* Filter: three equal parts, each with its count. */

@@ -615,7 +615,7 @@ html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > 
 }
 
 @layer features {
-  .variant-header-action, .variant-media-button { display: grid; width: 34px; height: 34px; place-items: center; padding: 0; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); }
+  .variant-header-action, .variant-media-button { display: grid; width: 36px; height: 36px; place-items: center; padding: 0; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); }
 }
 
 @layer features {
@@ -876,7 +876,7 @@ html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > 
 .variant-platform-pricing-modal .variant-platform-pricing-matrix { gap: var(--rv-space-2); }
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-scroll { max-height: min(62vh, 640px); }
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-cell:not(.variant-platform-pricing-matrix-head) { gap: 1px; padding-block: 4px; }
-.variant-platform-pricing-modal .variant-platform-pricing-matrix-cell > input { height: 32px; min-height: 0; padding-block: 0; }
+.variant-platform-pricing-modal .variant-platform-pricing-matrix-cell > input { height: 36px; min-height: 0; padding-block: 0; }
 /* Phones: the Platform Fiyatları header may shrink; the product name and model code wrap under each other instead of
    widening the header to 512px, which opened the window scrolled 217px sideways. */
 @media (max-width: 760px) {
