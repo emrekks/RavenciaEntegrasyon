@@ -317,6 +317,9 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     enabled: partner != null && pageBarcodes.length > 0
   })
   const partnerBy = useMemo(() => new Map((partnerRows.data?.items ?? []).map(row => [row.barcode, row])), [partnerRows.data])
+  // A pick here is saved for both periods, so it waits for the second period's rows: made before them (or when they
+  // could not be read) it would reach the first period only.
+  const picksOpen = !partner || partnerRows.isSuccess
   const [partnerPicks, setPartnerPicks] = useState<Map<string, TariffPick>>(() => selectionState(partnerSaved).picks)
   const [partnerBulk, setPartnerBulk] = useState<TariffBulk>(() => selectionState(partnerSaved).bulk)
   const partnerId = partner?.id
@@ -340,6 +343,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const bulkOn = applied.kind !== ''
   // A pick for rows (null takes theirs back), in the 7-day view for the same products in the second period too.
   const setRowPicks = (targets: CommissionTariffRow[], pick: TariffPick | null) => {
+    if (!picksOpen) return
     const apply = (current: Map<string, TariffPick>, idOf: (row: CommissionTariffRow) => string | undefined) => {
       const next = new Map(current)
       for (const row of targets) {
@@ -378,7 +382,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     return <>
       {sides.map(({ period, choices }) => {
         const name = periodName(period)
-        if (!choices.length) return <span key={period.id} className="commission-week-line"><em>{name}</em><small>{partnerRows.isPending ? 'Yükleniyor…' : 'Bu dönemde yok'}</small></span>
+        if (!choices.length) return <span key={period.id} className="commission-week-line"><em>{name}</em><small>{partnerRows.isPending ? 'Yükleniyor…' : partnerRows.isError ? 'Okunamadı' : 'Bu dönemde yok'}</small></span>
         const rates = [...new Set(choices.map(item => item.rate))]
         return <span key={period.id} className="commission-week-line">
           <em>{name} · {rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`}</em>
@@ -474,7 +478,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
         <span>{rateText(choice.rate)} komisyon</span>
         <ProfitBadge price={choice} compact={!onPhone} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
       </>}
-      <button type="button" className="commission-switch" aria-pressed={picked} aria-label={onPhone ? `${tier}. Fiyat Aralığı ${picked ? 'seçili' : 'seç'}` : undefined} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
+      <button type="button" className="commission-switch" disabled={!picksOpen} aria-pressed={picked} aria-label={onPhone ? `${tier}. Fiyat Aralığı ${picked ? 'seçili' : 'seç'}` : undefined} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
     </div>
   }
   // A model's band over all its variants: picking it picks the band for every variant that has it (Tüm Varyantlarını Seç).
@@ -500,7 +504,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
           aside={ranged ? `En çok kâr bırakan beden: ${mostRow?.size ?? mostRow?.barcode ?? '—'} · bedenlerde ${amountRange(lefts)}` : undefined} missing="Maliyet girilmemiş" />
       </>}
       {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
-      <button type="button" className="commission-switch" aria-pressed={all} aria-label={`${tier}. Fiyat Aralığı: ${all ? 'tüm varyantlar seçili' : 'tüm varyantlarını seç'}`} title={all ? undefined : 'Tüm Varyantlarını Seç'} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : onPhone ? 'Tüm Varyantlarını Seç' : 'Tüm Varyantlar'}</button>
+      <button type="button" className="commission-switch" disabled={!picksOpen} aria-pressed={all} aria-label={`${tier}. Fiyat Aralığı: ${all ? 'tüm varyantlar seçili' : 'tüm varyantlarını seç'}`} title={all ? undefined : 'Tüm Varyantlarını Seç'} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : onPhone ? 'Tüm Varyantlarını Seç' : 'Tüm Varyantlar'}</button>
     </div>
   }
   // Kendi Fiyatın as the last card of a phone card's row.
@@ -544,8 +548,8 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
       <div className="commission-ruler" role="group" aria-label={`${name} fiyat aralıkları`}>
         {state ? tiers.map(tier => variantChoice(first, tier, state.chosen, state.best, true)) : tiers.map(tier => modelChoice(group, first, tier, modelBest(group), true))}
         {ownCard(state
-          ? <OwnPrice row={first} pick={state.pick} picked={state.chosen === 'own'} onPick={price => setRowPicks([first], price === null ? null : { tier: null, price })} />
-          : <ModelOwnPrice rows={group} picks={picks} onPick={price => setRowPicks(group, price === null ? null : { tier: null, price })} />)}
+          ? <OwnPrice row={first} disabled={!picksOpen} pick={state.pick} picked={state.chosen === 'own'} onPick={price => setRowPicks([first], price === null ? null : { tier: null, price })} />
+          : <ModelOwnPrice rows={group} disabled={!picksOpen} picks={picks} onPick={price => setRowPicks(group, price === null ? null : { tier: null, price })} />)}
       </div>
       {!single && open && <div className="commission-sizes">
         {group.map(row => {
@@ -557,7 +561,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
             {differs}
             <div className="commission-ruler" role="group" aria-label={`${row.size ?? row.barcode} fiyat aralıkları`}>
               {tiers.map(tier => variantChoice(row, tier, chosen, best, true))}
-              {ownCard(<OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setRowPicks([row], price === null ? null : { tier: null, price })} />)}
+              {ownCard(<OwnPrice row={row} disabled={!picksOpen} pick={pick} picked={chosen === 'own'} onPick={price => setRowPicks([row], price === null ? null : { tier: null, price })} />)}
             </div>
           </div>
         })}
@@ -633,7 +637,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               const card = variantChoice(row, tier, chosen, best)
               return card ? <td key={tier}>{card}</td> : <td key={tier} className="commission-choice-none">—</td>
             })}
-            <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setRowPicks([row], price === null ? null : { tier: null, price })} /></td>
+            <td><OwnPrice row={row} disabled={!picksOpen} pick={pick} picked={chosen === 'own'} onPick={price => setRowPicks([row], price === null ? null : { tier: null, price })} /></td>
           </tr>
         }
         if (group.length === 1) return variantRow(group[0], false)
@@ -660,7 +664,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               const card = modelChoice(group, first, tier, best)
               return card ? <td key={tier}>{card}</td> : <td key={tier} className="commission-choice-none">—</td>
             })}
-            <td><ModelOwnPrice rows={group} picks={picks} onPick={price => setRowPicks(group, price === null ? null : { tier: null, price })} /></td>
+            <td><ModelOwnPrice rows={group} disabled={!picksOpen} picks={picks} onPick={price => setRowPicks(group, price === null ? null : { tier: null, price })} /></td>
           </tr>
           {open && group.map(row => variantRow(row, true))}
         </Fragment>
@@ -681,7 +685,7 @@ export function ownPriceValue(text: string): number | null {
 
 // A price of the seller's own for all of a model's sizes at once: each size takes it as its own pick (and its own field
 // shows it when opened); what it leaves is the range over the sizes, and the sizes it puts in no band are counted.
-function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; picks: Map<string, TariffPick>; onPick: (price: number | null) => void }) {
+function ModelOwnPrice({ rows, picks, onPick, disabled }: { rows: CommissionTariffRow[]; picks: Map<string, TariffPick>; onPick: (price: number | null) => void; disabled?: boolean }) {
   const shared = rows.map(row => picks.get(row.id)?.price ?? null)
   // The stored price shown as it is; while the text is untouched it stays that number, never re-read by the typed rule.
   const [start] = useState(() => shared[0] !== null && shared.every(price => price === shared[0]) ? { text: trNumberInput(shared[0]), price: shared[0] } : { text: '', price: null })
@@ -693,7 +697,7 @@ function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; p
   const tiersHit = [...new Set(banded.map(choice => choice.tier))].sort()
   const lefts = banded.flatMap(choice => choice.remaining === null ? [] : [choice.remaining])
   return <div className={`commission-own${price !== null && shared.every(value => value === price) ? ' is-picked' : ''}`}>
-    <input type="text" inputMode="decimal" placeholder="Fiyat Gir" value={text} aria-label={`${rows[0]?.productName ?? 'Model'} için tüm bedenlere kendi fiyatın`}
+    <input type="text" inputMode="decimal" placeholder="Fiyat Gir" disabled={disabled} value={text} aria-label={`${rows[0]?.productName ?? 'Model'} için tüm bedenlere kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
     {text.trim() !== '' && (banded.length ? <small>{tiersHit.map(tier => `${tier}.`).join(', ')} fiyat aralığı · {rows.length} beden<b>{lefts.length ? `${amountRange(lefts)} Kâr` : 'Maliyet girilmemiş'}</b>{banded.length < rows.length && <span className="commission-warn">{rows.length - banded.length} beden hiçbir fiyat aralığına düşmüyor</span>}</small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
   </div>
@@ -701,14 +705,14 @@ function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; p
 
 // A price of the seller's own for one product: typed with a comma or a point, it shows the band it falls in and what
 // it leaves, and becomes the row's pick.
-function OwnPrice({ row, pick, picked, onPick }: { row: CommissionTariffRow; pick: TariffPick | undefined; picked: boolean; onPick: (price: number | null) => void }) {
+function OwnPrice({ row, pick, picked, onPick, disabled }: { row: CommissionTariffRow; pick: TariffPick | undefined; picked: boolean; onPick: (price: number | null) => void; disabled?: boolean }) {
   const [start] = useState(() => pick?.price ? { text: trNumberInput(pick.price), price: pick.price } : { text: '', price: null })
   const [text, setText] = useState(start.text)
   const parse = ownPriceValue
   const price = text === start.text && start.price !== null ? start.price : parse(text)
   const choice = price === null ? null : ownChoice(row, price)
   return <div className={`commission-own${picked ? ' is-picked' : ''}`}>
-    <input type="text" inputMode="decimal" placeholder="Fiyat girin" value={text} aria-label={`${row.productName ?? row.barcode} için kendi fiyatın`}
+    <input type="text" inputMode="decimal" placeholder="Fiyat girin" disabled={disabled} value={text} aria-label={`${row.productName ?? row.barcode} için kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
     {text.trim() !== '' && (choice ? <small>{choice.tier}. fiyat aralığı · {rateText(choice.rate)}<ProfitBadge price={choice} compact title={row.productName ?? row.barcode} tag="Kendi Fiyatın" missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} /></small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
   </div>
