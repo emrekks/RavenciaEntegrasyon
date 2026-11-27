@@ -21,16 +21,20 @@ public static class ProductWarranty
     // The current code is meant never to leave a card that is not a draft empty (the editor, the bulk opening and the
     // family write-through refuse or skip it), but that is a rule, not a guarantee; so every later pass writes nothing and
     // only counts such cards, for the Worker to warn about instead of silently turning them into 0.
-    // Idempotent, set-based (two statements; about a thousand cards on live); no Version, UpdatedAt or change log.
-    public static async Task<PassResult> RunPassAsync(AppDbContext db, bool firstPassAfterStart, CancellationToken cancellationToken)
+    // Idempotent, set-based (about a thousand cards on live); no Version, UpdatedAt or change log.
+    // KATALOG-14 D5 step B2a: the warranty is the model's (EffectiveCatalog): the pass counts and writes the model record,
+    // never judges by a card's copy. A model whose cards are all drafts keeps its empty warranty. While the copies are
+    // still kept (mirrorCopies, Catalog:MirrorModelFields), the cards of a model the pass gives 0 take it too.
+    public static async Task<PassResult> RunPassAsync(AppDbContext db, bool firstPassAfterStart, CancellationToken cancellationToken, bool mirrorCopies = true)
     {
-        var emptyNotDraft = db.Products.Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft);
+        var emptyNotDraft = EffectiveCatalog.Products(db).Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft);
         if (!firstPassAfterStart) return new(0, 0, await emptyNotDraft.CountAsync(cancellationToken));
-        var cards = await emptyNotDraft.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
-        var models = await db.ProductModels
-            .Where(model => model.WarrantyMonths == null
-                && !db.Products.Any(card => card.TenantId == model.TenantId && card.FamilyId == model.Id && card.WarrantyMonths == null))
+        var emptyModels = db.ProductModels.Where(model => model.WarrantyMonths == null
+            && db.Products.Any(card => card.TenantId == model.TenantId && card.FamilyId == model.Id && card.Status != ProductStatus.Draft));
+        var cards = !mirrorCopies ? 0 : await db.Products
+            .Where(card => card.WarrantyMonths == null && emptyModels.Any(model => model.TenantId == card.TenantId && model.Id == card.FamilyId))
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
+        var models = await emptyModels.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
         return new(cards, models, 0);
     }
 }

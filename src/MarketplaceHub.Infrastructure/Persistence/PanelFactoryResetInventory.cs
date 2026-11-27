@@ -209,6 +209,8 @@ public static class PanelFactoryResetInventory
         //   their own without a brand, and the branded models go with their brand. The reset then reconciles the tenant
         //   (PanelFactoryResetService): the code's model without a brand stays and takes them, else one opens from the cards
         //   (the first brought in, its colour word, its own model re-keyed), as the nightly reconcile did before B1.
+        //   KATALOG-14 D5 step B2a: the model of its own opens with the values of the model the card leaves (description,
+        //   category, VAT, warranty, delivery days, desi), never the card's copies; the name is the card's own.
         // The pictures follow their card's model.
         new("catalog.products", "catalog.brands", """
             UPDATE catalog.products SET "BrandId" = NULL WHERE "TenantId" = @tenant AND "BrandId" IS NOT NULL;
@@ -218,8 +220,8 @@ public static class PanelFactoryResetInventory
             UPDATE catalog.product_models m SET "BrandId" = NULL, "UpdatedAt" = now(), "Version" = m."Version" + 1
             WHERE m."TenantId" = @tenant AND m."BrandId" IS NOT NULL AND m."ModelCodeKey" NOT LIKE '#%'
               AND NOT EXISTS (SELECT 1 FROM catalog.product_models o WHERE o."TenantId" = m."TenantId" AND o."ModelCodeKey" = m."ModelCodeKey" AND o."Id" <> m."Id");
-            INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
-            SELECT gen_random_uuid(), p."TenantId", NULL, '', '#' || replace(p."Id"::text, '-', ''), left(p."Title", 320), NULL, p."Description", p."CategoryId", p."VatRate", p."VatInclusion", p."WarrantyMonths", p."DeliveryDays", NULL, now(), now(), 1
+            INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "Desi", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
+            SELECT gen_random_uuid(), p."TenantId", NULL, '', '#' || replace(p."Id"::text, '-', ''), left(p."Title", 320), NULL, m."Description", m."CategoryId", m."VatRate", m."VatInclusion", m."WarrantyMonths", m."DeliveryDays", m."Desi", NULL, now(), now(), 1
             FROM catalog.products p JOIN catalog.product_models m ON m."TenantId" = p."TenantId" AND m."Id" = p."FamilyId"
             WHERE p."TenantId" = @tenant AND m."BrandId" IS NOT NULL
             ON CONFLICT DO NOTHING;

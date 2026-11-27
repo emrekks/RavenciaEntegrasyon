@@ -21,7 +21,8 @@ internal static class OrderLineCostSnapshot
         var pending = lines.Where(line => line.VariantId is not null && line.UnitCostSnapshot is null && line.DesiSnapshot is null).DistinctBy(line => line.Id).ToList();
         if (pending.Count == 0) return;
         var variantIds = pending.Select(line => line.VariantId!.Value).Distinct().ToArray();
-        var variants = await db.ProductVariants.AsNoTracking()
+        // The desi is the model's (EffectiveCatalog.Variants, KATALOG-14 D5 step B2a).
+        var variants = await EffectiveCatalog.Variants(db)
             .Where(variant => variant.TenantId == tenantId && variantIds.Contains(variant.Id))
             .Select(variant => new { variant.Id, variant.CostPrice, variant.Desi })
             .ToDictionaryAsync(variant => variant.Id, cancellationToken);

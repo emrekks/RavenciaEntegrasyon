@@ -451,7 +451,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
         var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
         return from row in periodOrders
                join line in db.OrderLines.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { line.TenantId, line.OrderId }
-               join variant in db.ProductVariants.AsNoTracking() on new { line.TenantId, Id = line.VariantId } equals new { variant.TenantId, Id = (Guid?)variant.Id } into variants
+               join variant in EffectiveCatalog.Variants(db) on new { line.TenantId, Id = line.VariantId } equals new { variant.TenantId, Id = (Guid?)variant.Id } into variants
                from variant in variants.DefaultIfEmpty()
                join product in EffectiveCatalog.Products(db) on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
                from product in products.DefaultIfEmpty()

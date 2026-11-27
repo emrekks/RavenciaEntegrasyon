@@ -536,8 +536,26 @@ public static class ProductModelLinks
         // model is among the models cards leave and goes once cardless. It is never re-keyed (review, 18 Nov 2026).
         var fresh = save?.FreshModels ?? new HashSet<Guid>();
         var freshIds = fresh.ToArray();
-        var productRows = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.Id))
-                .Select(x => new { x.Id, x.BrandId, x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
+        // KATALOG-14 D5 step B2a: a model this run opens takes the shared values of the model its first card is on (the card's
+        // brand stays its link key, the name its own), never the card's copies; a card on no model gives its own.
+        var productRows = await (from x in db.Products.AsNoTracking()
+                                 join m in db.ProductModels.AsNoTracking() on new { x.TenantId, Id = x.FamilyId } equals new { m.TenantId, Id = (Guid?)m.Id } into ms
+                                 from m in ms.DefaultIfEmpty()
+                                 where x.TenantId == tenantId && cardIds.Contains(x.Id)
+                                 select new
+                                 {
+                                     x.Id,
+                                     x.BrandId,
+                                     x.FamilyId,
+                                     x.CreatedAt,
+                                     x.Title,
+                                     Description = m == null ? x.Description : m.Description,
+                                     CategoryId = m == null ? x.CategoryId : m.CategoryId,
+                                     VatRate = m == null ? x.VatRate : m.VatRate,
+                                     VatInclusion = m == null ? x.VatInclusion : m.VatInclusion,
+                                     WarrantyMonths = m == null ? x.WarrantyMonths : m.WarrantyMonths,
+                                     DeliveryDays = m == null ? x.DeliveryDays : m.DeliveryDays,
+                                 })
                 .ToListAsync(cancellationToken);
         var actualFamilies = productRows.ToDictionary(x => x.Id, x => x.FamilyId);
         var products = productRows.Select(x => new { x.Id, x.BrandId, FamilyId = x.FamilyId is Guid family && fresh.Contains(family) ? null : x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
@@ -773,11 +791,17 @@ public static class ProductModelLinks
 
     // KATALOG-14 D5 step B1: cards the reconcile takes off their model (their code gone) move straight to a model of their own,
     // never through a NULL link (products.FamilyId NOT NULL).
+    // KATALOG-14 D5 step B2a: the own model opens with the values of the model the card leaves (its brand and name are the
+    // card's own), never the card's copies.
     private static async Task GiveOwnModelsAsync(AppDbContext db, Guid tenantId, Guid[] productIds, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var cards = await db.Products.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && productIds.Contains(x.Id))
-            .Select(x => new OwnModelCard(x.Id, x.BrandId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))
+        var cards = await (from x in db.Products.AsNoTracking()
+                           join m in db.ProductModels.AsNoTracking() on new { x.TenantId, Id = x.FamilyId } equals new { m.TenantId, Id = (Guid?)m.Id } into ms
+                           from m in ms.DefaultIfEmpty()
+                           where x.TenantId == tenantId && productIds.Contains(x.Id)
+                           select new OwnModelCard(x.Id, x.BrandId, x.Title,
+                               m == null ? x.Description : m.Description, m == null ? x.CategoryId : m.CategoryId, m == null ? x.VatRate : m.VatRate,
+                               m == null ? x.VatInclusion : m.VatInclusion, m == null ? x.WarrantyMonths : m.WarrantyMonths, m == null ? x.DeliveryDays : m.DeliveryDays))
             .ToListAsync(cancellationToken);
         await LinkOwnModelsAsync(db, tenantId, cards, now, cancellationToken);
     }
@@ -954,7 +978,7 @@ public static class ProductModelLinks
     {
         if (familyId is not { } modelId || cards.Count == 0 || cards.Any(x => x.FamilyId != modelId)) return null;
         var model = await db.ProductModels.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == modelId, cancellationToken);
-        if (model is null || !HoldsSavedFields(model, cards.Select(x => (x.UpdatedAt, x.CategoryId)))) return null;
+        if (model is null || !HoldsSavedFields(model, cards.Select(x => x.UpdatedAt))) return null;
         return new ProductFamilySharedFields.ModelFields(
             ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, openedColor), model.Description, model.BrandId, model.CategoryId,
             model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays);
@@ -998,13 +1022,11 @@ public static class ProductModelLinks
     public const string ProductFamilyKeyName = "FK_products_product_models_TenantId_FamilyId";
 
     // The record holds the owner's saved fields (the editor shows them): the editor saved them (FieldsSavedAt) after the
-    // last change of every card and a card still holds the record's category. ProductModelValues leaves such fields as
-    // they are, so the editor and the nightly scan never take turns overwriting each other.
-    internal static bool HoldsSavedFields(ProductModel model, IEnumerable<(DateTimeOffset UpdatedAt, Guid? CategoryId)> cards)
-    {
-        var list = cards.ToList();
-        return model.FieldsSavedAt is { } savedAt && list.All(x => x.UpdatedAt <= savedAt) && list.Any(x => x.CategoryId == model.CategoryId);
-    }
+    // last change of every card. ProductModelValues leaves such fields as they are, so the editor and the nightly scan never
+    // take turns overwriting each other. KATALOG-14 D5 step B2a: no card copy is consulted (the category every card reads
+    // is the record's own, EffectiveCatalog), so a stale copy never makes a saved record look unsaved.
+    internal static bool HoldsSavedFields(ProductModel model, IEnumerable<DateTimeOffset> cardsUpdatedAt) =>
+        model.FieldsSavedAt is { } savedAt && cardsUpdatedAt.All(updatedAt => updatedAt <= savedAt);
 
     // The record holds the owner's saved category attributes: saved (AttributesSavedAt) after the last change of every card.
     internal static bool HoldsSavedAttributes(DateTimeOffset? attributesSavedAt, IEnumerable<DateTimeOffset> cardsUpdatedAt) =>

@@ -261,6 +261,37 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
+    // KATALOG-14 D5 step B2a (gap 5): the models the reset opens for the cards it takes off their branded models, and the
+    // code's model the reconcile then opens from them, take the values of the models the cards were on, never the cards'
+    // copies (poisoned here); the name is the first card's own.
+    [PostgreSqlFact]
+    public async Task TheBrandListReset_OpensModelsFromTheModelsTheCardsLeft_NotFromTheirCopies()
+    {
+        var seed = NewSeed();
+        Product siyah, bej;
+        await using (var db = fixture.CreateContext())
+        {
+            AddSeed(db, seed);
+            bej = AddCard(db, seed, seed.Lavian, "MZ051", "Bej", "Kadın Bej Etek", 1);
+            siyah = AddCard(db, seed, seed.Ravencia, "MZ051", "Siyah", "Kadın Siyah Etek", 0);
+            await db.SaveChangesAsync();
+            await db.ProductModels.Where(x => x.TenantId == seed.Tenant.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.WarrantyMonths, 24).SetProperty(x => x.Desi, 1m));
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE catalog.products SET "Description" = 'BAYAT KOPYA', "VatRate" = 20, "VatInclusion" = 'EXCLUDED', "CategoryId" = NULL, "WarrantyMonths" = 3, "DeliveryDays" = 9
+                WHERE "TenantId" = {seed.Tenant.Id}
+                """);
+        }
+        await ResetBrandListAsync(seed);
+        await using (var db = fixture.CreateContext())
+        {
+            var model = (await ModelsAsync(db, seed.Tenant.Id)).Single();
+            Assert.Equal(("MZ051", "Kadın Siyah Etek", "Model açıklaması", (Guid?)seed.CategoryId, (decimal?)10m, "INCLUDED", (int?)24, (int?)1),
+                (model.ModelCodeKey, model.Title, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays));
+            var links = await LinksAsync(db, seed.Tenant.Id);
+            Assert.Equal((model.Id, model.Id), (links[siyah.Id], links[bej.Id]));
+        }
+    }
+
     // Gives a card's model what the owner and the marketplaces build on it: saved fields and attributes, a size chart and a
     // marketplace model link (with the variant link that keeps it).
     private static async Task<Guid> DecorateModelAsync(AppDbContext db, Seed seed, Product card)
