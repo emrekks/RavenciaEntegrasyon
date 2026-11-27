@@ -3,9 +3,10 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Jobs;
 
-// Queue phase 1A switches (27 Nov 2026), read by the scheduler on every pass, so a changed setting takes effect without a
-// deploy once the worker reads its configuration again (environment variable Worker__...). Each is on by default; off gives
-// the earlier behaviour exactly.
+// Queue phase 1A switches (27 Nov 2026), read by the scheduler on every pass. Each is on by default and written out in the
+// worker's appsettings.json; off gives the earlier behaviour exactly. Production passes none of them through compose, so
+// turning one off is a release: set the value to false in src/MarketplaceHub.Worker/appsettings.json and ship
+// (docs/RUNBOOK-GERI-ALMA.md, "Kuyruk Faz 1A anahtarları").
 //   Worker:ReferenceReads:OneAtATime       a connection's daily reference lists are queued one after the other (the category
 //                                          tree first, the brand list once it ended) and a tenant runs one scheduled reference
 //                                          read at a time; off = every stale list of every connection queued in the same pass

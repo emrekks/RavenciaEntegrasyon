@@ -28,6 +28,22 @@ public static class JobFailureAlertPolicy
         return $"{KeyPrefix}{day}:{digest}";
     }
 
+    // Review of 27 Nov 2026 (D1): at most DailyCap alerts per tenant and Istanbul day; past it ONE summary alert of the day
+    // counts the rest ("… ve N iş daha"), so an outage cannot flood the bell.
+    public const int DailyCap = 30;
+    public const int SummaryKeyLimit = 400;
+    public const string SummaryTitle = "Başka İşler de Durdu";
+    public const string SummaryActionLabel = "İşlem Takibine Git";
+    public const string SummaryHref = "/jobs";
+
+    public static string SummaryKey(string day) => $"{KeyPrefix}{day}:summary";
+
+    // The Istanbul day (yyyyMMdd) a key belongs to.
+    public static string DayOf(string clientKey) => clientKey.Substring(KeyPrefix.Length, 8);
+
+    public static string SummaryMessage(int more) =>
+        $"Bugün tek tek bildirilen {DailyCap} işin ardından {more} iş daha durdu ya da incelemenizi bekliyor. Ayrıntılar İşlem Takibi'nde.";
+
     public static bool IsSuperseded(string? errorCode) => errorCode is not null && errorCode.Contains("SUPERSEDED", StringComparison.Ordinal);
 
     public static string Severity(Kind kind) => kind == Kind.Dead ? PanelNotificationSeverities.Error : PanelNotificationSeverities.Warning;

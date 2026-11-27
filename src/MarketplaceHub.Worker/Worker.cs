@@ -1188,9 +1188,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }, exception => logger.LogError(exception, "External effect sweep failed"), stoppingToken, "external-effect-sweep");
 
     // Queue phase 1A, item 4: every minute the jobs that stopped (DEAD, MANUAL_REVIEW, BLOCKED for a day) raise one bell
-    // notification per connection, job type, error code and day (JobFailureAlerts). Worker:JobFailureAlerts:Enabled=false
-    // stops it; Worker:JobFailureAlerts:LookbackMinutes (default 360, 10..1440) is how far back a pass looks, so a worker
-    // that was down catches up.
+    // notification per connection, job type, error code and day (JobFailureAlerts), at most 30 a tenant and day plus one
+    // summary. Worker:JobFailureAlerts:Enabled (appsettings.json, true) false stops it, read at worker start, so turning it
+    // off is a release (docs/RUNBOOK-GERI-ALMA.md); Worker:JobFailureAlerts:LookbackMinutes (360, 10..1440) is how far back a
+    // pass looks, so a worker that was down catches up.
     private Task RunJobFailureAlertsAsync(CancellationToken stoppingToken)
     {
         var lookback = TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:JobFailureAlerts:LookbackMinutes", 360), 10, 1440));

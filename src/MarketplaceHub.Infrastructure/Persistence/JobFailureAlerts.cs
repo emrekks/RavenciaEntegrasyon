@@ -24,25 +24,34 @@ public static class JobFailureAlerts
         var blockedBefore = utcNow - JobFailureAlertPolicy.BlockedFor;
         var blockedSince = blockedBefore - lookback;
         var preSend = JobRetentionService.PreSendBlockCodes;
-        var stopped = await (from job in db.IntegrationJobs.AsNoTracking()
-                             where ((job.Status == JobStatus.Dead || job.Status == JobStatus.ManualReview) && job.CompletedAt > since)
-                                 || (job.Status == JobStatus.Blocked && job.CompletedAt <= blockedBefore && job.CompletedAt > blockedSince)
-                             orderby job.CompletedAt
-                             select new { job.Id, job.TenantId, job.ConnectionId, job.JobType, job.Status, job.LastErrorCode, job.LastErrorSummary, job.CompletedAt })
-            .Take(MaximumJobsPerPass)
-            .ToListAsync(cancellationToken);
+        var blockedFor = JobFailureAlertPolicy.BlockedFor;
+        // Review of 27 Nov 2026 (O2): the filters and the one-per-key reduction run in the database, newest first, before the
+        // limit; a bulk run of superseded or pre-send-blocked jobs can no longer fill the pass and hide a new failure.
+        // One row per tenant, connection, job type, error code and Istanbul day of the alert (the key), the latest job naming it.
+        var stopped = await db.Database.SqlQuery<StoppedRow>($"""
+            SELECT * FROM (
+                SELECT DISTINCT ON (job."TenantId", job."ConnectionId", job."JobType", coalesce(job."LastErrorCode", ''), raised.day)
+                       job."Id", job."TenantId", job."ConnectionId", job."JobType", job."Status", job."LastErrorCode", job."LastErrorSummary", job."CompletedAt"
+                FROM integration.jobs job
+                CROSS JOIN LATERAL (SELECT ((CASE WHEN job."Status" = 'BLOCKED' THEN job."CompletedAt" + {blockedFor} ELSE job."CompletedAt" END)
+                    AT TIME ZONE 'Europe/Istanbul')::date AS day) raised
+                WHERE ((job."Status" IN ('DEAD', 'MANUAL_REVIEW') AND job."CompletedAt" > {since})
+                       OR (job."Status" = 'BLOCKED' AND job."CompletedAt" <= {blockedBefore} AND job."CompletedAt" > {blockedSince}
+                           AND (job."LastErrorCode" IS NULL OR NOT (job."LastErrorCode" = ANY({preSend})))))
+                  AND (job."LastErrorCode" IS NULL OR job."LastErrorCode" NOT LIKE '%SUPERSEDED%')
+                ORDER BY job."TenantId", job."ConnectionId", job."JobType", coalesce(job."LastErrorCode", ''), raised.day, job."CompletedAt" DESC, job."Id" DESC) latest
+            ORDER BY "CompletedAt" DESC
+            LIMIT {MaximumJobsPerPass}
+            """).ToListAsync(cancellationToken);
         var candidates = stopped
-            .Where(job => !JobFailureAlertPolicy.IsSuperseded(job.LastErrorCode))
-            .Where(job => job.Status != JobStatus.Blocked || job.LastErrorCode is null || !preSend.Contains(job.LastErrorCode))
             .Select(job =>
             {
-                var kind = job.Status == JobStatus.Dead ? JobFailureAlertPolicy.Kind.Dead : job.Status == JobStatus.ManualReview ? JobFailureAlertPolicy.Kind.ManualReview : JobFailureAlertPolicy.Kind.Blocked;
-                var raisedAt = kind == JobFailureAlertPolicy.Kind.Blocked ? job.CompletedAt!.Value + JobFailureAlertPolicy.BlockedFor : job.CompletedAt!.Value;
+                var kind = job.Status == "DEAD" ? JobFailureAlertPolicy.Kind.Dead : job.Status == "MANUAL_REVIEW" ? JobFailureAlertPolicy.Kind.ManualReview : JobFailureAlertPolicy.Kind.Blocked;
+                var raisedAt = kind == JobFailureAlertPolicy.Kind.Blocked ? job.CompletedAt + blockedFor : job.CompletedAt;
                 return (Job: job, Kind: kind, Key: JobFailureAlertPolicy.ClientKey(job.ConnectionId, job.JobType, job.LastErrorCode, raisedAt));
             })
-            // One per key: the latest job of the key names it.
             .GroupBy(item => (item.Job.TenantId, item.Key))
-            .Select(group => group.Last())
+            .Select(group => group.First())
             .ToList();
         if (candidates.Count == 0) return 0;
 
@@ -62,7 +71,20 @@ public static class JobFailureAlerts
             .Select(x => new { x.Id, x.TenantId, x.PlatformCode, x.DisplayName })
             .ToDictionaryAsync(x => (x.TenantId, x.Id), cancellationToken);
         var added = 0;
-        foreach (var (job, kind, key) in fresh)
+        // D1 of the review: at most DailyCap alerts per tenant and Istanbul day; the rest of the day's are counted in one summary.
+        var toWrite = new List<(StoppedRow Job, JobFailureAlertPolicy.Kind Kind, string Key)>();
+        foreach (var group in fresh.GroupBy(item => (item.Job.TenantId, Day: JobFailureAlertPolicy.DayOf(item.Key))))
+        {
+            var dayPrefix = $"{CatalogService.EscapeLike(JobFailureAlertPolicy.KeyPrefix + group.Key.Day)}:%";
+            var summaryKey = JobFailureAlertPolicy.SummaryKey(group.Key.Day);
+            var already = await db.PanelNotifications.AsNoTracking()
+                .CountAsync(x => x.TenantId == group.Key.TenantId && x.UserId == null && EF.Functions.Like(x.ClientKey, dayPrefix, "\\") && x.ClientKey != summaryKey, cancellationToken);
+            var room = Math.Max(0, JobFailureAlertPolicy.DailyCap - already);
+            toWrite.AddRange(group.Take(room));
+            var overflow = group.Skip(room).Select(item => item.Key).ToList();
+            if (overflow.Count > 0) added += await SummariseAsync(db, group.Key.TenantId, summaryKey, overflow, utcNow, cancellationToken);
+        }
+        foreach (var (job, kind, key) in toWrite)
         {
             var connection = job.ConnectionId is { } connectionId && connections.TryGetValue((job.TenantId, connectionId), out var found) ? found : null;
             var platformCode = connection?.PlatformCode.ToUpperInvariant();
@@ -87,6 +109,45 @@ public static class JobFailureAlerts
         }
         return added;
     }
+
+    // The day's summary alert ("… ve N iş daha"): the keys it already counts are kept in its payload, so a pass that sees the
+    // same stopped jobs again does not count them twice. Returns 1 when the summary row was first written.
+    private static async Task<int> SummariseAsync(AppDbContext db, Guid tenantId, string summaryKey, IReadOnlyList<string> overflowKeys, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var existing = await db.PanelNotifications.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ClientKey == summaryKey)
+            .Select(x => x.Payload)
+            .FirstOrDefaultAsync(cancellationToken);
+        var counted = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(existing))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(existing);
+                if (document.RootElement.TryGetProperty("keys", out var keys) && keys.ValueKind == JsonValueKind.Array)
+                    foreach (var item in keys.EnumerateArray()) if (item.GetString() is { } value) counted.Add(value);
+            }
+            catch (JsonException) { }
+        }
+        var before = counted.Count;
+        foreach (var key in overflowKeys)
+            if (counted.Count < JobFailureAlertPolicy.SummaryKeyLimit) counted.Add(key);
+        if (counted.Count == before && existing is not null) return 0;
+        var count = counted.Count;
+        var message = JobFailureAlertPolicy.SummaryMessage(count);
+        var payload = JsonSerializer.Serialize(new { operation = "İş Takibi", keys = counted.Order(StringComparer.Ordinal).ToArray() }, PayloadJson);
+        var href = JobFailureAlertPolicy.SummaryHref;
+        return await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ops.panel_notifications AS current ("Id", "TenantId", "UserId", "ClientKey", "Severity", "Category", "Title", "Message",
+                "Href", "ActionLabel", "PlatformCode", "StoreName", "Count", "Payload", "CreatedAt", "UpdatedAt", "ReadAt", "DismissedAt")
+            VALUES ({Guid.CreateVersion7()}, {tenantId}, NULL, {summaryKey}, {PanelNotificationSeverities.Warning}, {JobFailureAlertPolicy.Category}, {JobFailureAlertPolicy.SummaryTitle}, {message},
+                {href}, {JobFailureAlertPolicy.SummaryActionLabel}, NULL, NULL, {count}, {payload}, {now}, {now}, NULL, NULL)
+            ON CONFLICT ("TenantId", "ClientKey") DO UPDATE SET "Message" = EXCLUDED."Message", "Count" = EXCLUDED."Count", "Payload" = EXCLUDED."Payload", "UpdatedAt" = EXCLUDED."UpdatedAt"
+            WHERE current."UserId" IS NULL
+            """, cancellationToken) > 0 && existing is null ? 1 : 0;
+    }
+
+    private sealed record StoppedRow(Guid Id, Guid TenantId, Guid? ConnectionId, string JobType, string Status, string? LastErrorCode, string? LastErrorSummary, DateTimeOffset CompletedAt);
 
     private static string? Clip(string? value, int maximum)
     {

@@ -540,11 +540,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var backedOff = new HashSet<(Guid, string)>();
         var connectionIds = duePolicies.Select(due => due.Connection.Id).Distinct().ToArray();
         if (connectionIds.Length == 0) return (failing, backedOff);
+        // Only the connection's scheduled reads count (the scheduler's "scheduled:" key and a read job type, never a write, a
+        // user's request, an invoice or price/stock job): an outage holds every background poll, a quota refusal its lock group.
         var retrying = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.Status == JobStatus.RetryScheduled && x.ConnectionId != null && connectionIds.Contains(x.ConnectionId.Value))
-            .Select(x => new { ConnectionId = x.ConnectionId!.Value, x.LastErrorCode })
+            .Where(x => x.Status == JobStatus.RetryScheduled && x.ConnectionId != null && connectionIds.Contains(x.ConnectionId.Value)
+                && x.JobDedupKey.StartsWith(ScheduledReadSupersession.ScheduledPrefix) && x.TriggerType != "user")
+            .Select(x => new { ConnectionId = x.ConnectionId!.Value, x.JobType, x.JobDedupKey, x.LastErrorCode })
             .ToListAsync(cancellationToken);
-        failing.UnionWith(retrying.Where(x => FailingConnectionPollPolicy.IsMarketplaceFailure(x.LastErrorCode)).Select(x => x.ConnectionId));
+        foreach (var job in retrying.Where(x => ScheduledReadSupersession.IsScheduledRead(x.JobType, x.JobDedupKey)))
+        {
+            if (FailingConnectionPollPolicy.IsMarketplaceOutage(job.LastErrorCode)) failing.Add(job.ConnectionId);
+            else if (FailingConnectionPollPolicy.IsQuotaRefusal(job.LastErrorCode)) backedOff.Add((job.ConnectionId, MarketplaceSyncExecutionLock.GroupFor(job.JobType)));
+        }
         var utcNow = now.ToUniversalTime();
         var backoffs = await db.Database.SqlQuery<BackoffRow>($"""SELECT "ConnectionId", "LockGroup" FROM integration.connection_backoffs WHERE "Until" > {utcNow}""").ToListAsync(cancellationToken);
         backedOff.UnionWith(backoffs.Select(x => (x.ConnectionId, x.LockGroup)));

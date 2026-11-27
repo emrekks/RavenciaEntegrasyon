@@ -117,12 +117,18 @@ public sealed class PanelNotificationService(AppDbContext db, TimeProvider timeP
         // The bell's job alerts (JobFailureAlertPolicy, queue phase 1A) ride on the same list: one poll brings both.
         var pattern = $"{CatalogService.EscapeLike(NewOrderNoticePolicy.KeyPrefix)}%";
         var alertPattern = $"{CatalogService.EscapeLike(JobFailureAlertPolicy.KeyPrefix)}%";
-        var rows = await Visible(tenantId, userId).AsNoTracking()
-            .Where(x => x.UserId == null && (EF.Functions.Like(x.ClientKey, pattern, LikeEscape) || EF.Functions.Like(x.ClientKey, alertPattern, LikeEscape)))
+        // Each kind has its own limit (review D1): alerts of an outage never push the order notices out of the list.
+        var orders = await Visible(tenantId, userId).AsNoTracking()
+            .Where(x => x.UserId == null && EF.Functions.Like(x.ClientKey, pattern, LikeEscape))
             .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
             .Take(NewOrderNoticePolicy.ListLimit)
             .ToListAsync(cancellationToken);
-        return rows.Select(View).ToList();
+        var alerts = await Visible(tenantId, userId).AsNoTracking()
+            .Where(x => x.UserId == null && EF.Functions.Like(x.ClientKey, alertPattern, LikeEscape))
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Take(NewOrderNoticePolicy.ListLimit)
+            .ToListAsync(cancellationToken);
+        return [.. orders.Concat(alerts).OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Select(View)];
     }
 
     private IQueryable<PanelNotification> Visible(Guid tenantId, Guid userId)

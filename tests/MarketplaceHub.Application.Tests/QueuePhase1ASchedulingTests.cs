@@ -69,10 +69,13 @@ public sealed class QueuePhase1ASchedulingTests
     [Fact]
     public void A_failing_marketplace_is_told_by_its_error_code()
     {
-        foreach (var failing in new[] { "PTTAVM_NETWORK_ERROR", "PAZARAMA_TIMEOUT", "REMOTE_SERVER_ERROR", "HEPSIBURADA_REMOTE_ERROR", "N11_RATE_LIMITED", "TRENDYOL_GATEWAY_BLOCKED" })
-            Assert.True(FailingConnectionPollPolicy.IsMarketplaceFailure(failing), failing);
+        foreach (var failing in new[] { "PTTAVM_NETWORK_ERROR", "PAZARAMA_TIMEOUT", "REMOTE_SERVER_ERROR", "HEPSIBURADA_REMOTE_ERROR", "TRENDYOL_GATEWAY_BLOCKED" })
+            Assert.True(FailingConnectionPollPolicy.IsMarketplaceOutage(failing), failing);
+        // A quota refusal is not an outage: it holds its own lock group only.
+        Assert.False(FailingConnectionPollPolicy.IsMarketplaceOutage("N11_RATE_LIMITED"));
+        Assert.True(FailingConnectionPollPolicy.IsQuotaRefusal("N11_RATE_LIMITED"));
         foreach (var notFailing in new[] { null, "HEPSIBURADA_PRODUCT_APPROVAL_PENDING", "PRODUCT_BATCH_PENDING", "PTTAVM_LOCAL_QUOTA_WAIT", "PAZARAMA_TOKEN_INVALID" })
-            Assert.False(FailingConnectionPollPolicy.IsMarketplaceFailure(notFailing), notFailing ?? "null");
+            Assert.False(FailingConnectionPollPolicy.IsMarketplaceOutage(notFailing) || FailingConnectionPollPolicy.IsQuotaRefusal(notFailing), notFailing ?? "null");
         Assert.False(FailingConnectionPollPolicy.Holds(isOrderRead: true, isWrite: false));
         Assert.False(FailingConnectionPollPolicy.Holds(isOrderRead: false, isWrite: true));
         Assert.True(FailingConnectionPollPolicy.Holds(isOrderRead: false, isWrite: false));
@@ -276,6 +279,54 @@ public sealed class QueuePhase1ASchedulingPostgreSqlTests(PostgreSqlTenantIsolat
         await legacyTransaction.RollbackAsync();
     }
 
+    // Review of 27 Nov 2026 (O1): only a retrying scheduled read with an outage code holds the background polls; a user's write,
+    // an invoice delivery or a quota refusal in another lock group does not.
+    [PostgreSqlFact]
+    public async Task Item3_only_a_retrying_scheduled_read_holds_the_polls()
+    {
+        Assert.NotNull(fixture);
+        async Task<List<string>> DuringRetryOf(string jobType, string dedup, string code, string? trigger)
+        {
+            await using var db = fixture.CreateStrictContext();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var (tenantId, ids) = await SeedAsync(db, ("TRENDYOL", Guid.CreateVersion7()));
+            await Pass(db, Base);
+            await db.IntegrationJobs.Where(x => x.TenantId == tenantId).ExecuteUpdateAsync(set => set.SetProperty(x => x.Status, JobStatus.Succeeded).SetProperty(x => x.CompletedAt, Base.AddMinutes(1)));
+            var retrying = NewJob(tenantId, ids[0], jobType, dedup.Replace("{c}", ids[0].ToString("N"), StringComparison.Ordinal), Base.AddDays(1));
+            retrying.Status = JobStatus.RetryScheduled;
+            retrying.AttemptCount = 3;
+            retrying.LastErrorCode = code;
+            retrying.AvailableAt = Base.AddDays(1).AddMinutes(4);
+            if (trigger is not null) retrying.TriggerType = trigger;
+            db.IntegrationJobs.Add(retrying);
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+            var queued = await PassQueuedAsync(db, tenantId, Base.AddDays(1).AddMinutes(1));
+            await transaction.RollbackAsync();
+            return queued;
+        }
+
+        // A user's product update retrying on Trendyol's 5xx: the reads go on.
+        var userWrite = await DuringRetryOf(MarketplaceJobTypes.ProductUpdate, "product-update:{c}:x", "TRENDYOL_REMOTE_ERROR", "user");
+        Assert.Contains(MarketplaceJobTypes.ReturnSync, userWrite);
+        Assert.Contains(MarketplaceJobTypes.QuestionSync, userWrite);
+        // An invoice delivery retrying: the reads go on.
+        var invoice = await DuringRetryOf(InvoicingJobTypes.MarketplaceDelivery, "invoice-delivery:{c}:x", "REMOTE_SERVER_ERROR", null);
+        // (The question read shares the invoice delivery's "connection" lock group, so the queued delivery keeps it out by
+        // the older one-per-lane rule; the reads of other groups show the hold is not on.)
+        Assert.Contains(MarketplaceJobTypes.ReturnSync, invoice);
+        Assert.Contains(MarketplaceJobTypes.TrendyolFinanceSync, invoice);
+        // A scheduled order read refused by the quota: only its own lock group waits; returns and questions go on.
+        var quota = await DuringRetryOf(MarketplaceJobTypes.OrderSync, "scheduled:orders:{c}:quota", "TRENDYOL_RATE_LIMITED", null);
+        Assert.Contains(MarketplaceJobTypes.ReturnSync, quota);
+        Assert.Contains(MarketplaceJobTypes.QuestionSync, quota);
+        // A scheduled order read with no answer from Trendyol: every background read waits.
+        var outage = await DuringRetryOf(MarketplaceJobTypes.OrderSync, "scheduled:orders:{c}:outage", "TRENDYOL_NETWORK_ERROR", null);
+        Assert.DoesNotContain(MarketplaceJobTypes.ReturnSync, outage);
+        Assert.DoesNotContain(MarketplaceJobTypes.QuestionSync, outage);
+        Assert.All(outage, jobType => Assert.True(JobTypeRegistry.IsOrderReadSync(jobType), jobType));
+    }
+
     [PostgreSqlFact]
     public async Task Item4_a_stopped_job_raises_one_bell_alert_a_day_and_a_recovered_or_superseded_one_none()
     {
@@ -344,6 +395,78 @@ public sealed class QueuePhase1ASchedulingPostgreSqlTests(PostgreSqlTenantIsolat
         var listed = await new PanelNotificationService(db, new FixedClock(now.AddDays(1).AddMinutes(2))).NewOrdersAsync(tenantId, Guid.NewGuid(), CancellationToken.None);
         Assert.Contains(listed, row => row.ClientKey.StartsWith(JobFailureAlertPolicy.KeyPrefix, StringComparison.Ordinal) && row.Severity == PanelNotificationSeverities.Error);
         await transaction.RollbackAsync();
+    }
+
+    // Review O2: 600 superseded stops, older or newer, never hide a real failure from the pass.
+    [PostgreSqlFact]
+    public async Task Item4_a_bulk_of_superseded_stops_does_not_hide_a_real_failure()
+    {
+        Assert.NotNull(fixture);
+        await using var db = fixture.CreateStrictContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var (tenantId, ids) = await SeedAsync(db, ("TRENDYOL", Guid.CreateVersion7()));
+        var now = new DateTimeOffset(2026, 11, 27, 10, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < 600; i++)
+            db.IntegrationJobs.Add(StoppedJob(tenantId, ids[0], MarketplaceJobTypes.ProductUpdate, i % 2 == 0 ? JobStatus.Dead : JobStatus.ManualReview, "PRODUCT_UPDATE_SUPERSEDED", now.AddMinutes(-200).AddSeconds(i)));
+        db.IntegrationJobs.Add(StoppedJob(tenantId, ids[0], MarketplaceJobTypes.ReturnSync, JobStatus.Dead, "TRENDYOL_NETWORK_ERROR", now.AddMinutes(-1)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await JobFailureAlerts.RaiseAsync(db, now, TimeSpan.FromHours(6), CancellationToken.None));
+        var row = await db.PanelNotifications.AsNoTracking().SingleAsync(x => x.TenantId == tenantId);
+        Assert.Contains("Yeni İadeler", row.Message);
+        await transaction.RollbackAsync();
+    }
+
+    // Review D1: at most 30 alerts a tenant and day, then one summary counting the rest; the bell list keeps its order notices.
+    [PostgreSqlFact]
+    public async Task Item4_alerts_are_capped_a_day_with_one_summary_and_never_push_order_notices_out()
+    {
+        Assert.NotNull(fixture);
+        await using var db = fixture.CreateStrictContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var (tenantId, ids) = await SeedAsync(db, ("PTTAVM", Guid.CreateVersion7()));
+        var now = new DateTimeOffset(2026, 11, 27, 10, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < 35; i++)
+            db.IntegrationJobs.Add(StoppedJob(tenantId, ids[0], MarketplaceJobTypes.ReturnSync, JobStatus.Dead, $"TEST_CODE_{i:00}", now.AddMinutes(-60).AddSeconds(i)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(31, await JobFailureAlerts.RaiseAsync(db, now, TimeSpan.FromHours(6), CancellationToken.None));
+        Assert.Equal(0, await JobFailureAlerts.RaiseAsync(db, now.AddMinutes(1), TimeSpan.FromHours(6), CancellationToken.None));
+        var rows = await db.PanelNotifications.AsNoTracking().Where(x => x.TenantId == tenantId).ToListAsync();
+        Assert.Equal(31, rows.Count);
+        var summary = Assert.Single(rows, x => x.ClientKey == JobFailureAlertPolicy.SummaryKey("20261127"));
+        Assert.Equal(5, summary.Count);
+        Assert.Contains("5 iş daha", summary.Message);
+
+        db.IntegrationJobs.Add(StoppedJob(tenantId, ids[0], MarketplaceJobTypes.ReturnSync, JobStatus.Dead, "TEST_CODE_X1", now.AddMinutes(2)));
+        db.IntegrationJobs.Add(StoppedJob(tenantId, ids[0], MarketplaceJobTypes.ReturnSync, JobStatus.Dead, "TEST_CODE_X2", now.AddMinutes(2)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, await JobFailureAlerts.RaiseAsync(db, now.AddMinutes(3), TimeSpan.FromHours(6), CancellationToken.None));
+        summary = await db.PanelNotifications.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.ClientKey == summary.ClientKey);
+        Assert.Equal(7, summary.Count);
+        Assert.Equal(31, await db.PanelNotifications.CountAsync(x => x.TenantId == tenantId));
+
+        // 25 order notices beside the 31 alerts: the bell list carries 20 of each.
+        for (var i = 0; i < 25; i++)
+            db.PanelNotifications.Add(new PanelNotification { Id = Guid.CreateVersion7(), TenantId = tenantId, ClientKey = $"{NewOrderNoticePolicy.KeyPrefix}test:{i}", Severity = PanelNotificationSeverities.Info, Category = "ORDER", Title = "Yeni Sipariş", Message = "Deneme: 1 yeni paket", CreatedAt = now.AddMinutes(-30 + i), UpdatedAt = now });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var listed = await new PanelNotificationService(db, new FixedClock(now.AddMinutes(5))).NewOrdersAsync(tenantId, Guid.NewGuid(), CancellationToken.None);
+        Assert.Equal(20, listed.Count(x => x.ClientKey.StartsWith(NewOrderNoticePolicy.KeyPrefix, StringComparison.Ordinal)));
+        Assert.Equal(20, listed.Count(x => x.ClientKey.StartsWith(JobFailureAlertPolicy.KeyPrefix, StringComparison.Ordinal)));
+        await transaction.RollbackAsync();
+    }
+
+    private static IntegrationJob StoppedJob(Guid tenantId, Guid connectionId, string jobType, JobStatus status, string code, DateTimeOffset completedAt)
+    {
+        var job = NewJob(tenantId, connectionId, jobType, $"test:{Guid.NewGuid():N}", completedAt.AddMinutes(-5));
+        job.Status = status;
+        job.LastErrorCode = code;
+        job.CompletedAt = completedAt;
+        job.AttemptCount = 6;
+        return job;
     }
 
     private static async Task Pass(AppDbContext db, DateTimeOffset now, IConfiguration? configuration = null)

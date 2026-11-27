@@ -79,16 +79,24 @@ public static class StartupSpreadPolicy
         jobType is MarketplaceJobTypes.StockReconciliation or MarketplaceJobTypes.StockProjectionDispatch or MarketplaceJobTypes.PriceInventorySync;
 }
 
-// Item 3 of queue phase 1A: while a connection's marketplace is failing (a job of the connection waits for its next try after
-// a marketplace-side error: no answer, a timeout, a 5xx, a quota refusal; or the connection + lock group is in a quota
-// backoff) the scheduler queues no new background poll for it. Those polls would only fail on top of the retry chain (live
+// Item 3 of queue phase 1A: while a connection's marketplace is failing (a scheduled read of the connection waits for its next
+// try after no answer, a timeout or a 5xx) the scheduler queues no new background poll for it; a quota refusal of a scheduled
+// read, or a quota backoff of the connection + lock group, holds the polls of that lock group only. The scheduler queues no new background poll for it. Those polls would only fail on top of the retry chain (live
 // 27 Nov 2026: PttAVM's return and recovery reads were queued during the order read's retries). Order reads keep their own
 // rule (one queued per connection, also while it retries), so a new-order read is never held back here. The held polls stay
 // due and are queued on the first pass after the retry ends.
+// Review of 27 Nov 2026: only a retrying SCHEDULED READ tells that the marketplace is down. A user's write or an invoice
+// delivery retrying on its own endpoint, or a quota refusal (which can defer for a day), says nothing about the reads; a
+// quota refusal holds only the polls of its own lock group (as connection_backoffs do).
 public static class FailingConnectionPollPolicy
 {
-    public static bool IsMarketplaceFailure(string? errorCode) =>
-        ApiHealthSignalPolicy.IsRemoteSide(errorCode) || ApiHealthSignalPolicy.IsRateLimited(errorCode) || ConnectionRetestPolicy.IsTransient(errorCode);
+    // No answer, a timeout or a 5xx from the marketplace: the connection's reads would fail too.
+    public static bool IsMarketplaceOutage(string? errorCode) =>
+        errorCode is not null && !ApiHealthSignalPolicy.IsRateLimited(errorCode)
+        && (ApiHealthSignalPolicy.IsRemoteSide(errorCode) || ConnectionRetestPolicy.IsTransient(errorCode));
+
+    // A quota refusal: holds the polls of the same lock group only.
+    public static bool IsQuotaRefusal(string? errorCode) => ApiHealthSignalPolicy.IsRateLimited(errorCode);
 
     public static bool Holds(bool isOrderRead, bool isWrite) => !isOrderRead && !isWrite;
 }

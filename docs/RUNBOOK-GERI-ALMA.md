@@ -72,6 +72,25 @@ karar bu belgeye göre elle verilir. Kapatmak için: `RAVENCIA_AUTO_ROLLBACK=fal
 Not: Çalışma ağacı (git checkout) geri alınan sürümde kalmaz, son çekilen commit'te kalır; bu
 bilinçlidir — sonraki düzeltme commit'i fast-forward ile gelir.
 
+### 2a. Kuyruk Faz 1A anahtarları (işlerin ne zaman oluştuğu)
+
+Faz 1A (27 Kas 2026) yalnız işlerin ne zaman oluştuğunu değiştirir; her davranış bir anahtarla kapatılır,
+kapalı hali eski davranışın aynısıdır. Değerler `src/MarketplaceHub.Worker/appsettings.json` içinde
+`Worker` altında açıkça yazılıdır. Üretim compose dosyası bunları ortam değişkeni olarak geçirmez (ve
+o dosya bunun için değiştirilmez), yani **sunucuda deploy'suz kapatma yoktur**: değeri `false` yapıp
+commit edin ve normal yayınlayın (`ship`). Worker yeni sürümle açılınca geçerli olur. Kod geri almak
+gerekirse yukarıdaki `rollback.sh` de olur; veritabanı değişikliği yoktur.
+
+| Anahtar | Açıkken | Kapatınca |
+|---|---|---|
+| `ReferenceReads:OneAtATime` | Bağlantının kategori ve marka listesi sırayla, kiracıda tek referans okuması | Bütün bayat listeler aynı geçişte |
+| `ReferenceReads:Spread` (+ `WindowStartHour` 6, `WindowHours` 4) | Her bağlantının günlük referans okuması 06:00–10:00 İstanbul içinde kendi sabit dakikasında | Öğleden sonra günlük penceresi (14:00–17:00) |
+| `StartupSpread:Enabled` (+ `Seconds` 180) | Worker açılışında vadesi gelmiş arka plan okumaları 3 dk'ya yayılır | Hepsi aynı anda |
+| `HoldPollsWhileFailing:Enabled` | Zamanlanmış bir okuma pazaryeri kesintisiyle tekrar beklerken o bağlantıya yeni arka plan okuması açılmaz | Açılır (eski davranış) |
+| `JobFailureAlerts:Enabled` | Ölü / incelemedeki / bir gündür engelli iş zile düşer (günde en çok 30 + bir özet) | Uyarı yazılmaz |
+
+Kontrol: `.local-docs/kuyruk-faz1a-verify.sql` (salt okunur, `prod-sql` ile) önce/sonra sayıları verir.
+
 ## 3. Veritabanını geri yükle (son çare)
 
 Yedekler `marketplacehub_backup_staging` volume'ündedir (`<UTC zaman damgası>/database.dump`,
