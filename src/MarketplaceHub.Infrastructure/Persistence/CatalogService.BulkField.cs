@@ -158,6 +158,8 @@ public sealed partial class CatalogService
         var variants = value.Field is BulkProductFields.Desi or BulkProductFields.SafetyStock
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : null;
+        // KATALOG-14 D5 step B2b: "already holds it" is judged against the model's values, never against the copies.
+        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
         var variantCount = variants?.Count ?? await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenantId && ids.Contains(x.ProductId), cancellationToken);
 
         switch (value.Field)

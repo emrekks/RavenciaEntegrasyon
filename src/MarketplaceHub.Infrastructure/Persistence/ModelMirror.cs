@@ -42,6 +42,9 @@ public static class ModelMirror
 
     public sealed record DesiGiven(Guid VariantId, decimal? Desi, bool Added);
 
+    // Step B2b: what a written copy would have marked (MirrorAsync with Catalog:MirrorModelFields off).
+    private sealed record Marking(IReadOnlyDictionary<string, HashSet<Guid>> Brought, IReadOnlySet<Guid> DesiDiffering, IReadOnlySet<Guid> DesiGiven);
+
     // What a save wrote: the model, the number of colours it has, the fields given to it, and whether a difference was
     // kept apart (an import, colours given different values in one save).
     public sealed record Applied(Guid ModelId, string ModelCode, int Colours, IReadOnlyList<string> Fields, bool Refused);
@@ -77,6 +80,8 @@ public static class ModelMirror
             // Per touched field, the cards that brought a value: when the model does not move they alone take its value
             // back (an import, a new colour), so a colour nobody touched keeps what it holds today.
             var touched = new Dictionary<string, HashSet<Guid>>(StringComparer.Ordinal);
+            // Step B2b: per field the model took, the cards that brought its new value (their copy held it already).
+            var brought = new Dictionary<string, HashSet<Guid>>(StringComparer.Ordinal);
             var conflicts = new List<string>();
 
             // One field: the values the save gave (new colours only check the model's), the model's value and how to set it.
@@ -114,6 +119,8 @@ public static class ModelMirror
                     return;
                 }
                 if (key(changed[0]) == currentKey) return;
+                var newKey = key(changed[0]);
+                brought[field] = [.. set.Where(x => key(valueOf(x)) == newKey).Select(x => x.Card.Id)];
                 target = with(target, changed[0]);
                 fields.Add(field);
             }
@@ -188,7 +195,9 @@ public static class ModelMirror
             // A field the model took goes to every colour (and every variant); otherwise only the cards and variants that
             // brought a value take the model's back.
             var scope = touched.ToDictionary(x => x.Key, x => fields.Contains(x.Key) ? null : (IReadOnlySet<Guid>)x.Value, StringComparer.Ordinal);
-            await MirrorAsync(db, tenantId, model.Id, target, scope, members, fields.Contains(ProductModelValues.Desi) ? null : desiVariants, !db.MarketplaceCatalogImport, cancellationToken);
+            // Step B2b: the variants whose given desi differs from the model's (their links are marked as a written copy marks them).
+            var desiDiffering = desiGiven.Where(x => x.Desi != target.Desi).Select(x => x.VariantId).ToHashSet();
+            await MirrorAsync(db, tenantId, model.Id, target, scope, members, fields.Contains(ProductModelValues.Desi) ? null : desiVariants, new(brought, desiDiffering, desiVariants), !db.MarketplaceCatalogImport, cancellationToken);
             db.ModelMirrorReport.Add(new Applied(model.Id, model.ModelCode, members.Count, fields, conflicts.Count > 0));
         }
     }
@@ -246,13 +255,25 @@ public static class ModelMirror
     // links marked edited, as a card edit marks them (a link already marked keeps its version); not in a marketplace
     // import, which only gives a colour its model's value back (the listing's other value is reported, and marking the
     // link would make the next import keep the card whole as if the owner had edited it).
-    private static async Task MirrorAsync(AppDbContext db, Guid tenantId, Guid modelId, Values values, IReadOnlyDictionary<string, IReadOnlySet<Guid>?> fields, IReadOnlyList<CardRow> members, IReadOnlySet<Guid>? desiVariants, bool markLinks, CancellationToken cancellationToken)
+    // KATALOG-14 D5 step B2b: with Catalog:MirrorModelFields off (ModelFieldCopies) the description, VAT, category, warranty,
+    // delivery days and desi copies are not written (the name and the brand are, as before), and the colours' marketplace
+    // links are marked exactly as a written copy would have marked them: every colour (every variant's card) of a field the
+    // model took (its value changed for all of them), and otherwise the cards (variants) that brought another value (with
+    // the copies on, the save had written that value and the mirror wrote the model's back). So the same sends are queued
+    // in both positions.
+    private static async Task MirrorAsync(AppDbContext db, Guid tenantId, Guid modelId, Values values, IReadOnlyDictionary<string, IReadOnlySet<Guid>?> fields, IReadOnlyList<CardRow> members, IReadOnlySet<Guid>? desiVariants, Marking marking, bool markLinks, CancellationToken cancellationToken)
     {
         if (fields.Count == 0) return;
         var changedCards = new HashSet<Guid>();
+        var copies = ModelFieldCopies.Written;
         async Task Cards(string field, System.Linq.Expressions.Expression<Func<Product, bool>> differs, Action<Microsoft.EntityFrameworkCore.Query.UpdateSettersBuilder<Product>> set)
         {
             if (!fields.TryGetValue(field, out var scope)) return;
+            if (!copies && field != ProductModelValues.Brand)
+            {
+                changedCards.UnionWith(scope is null ? members.Select(x => x.Id).Except(marking.Brought.GetValueOrDefault(field) ?? []) : scope);
+                return;
+            }
             var only = scope?.ToArray();
             var ids = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId == modelId && (only == null || only.Contains(x.Id))).Where(differs).Select(x => x.Id).ToListAsync(cancellationToken);
             if (ids.Count == 0) return;
@@ -273,7 +294,16 @@ public static class ModelMirror
         await Cards(ProductModelValues.Warranty, x => x.WarrantyMonths != values.WarrantyMonths, s => s.SetProperty(x => x.WarrantyMonths, values.WarrantyMonths));
         await Cards(ProductModelValues.DeliveryDays, x => x.DeliveryDays != values.DeliveryDays, s => s.SetProperty(x => x.DeliveryDays, values.DeliveryDays));
         await Cards(ProductModelValues.Brand, x => x.BrandId != values.BrandId, s => s.SetProperty(x => x.BrandId, values.BrandId));
-        if (fields.ContainsKey(ProductModelValues.Desi) && values.Desi is { } desi)
+        if (!copies && fields.ContainsKey(ProductModelValues.Desi) && values.Desi is not null)
+        {
+            // Taken by the model: every variant of the model but those that brought its new desi; else those that brought another.
+            var marked = desiVariants?.Where(marking.DesiDiffering.Contains).ToArray();
+            var variants = await db.ProductVariants.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && (marked == null || marked.Contains(x.Id)) && db.Products.Any(p => p.TenantId == tenantId && p.Id == x.ProductId && p.FamilyId == modelId))
+                .Select(x => new { x.Id, x.ProductId }).ToListAsync(cancellationToken);
+            changedCards.UnionWith(variants.Where(x => marked != null || marking.DesiDiffering.Contains(x.Id) || !marking.DesiGiven.Contains(x.Id)).Select(x => x.ProductId));
+        }
+        else if (fields.ContainsKey(ProductModelValues.Desi) && values.Desi is { } desi)
         {
             var only = desiVariants?.ToArray();
             var variants = await db.ProductVariants.AsNoTracking()
@@ -315,11 +345,15 @@ public static class ModelMirror
 
     public sealed record Gap(Guid ModelId, string ModelCode, IReadOnlyList<string> Fields);
 
+    // KATALOG-14 D5 step B2b: with Catalog:MirrorModelFields off a copy is allowed to differ (nothing writes or reads it), so
+    // there is no gap to report: every reader reads the model, which cannot differ from itself. The open gap warnings are
+    // settled (the last statement below) and nothing is written to a card or a model.
     public static async Task<IReadOnlyList<Gap>> ReportGapsAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        var copies = ModelFieldCopies.Written;
         var rows = await (from card in db.Products.AsNoTracking()
                           join model in db.ProductModels.AsNoTracking() on new { card.TenantId, Id = card.FamilyId } equals new { model.TenantId, Id = (Guid?)model.Id }
-                          where card.TenantId == tenantId
+                          where card.TenantId == tenantId && copies
                                 && ((card.VatRate != null && (card.VatRate != model.VatRate || card.VatInclusion != model.VatInclusion))
                                     || (card.CategoryId != null && card.CategoryId != model.CategoryId)
                                     || (card.WarrantyMonths != null && card.WarrantyMonths != model.WarrantyMonths)

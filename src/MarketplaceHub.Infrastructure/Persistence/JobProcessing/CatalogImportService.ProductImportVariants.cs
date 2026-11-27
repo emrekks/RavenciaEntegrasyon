@@ -45,8 +45,10 @@ internal sealed partial class CatalogImportService
         var targets = await (from variantLink in db.MarketplaceVariantLinks
                              join variant in db.ProductVariants on new { variantLink.TenantId, variantLink.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
                              where variantLink.TenantId == tenantId && variantLink.ConnectionId == connectionId
-                                 && externalIds.Contains(variantLink.ExternalId) && variant.Desi == null
+                                 && externalIds.Contains(variantLink.ExternalId)
                              select new { variantLink.ExternalId, Variant = variant }).ToListAsync(cancellationToken);
+        // KATALOG-14 D5 step B2b: "empty" is the desi every reader sees (the model's), not the variant's copy.
+        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
         foreach (var target in targets)
         {
             if (target.Variant.Desi is not null || !desiByExternalId.TryGetValue(target.ExternalId, out var desi)) continue;
@@ -145,7 +147,8 @@ internal sealed partial class CatalogImportService
             }
         }
         // The marketplace desi fills an empty local desi (also for observed catalogs: it only adds a value). A desi
-        // the person entered or an earlier import set is never overwritten.
+        // the person entered or an earlier import set is never overwritten. "Empty" is the model's desi (step B2b).
+        if (!isNewVariant) await EffectiveCatalog.RebaseAsync(db, cancellationToken);
         if (variant.Desi is null && remote.Desi is { } remoteDesi)
         {
             variant.Desi = remoteDesi;

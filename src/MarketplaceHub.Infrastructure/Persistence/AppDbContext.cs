@@ -188,9 +188,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             if (models is not null) ProductModelLinks.LockPendingModelsAsync(this, models, CancellationToken.None).GetAwaiter().GetResult();
             // KATALOG-14 D5 step B1: a new card is inserted with its model (ProductModelLinks.GiveNewCardsModels).
             if (models is not null) ProductModelLinks.GiveNewCardsModels(this, models, _timeProvider.GetUtcNow());
+            // KATALOG-14 D5 step B2b: no copy column of the model fields is written while Catalog:MirrorModelFields is off.
+            var held = ModelFieldCopyHold.Before(ChangeTracker);
             _saving = true;
             try { saved = base.SaveChanges(acceptAllChangesOnSuccess && owned is null); }
-            finally { _saving = false; }
+            finally { _saving = false; ModelFieldCopyHold.After(held); }
             CatalogListGenerations.Bump(catalogTenants);
             ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, CancellationToken.None); return 0; }, 0).GetAwaiter().GetResult();
             if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
@@ -239,11 +241,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             if (models is not null) await ProductModelLinks.LockPendingModelsAsync(this, models, cancellationToken);
             // KATALOG-14 D5 step B1: a new card is inserted with its model (ProductModelLinks.GiveNewCardsModels).
             if (models is not null) ProductModelLinks.GiveNewCardsModels(this, models, _timeProvider.GetUtcNow());
+            // KATALOG-14 D5 step B2b: no copy column of the model fields is written while Catalog:MirrorModelFields is off.
+            var held = ModelFieldCopyHold.Before(ChangeTracker);
             _saving = true;
             // In its own transaction the changes are accepted only after the commit: a link or model write that fails rolls
             // the save back and leaves the tracked entities as they were, so the caller's next save writes them again.
             try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess && owned is null, cancellationToken); }
-            finally { _saving = false; }
+            finally { _saving = false; ModelFieldCopyHold.After(held); }
             CatalogListGenerations.Bump(catalogTenants);
             await ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, cancellationToken); return 0; }, 0);
             if (models is not null) await LinkProductModelsAsync(models);
@@ -268,6 +272,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             OwnsModelLinkTransaction = false;
         }
     }
+
+    // KATALOG-14 D5 step B2b: the tracked cards and variants already rebased on their model (EffectiveCatalog.RebaseAsync).
+    internal HashSet<object> RebasedRows { get; } = new(ReferenceEqualityComparer.Instance);
 
     // True while SaveChanges runs its own transaction around a save and its model links (KATALOG-14 phase D5a): the
     // reconcile then takes its advisory locks inside it (ProductModelLinks.ReconcileAsync).

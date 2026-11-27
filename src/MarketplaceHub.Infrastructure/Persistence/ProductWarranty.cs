@@ -30,7 +30,10 @@ public static class ProductWarranty
     // its empty warranty, as does the draft's copy.
     public static async Task<PassResult> RunPassAsync(AppDbContext db, bool firstPassAfterStart, CancellationToken cancellationToken)
     {
-        if (!firstPassAfterStart)
+        // KATALOG-14 D5 step B2b: with Catalog:MirrorModelFields off the one-time repair is retired: it judged by the copies
+        // (which are no longer kept) and the owner rule is that automatic passes write none of the model fields; every pass
+        // only counts, by the model, for the Worker's warning.
+        if (!firstPassAfterStart || !ModelFieldCopies.Written)
             return new(0, 0, await EffectiveCatalog.Products(db).CountAsync(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft, cancellationToken));
         var cards = await db.Products.Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);

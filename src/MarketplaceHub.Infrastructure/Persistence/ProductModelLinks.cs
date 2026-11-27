@@ -1051,12 +1051,14 @@ public static class ProductModelLinks
     }
 
     // The editor saved the model's fields to every card: the model takes the same values (write-through).
-    public static async Task WriteFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, string? titleColor, DateTimeOffset now, CancellationToken cancellationToken)
+    // KATALOG-14 D5 step B2b (review L6): the values are the ones the editor saved on the card (the tracked card after its
+    // save), never the card's copy columns, which are not written while Catalog:MirrorModelFields is off. The model is read
+    // from the database (the save's reconcile may have moved the card).
+    public static async Task WriteFieldsAsync(AppDbContext db, Guid tenantId, Product saved, string? titleColor, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var card = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId && x.FamilyId != null)
-            .Select(x => new { x.FamilyId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
-            .SingleOrDefaultAsync(cancellationToken);
-        if (card is null) return;
+        var familyId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == saved.Id).Select(x => x.FamilyId).SingleOrDefaultAsync(cancellationToken);
+        if (familyId is null) return;
+        var card = new { FamilyId = familyId, saved.Title, saved.Description, saved.CategoryId, saved.VatRate, saved.VatInclusion, saved.WarrantyMonths, saved.DeliveryDays };
         var color = string.IsNullOrWhiteSpace(titleColor) ? null : Short(titleColor.Trim(), 120);
         var title = Short(card.Title, 320);
         // An empty warranty (a draft saved with it emptied) is the model's only while all its cards are drafts: a model
