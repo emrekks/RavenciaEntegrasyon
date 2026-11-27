@@ -38,13 +38,44 @@ public sealed class InvoiceIssueGateTests
     [Fact]
     public void Refuses_export_orders_but_not_domestic_e_archive_or_e_invoice()
     {
-        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", "{\"commercial\":false}"));
+        static MicroExportDecision Trendyol(string json) => MicroExportRule.Classify("TRENDYOL", null, json);
+        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", Trendyol("{\"commercial\":false,\"micro\":false}")));
         // The e-Invoice decision belongs to the taxpayer lookup (InvoiceRecipientReviewTests).
-        Assert.Null(InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", "{}"));
-        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", "{}")?.Code);
-        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", "{\"micro\":true}")?.Code);
-        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", "{\"3pByTrendyol\":true}")?.Code);
-        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", null, "{}")?.Code);
+        Assert.Null(InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", Trendyol("{\"micro\":false}")));
+        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", MicroExportRule.Classify("HEPSIBURADA", null, "{}")));
+        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", Trendyol("{\"micro\":false}"))?.Code);
+        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", Trendyol("{\"micro\":true}"))?.Code);
+        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", Trendyol("{\"3pByTrendyol\":true}"))?.Code);
+        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", null, Trendyol("{\"micro\":false}"))?.Code);
+    }
+
+    // The delivery's "micro" mark is as before for a clear order (false domestic, true micro export) and takes the
+    // stricter micro-export form (a GİB number required) for an unknown one.
+    [Fact]
+    public void The_delivery_micro_mark_is_unchanged_for_clear_orders()
+    {
+        Assert.False(InvoiceIssuePolicy.NeedsMicroExportInvoiceFields(MicroExportRule.Classify("TRENDYOL", "TR", "{\"micro\":false,\"3pByTrendyol\":false}")));
+        Assert.False(InvoiceIssuePolicy.NeedsMicroExportInvoiceFields(MicroExportRule.Classify("HEPSIBURADA", null, "{}")));
+        Assert.True(InvoiceIssuePolicy.NeedsMicroExportInvoiceFields(MicroExportRule.Classify("TRENDYOL", "SA", "{\"micro\":true,\"3pByTrendyol\":false}")));
+        Assert.True(InvoiceIssuePolicy.NeedsMicroExportInvoiceFields(MicroExportRule.Classify("TRENDYOL", "TR", "{}")));
+    }
+
+    // C-11.9 (owner, 27 Nov 2026): an order the rule cannot call micro export or domestic gets no type by guess; the
+    // refusal names why, and the stored code reads back as the generic text.
+    [Theory]
+    [InlineData("{}", "micro) yok")]
+    [InlineData("{\"micro\":false,\"lines\":[{\"micro\":true}]}", "üst düzeyi dışında")]
+    [InlineData("{\"micro\":true,\"3pByTrendyol\":true}", "ikisi de true")]
+    [InlineData("{\"micro\":\"false\"}", "dışında bir değerle")]
+    public void Stops_an_order_whose_micro_export_kind_is_unknown(string json, string reason)
+    {
+        var refusal = InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", MicroExportRule.Classify("TRENDYOL", null, json));
+        Assert.Equal(InvoiceIssuePolicy.MicroExportUnknownCode, refusal?.Code);
+        Assert.Contains(reason, refusal!.Message, StringComparison.Ordinal);
+        Assert.Contains("tahmin edilmedi", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(InvoiceIssuePolicy.MicroExportUnknown.Message, InvoiceIssuePolicy.DescribeValidationCode(InvoiceIssuePolicy.MicroExportUnknownCode));
+        // A foreign currency stops it as before, with the export reason.
+        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", MicroExportRule.Classify("TRENDYOL", null, json))?.Code);
     }
 
     [Fact]

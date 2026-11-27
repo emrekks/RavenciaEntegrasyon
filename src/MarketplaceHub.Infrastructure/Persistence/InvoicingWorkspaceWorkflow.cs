@@ -409,7 +409,7 @@ public sealed partial class InvoicingBillingService
             : existing is null && !MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson)
                 ? MarketplaceInvoiceCreationPolicy.DisabledMessage
                 : InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(provider.Environment, marketplace.Environment);
-        if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, recipient) is { } issueRefusal)
+        if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, MicroExportRule.Classify(marketplace.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson), recipient) is { } issueRefusal)
         {
             canCreate = false;
             blockedReason = issueRefusal.Message;

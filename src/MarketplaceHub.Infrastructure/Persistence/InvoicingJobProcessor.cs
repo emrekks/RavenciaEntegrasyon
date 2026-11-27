@@ -268,7 +268,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             var recipient = await EInvoiceRecipientResolver.ResolveAsync(provider,
                 Context(tenantId, connectionId, correlationId, $"invoice-taxpayer:{invoice.Id:N}"),
                 orderConnection.PlatformCode, customerSnapshotJson, invoiceAddressSnapshotJson, fresh: true, cancellationToken);
-            if (InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, customerSnapshotJson, recipient) is { } recipientRefusal)
+            if (InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, MicroExportRule.Classify(orderConnection.PlatformCode, order.StoreFrontCode, customerSnapshotJson), recipient) is { } recipientRefusal)
                 await BlockFiscalSubmission(invoice, recipientRefusal.Code, recipientRefusal.Message, cancellationToken);
             // The last check before issuing: the draft gates again on the order as it is now. Anything changed since the
             // owner's approval stops the issue and the invoice waits for a new approval; never a recomputed amount.
@@ -970,7 +970,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             ["invoiceLink"] = document.DocumentUrl,
             ["invoiceDateTime"] = document.IssuedAt.Value.ToUnixTimeMilliseconds(),
             ["invoiceNumber"] = document.InvoiceNumber,
-            ["micro"] = IsMicroExport(order.CustomerSnapshotJson)
+            ["micro"] = NeedsMicroExportInvoiceFields(platformCode, order.StoreFrontCode, order.CustomerSnapshotJson)
         };
         if (platformCode == "HEPSIBURADA")
         {
@@ -1605,7 +1605,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             ["invoiceLink"] = link.AbsoluteUri,
             ["invoiceDateTime"] = invoice.IssuedAt?.ToUnixTimeMilliseconds(),
             ["invoiceNumber"] = invoice.InvoiceNumber,
-            ["micro"] = IsMicroExport(order?.CustomerSnapshotJson)
+            ["micro"] = order is not null && NeedsMicroExportInvoiceFields(platformCode, order.StoreFrontCode, order.CustomerSnapshotJson)
         };
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
         {
@@ -2181,7 +2181,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.Version++;
     }
 
-    private static bool IsMicroExport(string? customerSnapshotJson) => InvoiceIssuePolicy.IsMicroExport(customerSnapshotJson);
+    // The delivery's "micro" mark (Trendyol then requires a GİB-format number): a micro export by the one rule
+    // (MicroExportRule), or an order whose kind is unknown; an order no longer found keeps the domestic form, as before.
+    private static bool NeedsMicroExportInvoiceFields(string? platformCode, string? storeFrontCode, string? customerSnapshotJson) =>
+        InvoiceIssuePolicy.NeedsMicroExportInvoiceFields(MicroExportRule.Classify(platformCode, storeFrontCode, customerSnapshotJson));
 
     private async Task<bool> FetchDocument(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {

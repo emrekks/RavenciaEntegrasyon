@@ -18,6 +18,9 @@ describe('invoice failure reasons', () => {
     expect(invoiceFailureReason('EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE')).toContain('11111111111')
     expect(invoiceFailureGuidance('EFATURAM_RECIPIENT_KIND_UNKNOWN')).toContain('manuel belge')
     expect(invoiceFailureGuidance('EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE')).toContain('manuel belge')
+    // 27 Nov 2026: an order whose micro-export kind is unknown waits; its type is not guessed.
+    expect(invoiceFailureReason('INVOICE_MICRO_EXPORT_UNKNOWN')).toContain('tahmin edilmedi')
+    expect(invoiceFailureGuidance('INVOICE_MICRO_EXPORT_UNKNOWN')).toContain('manuel belge')
   })
 
   it('explains provider refusals that left nothing at the provider', () => {

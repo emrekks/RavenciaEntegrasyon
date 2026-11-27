@@ -1491,10 +1491,11 @@ public sealed record OrderBuyerTypeView(string Kind, string Reason)
 }
 // Facts the marketplace states about an order, shown as icons in the order row. Each is set only from a field the
 // marketplace sent: a missing field leaves the mark out (unknown), it never means "no".
-// MicroExport: the "Mikro İhracat" label's rule (OrderMicroExportRules); MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
+// MicroExport: the one micro-export rule (MicroExportRule) calls it micro export; MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
+// MicroExportUnknownReason: the rule cannot tell micro export from domestic (the "Belirsiz" mark); its Turkish reason.
 // DeliveryPoint: Trendyol deliveryAddressType=CollectionPoint, n11 deliveryAddressType (KTN, EASYPOINT, PUP).
 // FastDeliveryType: Trendyol fastDeliveryType TodayDelivery, SameDayShipping or FastDelivery.
-public sealed record OrderRowMarks(bool MicroExport, string? MicroExportCountryCode, bool DeliveryPoint, string? DeliveryPointType, string? FastDeliveryType);
+public sealed record OrderRowMarks(bool MicroExport, string? MicroExportCountryCode, bool DeliveryPoint, string? DeliveryPointType, string? FastDeliveryType, string? MicroExportUnknownReason = null);
 public sealed record OrderAddressView(
     string? FullName,
     string? FullAddress,

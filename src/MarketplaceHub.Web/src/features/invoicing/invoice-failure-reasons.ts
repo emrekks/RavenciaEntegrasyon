@@ -44,6 +44,8 @@ export function invoiceFailureReason(code: string | null) {
     EINVOICE_TAXPAYER_CONFLICT: 'Pazaryeri alıcıyı e-Fatura mükellefi bildirdi, mükellef sorgusu bulamadı; fatura kesilmedi.',
     EINVOICE_TAXPAYER_STATUS_CHANGED: 'Alıcının e-Fatura mükellefiyeti fatura hazırlandıktan sonra değişti; fatura gönderilmedi.',
     INVOICE_EXPORT_FLOW_REQUIRED: 'Mikro ihracat veya TRY dışı sipariş; yurt içi e-Arşiv kesilemez.',
+    // MicroExportRule (27 Nov 2026): a missing micro flag or contradictory signals; the type is never guessed.
+    INVOICE_MICRO_EXPORT_UNKNOWN: 'Siparişin mikro ihracat mı yurt içi mi olduğu açık değil; fatura türü tahmin edilmedi ve fatura kesilmedi.',
     INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE: 'Panel iade ya da düzeltme faturası kesmez.',
     ORDER_LINE_VAT_RATE_UNKNOWN: 'KDV Oranı Bilinmiyor: pazaryeri bir ürün satırının KDV oranını bildirmedi ve ürün kartında da KDV oranı yok; fatura kesilmedi.',
     ORDER_LINE_UNREADABLE: 'Okunamayan Ürün Satırı: siparişin bir paketinde en az bir ürün satırı okunamadı; satırları eksik siparişe fatura kesilmedi.',
@@ -95,6 +97,7 @@ export function invoiceFailureGuidance(code: string | null) {
     HEPSIBURADA_INVOICE_INFO_MISSING: 'Hepsiburada satıcı panelinde siparişin faturasını kontrol edin; fatura yoksa Tekrar Gönder ile yeniden gönderin.',
     INVOICE_RETURN_DOCUMENT_REQUIRED: 'Fatura iptal edilmez ve pazaryerine iletilir; iade edilen ürünler için iade belgesini (gider pusulası veya iade faturası) düzenleyin.',
     INVOICE_EXPORT_FLOW_REQUIRED: 'İhracat faturasını E-Faturam portalında düzenleyip belgeyi siparişe manuel olarak ekleyin.',
+    INVOICE_MICRO_EXPORT_UNKNOWN: 'Siparişi Trendyol satıcı panelinde kontrol edin: mikro ihracatsa ihracat faturasını, yurt içiyse e-Arşiv ya da e-Fatura’yı E-Faturam portalında düzenleyip siparişe manuel belge olarak ekleyin.',
     EFATURAM_RECIPIENT_TAX_ID_INVALID: 'Alıcının vergi/T.C. kimlik numarasını pazaryerinde düzeltip siparişi yeniden eşitleyin.',
     EFATURAM_RECIPIENT_KIND_UNKNOWN: 'Hepsiburada satıcı panelinde siparişin fatura bilgilerini kontrol edin; faturayı E-Faturam portalında doğru alıcıya düzenleyip siparişe manuel belge olarak ekleyin.',
     EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE: 'Alıcı türünü pazaryeri panelinde kontrol edin; gerekirse faturayı E-Faturam portalında şirket adına düzenleyip siparişe manuel belge olarak ekleyin.',
