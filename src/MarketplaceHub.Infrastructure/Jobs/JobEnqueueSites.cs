@@ -139,7 +139,8 @@ public static class JobEnqueueSites
         ["src/MarketplaceHub.Infrastructure/Persistence/SalesJobService.Jobs.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Persistence/MarketplaceWebhookService.cs"] = 2,
         ["src/MarketplaceHub.Infrastructure/Persistence/PanelFactoryResetService.cs"] = 1,
-        ["src/MarketplaceHub.Infrastructure/Persistence/ScheduledJobProducer.cs"] = 3,
+        // The sync-policy site queues from two places since queue phase 1A (a reference read's lists one at a time).
+        ["src/MarketplaceHub.Infrastructure/Persistence/ScheduledJobProducer.cs"] = 4,
         ["src/MarketplaceHub.Infrastructure/Persistence/StockProjectionOutbox.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Persistence/WebhookInboxWriter.cs"] = 1
     };
