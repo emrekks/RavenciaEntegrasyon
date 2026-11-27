@@ -662,9 +662,12 @@ alır (`ModelMirror.cs:9-25`; `EffectiveCatalog.cs:7-12`). Bir rengin adı model
 kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori özellikleri de model düzeyinde tutulur
 (`product_model_attributes`). Renk, varyant kodları, stok, fiyatlar, maliyet ve görseller kartta/satırda kalır.
 
-- **Okuma**: ekranlar, raporlar, faturalar ve pazaryeri gönderimleri kartı `EffectiveCatalog` üzerinden okur: marka,
-  kategori, KDV, garanti ve teslimat doğrudan modelden; ad, açıklama ve desi modelden aynı işlemde yazılan kart/varyant
-  kopyalarından. Modele bağlı olmayan kart kendi sütunlarını okur. Fatura modelin KDV'siyle kesilir; modelin KDV'si
+- **Okuma** (D5 B2a, 27 Kas 2026): ekranlar, raporlar, faturalar, Excel ve pazaryeri gönderimleri kartı ve varyantı
+  `EffectiveCatalog` üzerinden okur. **Yedi alan yalnız modelden** gelir: açıklama, KDV oranı, KDV dahil mi, desi (bütün renk
+  ve bedenler için tek değer; bedene özel desi yok), teslimat süresi, garanti, marka, kategori (`EffectiveCatalog.Products`,
+  `EffectiveCatalog.Variants`). **Ad kartta kalır**: her renk kartı kendi adını taşır (pazaryerlerindeki adlar bunlardır);
+  hiçbir okuyucu adı modelden türetmez, modelin adı bir kartın adının üstüne yazılmaz. Modelinde desi yoksa varyant kendi
+  desisini gösterir; modele bağlı olmayan kart (B1 ile canlıda yok) kendi sütunlarını okur. Fatura modelin KDV'siyle kesilir; modelin KDV'si
   bilinmiyorsa fatura durur.
 - **Sahibin kaydı** (ürün düzenleyici, Excel ürün dosyası, Toplu Değer Ata, API): bir renge verilen değer modele yazılır ve
   aynı işlemde modelin bütün renklerine ve varyantlarına kopyalanır; yalnız kaydın değiştirdiği alanlar yazılır. Toplu Değer
@@ -698,15 +701,17 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
   `LockPendingModelsAsync`; `CatalogImportService.ProductImport.cs:576-583`). Model satırını bekleyen kayıt en çok 30 sn bekler
   (55P03); editör (Yeni Ürün dahil) ve diğer API yolları bunu `SAVE_CONFLICT_RETRY` 409 "Tekrar deneyin" diye yanıtlar, 500 değil
   (`CatalogService.SaveConflict`, `ApiExceptionHandler`).
-- Kart ve varyantlardaki eski sütunlar şimdilik modelin **kopyası** olarak yazılmaya devam eder (geri alma güvenliği). Önceki
-  sürümden kalma ad/açıklama farkı olan kartlar, sahip ürünleri silip yeniden aktarana kadar kendi metnini taşır
-  (`EffectiveCatalog.cs:29-35`).
-- KDV (oran + dahil mi), kategori, garanti ve teslimat süresinin kart kopyasını hiçbir okuyucu okumaz (D5 B2a): Excel ürün
+- Kart ve varyantlardaki eski sütunlar şimdilik modelin **kopyası** olarak yazılmaya devam eder (geri alma güvenliği);
+  hiçbir okuyucu onları okumaz. Yeni model açan yollar da (uzlaştırma, kodu silinen kartın kendi modeli, Marka Listesi
+  sıfırlaması) kartın kopyasını değil kartın bulunduğu modelin değerlerini alır; Worker garanti geçişi modele bakar.
+- Yedi alanın kart/varyant kopyasını hiçbir okuyucu okumaz (D5 B2a): Excel ürün
   dosyası dışa aktarımı (KDV, marka, kategori sütunları ve marka/kategori süzgeci), editör kaydının "KDV Oranı Gerekli",
   "KDV Dahil mi" ve zorunlu garanti/teslimat denetimi ile değer verilmeyince korunan KDV dahil/hariç bilgisi, pazaryeri
   aktarımında yeni teklifin KDV'si modelden okunur (`ProductTransferService.ExportAsync`, `CatalogService.UpdateProductAsync`,
   `CatalogImportService.CardOrModelVatRateAsync`). Kopyalar bayat bırakılsa da bütün pazaryeri gönderimleri, fatura KDV'si,
-  Excel ve editör aynı çıktıyı verir (`StaleCardCopyReadersPostgreSqlTests`).
+  Excel ve editör aynı çıktıyı verir; açıklama ve desi kopyaları zehirlense de altı pazaryerinin yükleri bayt bayt aynıdır
+  (`StaleCardCopyReadersPostgreSqlTests`). Canlı doğrulama (salt okunur): her alanda kopya-model farkı 0 (27 Kas 2026; ad
+  hariç, ad kartındır).
 
 **Model kaydı aşamaları (KATALOG-14)**: D1–D4, D5 A ve D5 B canlıda (`a9b91498e`; model tek kaynak, kopyalar ayna). Kalanlar
 plandır, yapılmadı: **B2** kopyaların yazılmasını durdurmak, **C** kart sütunlarını düşürmek. C geri alınamaz ve sahibin
@@ -714,8 +719,11 @@ ayrı onayını ister.
 **B1 (her kartın bir modeli var)**: kart kodlu ise markasının o koddaki modeline, kodsuzsa (taslak dahil) kendi modeline
 (`#<kart kimliği>`) bağlıdır. Yeni kart kaydedilirken modeli aynı kayıtta, karttan önce yazılır; kodu silinen kart doğrudan
 kendi modeline geçer (`ProductModelLinks.GiveNewCardsModels`, `GiveOwnModelsAsync`). Veritabanında
-`catalog.products.FamilyId` NOT NULL (`20261127111010_ProductFamilyRequired`); model bağı `ON DELETE SET NULL ("FamilyId")`
-olarak kaldı, yani kartı olan bir model silinemez. Ürün silme, Bağlantıyı Sil, Tam Sıfırlama ve Ürünler sıfırlaması önce
+`catalog.products.FamilyId` NOT NULL (`20261127111010_ProductFamilyRequired`); model bağı `ON DELETE RESTRICT`
+(`20261127170948_ProductFamilyRestrict`), yani kartı olan bir model silinemez. "Kartı kalmayan modeli sil" adımı kartı
+okuma anında göremediği eşzamanlı yeni bir kartla karşılaşırsa veritabanı silmeyi reddeder (restrict_violation); adım
+kayıt noktasına dönüp yeniden dener ve modeli korur, üç denemede de reddedilirse kayıt "Model silinemedi … tekrar deneyin"
+(`PRODUCT_MODEL_GAINED_CARD`, 409) diye durur (`ProductModelLinks.DeleteModelsWithoutCardsAsync`). Ürün silme, Bağlantıyı Sil, Tam Sıfırlama ve Ürünler sıfırlaması önce
 kartları siler; Marka Listesi sıfırlaması kartları önce modelden ayırır (`PanelFactoryResetInventory.Detaches`). Migration
 modelsiz kart bulursa sayısını yazıp hiçbir şeyi değiştirmeden durur (`RUNBOOK-GERI-ALMA.md`).
 **B2 sırası**: B2a (okuyucular modele, yukarıda) önce tek başına canlıya çıkar; B2b (yazmayı bırakmak) ancak B2a canlıda
@@ -727,10 +735,8 @@ modele göre kurar (yazıcı değeri modele verir, karşılaştırma modelin de�
 yazılır), uzlaştırmanın yeni model açarken kartın değerini değil bulunduğu modelin değerini almasını sağlar ve yalnız
 kopya farkını ölçen denetimleri (`ModelMirror.ReportGapsAsync`, model yenilemesinin renkler arası KDV farkı) emekliye
 ayırır. **Marka** kopya değildir: kartın `BrandId` alanı modele bağlanma anahtarıdır (uzlaştırma, `ProductFamilyScope`),
-yazılmaya devam eder. **Ad, açıklama, desi** okuyucuları bilerek kart/varyant sütununu okur (rengin adı model adından renk
-sözcüğüyle türetilir ve SQL'de arama/sıralama bu sütunla yapılır; 85 modelde eski metin farkı var): bunlar için B2, sahibin
-kararını (ad/desi sütununu türetilmiş kalıcı değer olarak tutmak ya da okuyucuları çevirmek, eski metin farklarını
-düzleştirmek) bekler. Canlı doğrulama: `.local-docs/d5b2-verify.sql` (B2 sonrası; kopya farkı artık hata değil, bilgi).
+yazılmaya devam eder. **Açıklama ve desi** B2a ile modelden okunur (yukarıda). **Ad** kartındır (sahip kararı, 27 Kas
+2026): her renk kartının adı kendi sütunudur, okuyucular ve SQL arama/sıralama onu okur; B2 adı türetmez, yeniden yazmaz.
 
 **Yeni renk eklenirse** aynı kayıtta o renge yeni renk kartı açılır; açılan kartın alanları kopyalanır, başlıktaki renk
 kelimesi yeni renkle değişir (yoksa sona eklenir), Trendyol Web Color kopyalanmaz (`ProductFamilyNewColorCard.cs:6-13`).
