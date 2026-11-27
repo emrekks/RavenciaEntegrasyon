@@ -37,36 +37,35 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             var past = DateTimeOffset.UtcNow.AddMinutes(-1);
             // Background reads of four lock groups for one store, one for another store, an order read and a user action.
             string[] types = [MarketplaceJobTypes.ReturnReconciliation, MarketplaceJobTypes.StockReconciliation, MarketplaceJobTypes.TrendyolFinanceSync, MarketplaceJobTypes.ReferenceSync];
-            foreach (var type in types)
-                JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, store, type, "{}", $"cap:{type}", "test", past) { Priority = 4 });
-            JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, other, MarketplaceJobTypes.StockReconciliation, "{}", "cap:other", "test", past) { Priority = 4 });
-            JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, store, MarketplaceJobTypes.N11OrderSync, "{}", "cap:orders", "test", past) { Priority = 0 });
-            JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, store, MarketplaceJobTypes.ShipmentAction, "{}", "cap:user", "test", past) { Priority = JobPriorityPolicy.UserAction });
+            Guid Add(Guid connection, string type, int priority, string key)
+            {
+                var id = Guid.NewGuid();
+                JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, connection, type, "{}", $"cap:{key}", "test", past) { Priority = priority, Id = id });
+                return id;
+            }
+            var storeReads = types.Select(type => Add(store, type, 4, type)).ToArray();
+            var otherRead = Add(other, MarketplaceJobTypes.StockReconciliation, 4, "other");
+            var orderRead = Add(store, MarketplaceJobTypes.N11OrderSync, 0, "orders");
+            var userAction = Add(store, MarketplaceJobTypes.ShipmentAction, JobPriorityPolicy.UserAction, "user");
             await seed.SaveChangesAsync();
 
-            // Two of the store's background reads, then the cap holds its other two; the other store's read still goes.
-            var leased = new List<LeasedJob>();
-            for (var index = 0; index < 4; index++)
-                if (await LeaseOwn(background, cap) is { } job) leased.Add(job);
-            Assert.Equal(2, leased.Count(job => job.ConnectionId == store));
-            Assert.Equal(1, leased.Count(job => job.ConnectionId == other));
-            // Order reads and user work are not capped (they are not counted either).
-            Assert.NotNull(await LeaseOwn(orders, cap));
-            Assert.NotNull(await LeaseOwn(user, cap));
+            // Each lease names its job (onlyJobId): other tests' jobs in the shared database are never leased.
+            // Two of the store's background reads, then the cap holds the third; the other store's read still goes.
+            Assert.NotNull(await Lease(storeReads[0], background, cap));
+            Assert.NotNull(await Lease(storeReads[1], background, cap));
+            Assert.Null(await Lease(storeReads[2], background, cap));
+            Assert.NotNull(await Lease(otherRead, background, cap));
+            // Order reads and user work are not capped (and do not count).
+            Assert.NotNull(await Lease(orderRead, orders, cap));
+            Assert.NotNull(await Lease(userAction, user, cap));
             // Without the cap (the earlier lane models) the store's third read is leased.
-            Assert.NotNull(await LeaseOwn(background, null));
+            Assert.NotNull(await Lease(storeReads[2], background, null));
 
-            async Task<LeasedJob?> LeaseOwn(WorkerLane lane, JobConnectionCap? connectionCap)
+            async Task<LeasedJob?> Lease(Guid jobId, WorkerLane lane, JobConnectionCap? connectionCap)
             {
                 await using var db = fixture.CreateContext();
-                // Only this test's tenant: other tests' jobs in the shared database are never touched.
-                var candidates = await db.IntegrationJobs.AsNoTracking().Where(job => job.TenantId == tenant.Id && (job.Status == Domain.JobStatus.Pending || job.Status == Domain.JobStatus.RetryScheduled))
-                    .Select(job => job.JobType).Distinct().ToListAsync();
-                var included = lane.IncludedJobTypes.Count == 0 ? candidates.Where(type => !lane.ExcludedJobTypes.Contains(type)).ToArray() : lane.IncludedJobTypes.Intersect(candidates).ToArray();
-                if (included.Length == 0) return null;
                 return await new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider).TryLeaseAsync(TimeSpan.FromMinutes(2), lane.MaximumPriority, lane.MinimumPriority, CancellationToken.None,
-                    includedJobTypes: included, connectionCap: connectionCap, onlyJobId: null, onlyJobType: null,
-                    excludedJobTypes: [.. lane.ExcludedJobTypes]);
+                    includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], connectionCap: connectionCap, onlyJobId: jobId);
             }
         }
         finally
