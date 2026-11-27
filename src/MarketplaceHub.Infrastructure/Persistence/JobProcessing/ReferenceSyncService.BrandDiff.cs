@@ -25,8 +25,10 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 //      into a small not-current "RETIRED-" snapshot and the mapping points at it, as it pointed at the old full snapshot
 //      before. The retention pass keeps that snapshot while a mapping points at it; the revalidation carries the mapping
 //      back to the current snapshot when the same brand returns unchanged.
-// The switch References:BrandDiffWrites (default on) goes back to the full-copy path (SyncBrandReferences) without a
-// release; both paths read and leave the same table shape, so switching either way is safe at any time.
+// The switch References:BrandDiffWrites (default on, set in the worker's appsettings.json) goes back to the full-copy
+// path (SyncBrandReferences). The production compose file passes no variable for it, so going back is a release that
+// sets it to false (docs/RUNBOOK-GERI-ALMA.md, section 11). Both paths read and leave the same table shape, so
+// switching either way is safe at any time.
 internal static class ReferenceWriteSwitches
 {
     public const string BrandDiffWritesKey = "References:BrandDiffWrites";

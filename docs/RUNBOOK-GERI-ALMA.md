@@ -537,3 +537,28 @@ api'yi tek kopya olarak yeniden yaratır ama adı `marketplacehub-api-2` gibi ka
 aradığından o durumda bir kez (birkaç saniyelik kesinti, bugünkü bir deploy kadar) Compose ile api'yi sıfıra indirip
 yeniden açın: `... up -d --no-build --no-deps --scale api=0 api`, ardından `... up -d --no-build --no-deps api`
 (`...` = `fast-deploy.sh`'daki `compose` dizisinin komutu); yeni konteyner `marketplacehub-api-1` olur.
+
+## 11. Marka listesi fark yazımı (Kuyruk Faz 1B, `References:BrandDiffWrites`)
+
+Günlük marka okuması (Trendyol, Pazarama) güncel listeyi yerinde, yalnız farkı yazarak günceller
+(`ReferenceSyncService.BrandDiff`). Eski yol (her farkta tüm listeyi yeni snapshot olarak yazmak) iki hafta yedek olarak
+kodda kalır.
+
+**Geri dönüş (eski tam kopya yoluna):** anahtar compose'tan geçmez; `production.env` yalnız compose'un `${...}`
+değerlerini doldurur, oraya yazılan `References__BrandDiffWrites=false` worker'a ulaşmaz. Geri dönüş bir sürümdür:
+`src/MarketplaceHub.Worker/appsettings.json` içinde `"References": { "BrandDiffWrites": false }` yapıp gönderin (tam
+deploy, worker yeniden başlar). Tablo iki yolda da aynı biçimde kalır; geçiş istenen anda güvenlidir. Eski yolun ilk
+okuması listeyi bir kez baştan yazar (fark yolundan sonra sıra numaraları ardışık değildir), sonrası eskisi gibidir.
+
+**Gerçek büyük küçülme (`REFERENCE_LIST_SHRANK` her gün işi durduruyorsa):** fark yolu, okunan liste güncelden %20'den
+ve 50 kayıttan fazla kısaysa hiçbir şey silmez, iş `Blocked REFERENCE_LIST_SHRANK` olur ve Sorunlar'da
+`reference-list-shrank:<bağlantı>:BRANDS` anahtarlı kayıt açılır. Önce pazaryerinin panelinde marka sayısının gerçekten
+düştüğünü doğrulayın (bir okuma hatası değilse). Gerçekse tek seferlik çıkış:
+1. Yukarıdaki geri dönüşle (`BrandDiffWrites: false`) bir sürüm gönderin.
+2. Eşleştirmeler › Marka Eşleme'de o bağlantı için Senkronize Et (ya da ertesi günkü planlı okuma): eski yol listeyi
+   küçülme kontrolü olmadan baştan yazar; eşli olup kaybolan markaların eşlemesi eski snapshot'ta kalır, panelde yeniden
+   eşlenmesi gerekir.
+3. İş başarılı olunca `BrandDiffWrites: true` ile tekrar gönderin. Sonraki fark okuması küçülme kaydını kapatır.
+
+Canlı kontrol sorguları (salt okuma, boyut ve sayaçlar): `.local-docs/kuyruk-faz1b-verify.sql` (git dışı); boşalan
+alanın geri kazanılması (VACUUM FULL / pg_repack / REINDEX CONCURRENTLY, ~500 MB) sahibin ayrı kararıdır, otomatik yapılmaz.
