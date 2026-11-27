@@ -704,6 +704,12 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
 - Kart ve varyantlardaki eski sütunlar şimdilik modelin **kopyası** olarak yazılmaya devam eder (geri alma güvenliği);
   hiçbir okuyucu onları okumaz. Yeni model açan yollar da (uzlaştırma, kodu silinen kartın kendi modeli, Marka Listesi
   sıfırlaması) kartın kopyasını değil kartın bulunduğu modelin değerlerini alır; Worker garanti geçişi modele bakar.
+- **Kopyaları yazmak bir anahtardır** (D5 B2b, `Catalog:MirrorModelFields`, API ve Worker `appsettings.json`, şimdilik
+  `true`): kapalıyken hiçbir kayıt yedi alanın kart/varyant kopyasını yazmaz (yeni kartın açıklaması sütun NOT NULL olduğu
+  için yazılır); ad ve marka iki konumda da yazılır. Yazıcılar (düzenleyici, Excel, dosya ve pazaryeri içe aktarımı, Toplu
+  Değer Ata) yükledikleri kartı ve varyantı modelin değerleriyle karşılaştırır (`EffectiveCatalog.RebaseAsync`): bayat bir
+  kopyaya eşit ama modelden farklı değer de yazılır. Pazaryeri bağları iki konumda aynı işaretlenir, yani aynı gönderimler
+  sıraya girer. Flip ve geri alma: `RUNBOOK-GERI-ALMA.md` bölüm 12.
 - Yedi alanın kart/varyant kopyasını hiçbir okuyucu okumaz (D5 B2a): Excel ürün
   dosyası dışa aktarımı (KDV, marka, kategori sütunları ve marka/kategori süzgeci), editör kaydının "KDV Oranı Gerekli",
   "KDV Dahil mi" ve zorunlu garanti/teslimat denetimi ile değer verilmeyince korunan KDV dahil/hariç bilgisi, pazaryeri
