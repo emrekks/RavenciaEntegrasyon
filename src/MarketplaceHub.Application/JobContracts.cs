@@ -259,7 +259,14 @@ public sealed record JobTypeMetricView(
     double? AverageDurationSeconds,
     double? P95DurationSeconds,
     int Queued,
-    int Running);
+    int Running,
+    IReadOnlyList<JobTypeLaneView>? Lanes = null);
+
+// Queue phase 1A, item 5: which worker lane ran a job type's attempts in the window (job_attempts.Lane, recorded since queue
+// phase 0, 27 Nov 2026) by the lane table's code (HOT, BACKGROUND, PAZARAMA_ORDERS ...), most attempts first; Borrowed counts the attempts that lane ran on a slot borrowed from the pool.
+// Attempts from before phase 0 have no lane and are not listed. A job type can run in more than one lane: a scheduled
+// Hepsiburada, Pazarama or PttAVM recovery read runs in Arka Plan, the same read started by hand in its platform's lane.
+public sealed record JobTypeLaneView(string Lane, int Attempts, int Borrowed);
 
 // The Hata cell of İşlem Takibi › Kuyruk ve Kota behind its number: the failed attempts of one job type that
 // JobTypeMetricView.Failed counts (same window, same platforms, waiting checks left out). TotalCount equals that number.
@@ -323,7 +330,9 @@ public static class LaneWaitStatus
 //   LimitPerMinute  the code's limit for it per minute; null when the code keeps none for it (usage only, no bar);
 //   Shared          true for a bucket every account shares (Hepsiburada's catalogue quota is per server IP);
 //   PeakMinuteRequests, AveragePerMinute: the busiest minute of the last hour and the hour's requests over 60 minutes.
-public sealed record QuotaUsageView(string PlatformCode, string StoreName, string Bucket, string Label, double? LimitPerMinute, int LastHourRequests, int PeakMinuteRequests, double AveragePerMinute, bool Shared = false);
+// BaseLimit: LimitPerMinute is the limit the code starts from, not necessarily the one in force: the worker learns Trendyol's
+// order tier (30/40/50/100 a minute) from its answers in its own memory, which the api cannot read (queue phase 1A, item 6).
+public sealed record QuotaUsageView(string PlatformCode, string StoreName, string Bucket, string Label, double? LimitPerMinute, int LastHourRequests, int PeakMinuteRequests, double AveragePerMinute, bool Shared = false, bool BaseLimit = false);
 
 // Queue phase 0: how long the orders first stored in the last 24 hours took from the marketplace's order time to the panel,
 // per marketplace. Source ALL (every order), WEBHOOK (stored by a webhook delivery's job) or POLLING (stored by a read); the

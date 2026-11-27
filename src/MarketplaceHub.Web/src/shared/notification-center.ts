@@ -2,7 +2,7 @@ import type { ApiAnswer } from './api/api-answer'
 import { backgroundPollInit, hubApi, isPermanentRequestError } from './api'
 import { istanbulDayBoundary } from './format-date'
 import { readStoredItem, writeStoredItem } from './local-storage'
-import { newOrderNoticePrefix, readNotificationHistory, registerNotificationSink, type AppNotification, type NotificationSink, type NotificationSubjectKind } from './notifications'
+import { jobAlertPrefix, newOrderNoticePrefix, readNotificationHistory, registerNotificationSink, type AppNotification, type NotificationSink, type NotificationSubjectKind } from './notifications'
 import { presentNotification } from './notification-describe'
 import { scopedStorageKey } from './storage-scope'
 
@@ -139,8 +139,9 @@ export function startNotificationCenterSink(send: (path: string, body: unknown) 
     }
   }
   const sink: NotificationSink = {
-    // Background notices (attention:…) and new-order notices (new-orders:…) are the server's to record; the rest is this person's own.
-    saved: notification => { if (notification.id.startsWith('attention:') || notification.id.startsWith(newOrderNoticePrefix)) return; pending.saves.set(notification.id, centerInput(notification)); schedule() },
+    // Background notices (attention:…), new-order notices (new-orders:…) and job alerts (job-alert:…) are the server's to record;
+    // the rest is this person's own.
+    saved: notification => { if (notification.id.startsWith('attention:') || notification.id.startsWith(newOrderNoticePrefix) || notification.id.startsWith(jobAlertPrefix)) return; pending.saves.set(notification.id, centerInput(notification)); schedule() },
     read: ids => { ids.forEach(id => pending.read.add(id)); schedule() },
     dismissed: ids => { ids.forEach(id => pending.dismissed.add(id)); schedule() }
   }

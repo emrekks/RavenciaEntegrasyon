@@ -3,7 +3,7 @@ import { filterJobsByTab, jobPlatformCode, jobPlatformTabs, activeJobTypes, coun
 import { jobsMainTab, withJobsMainTab } from './jobs-url-state'
 
 const metric = (jobType: string, queued: number, running: number, attempts: number): JobTypeMetric =>
-  ({ jobType, queued, running, attempts, failed: 0, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: null, p95DurationSeconds: null })
+  ({ jobType, queued, running, attempts, failed: 0, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: null, p95DurationSeconds: null, lanes: null })
 // A lane within its wait target (GET /jobs/metrics/lanes, worker lanes step 1).
 const withinTarget = (targetSeconds: number) =>
   ({ targetSeconds, recentP95WaitSeconds: null, oldestWaitSeconds: null, waitStatus: 'OK', alertSince: null, borrowed: null, waitCauses: null })
@@ -71,7 +71,7 @@ describe('Kuyruk ve Kota', () => {
 import { filterByMarketplace, laneWaitCauseLines, latencySeconds, latencySourceLabel, latencyState, marketplaceTabs, quotaPeakText, type QuotaUsage } from './queue-quota'
 describe('queue phase 0', () => {
   const bucket = (platformCode: string, limitPerMinute: number | null, peakMinuteRequests: number): QuotaUsage =>
-    ({ platformCode, storeName: 'Mağaza', bucket: `${platformCode}:X`, label: 'Okuma', limitPerMinute, lastHourRequests: 10, peakMinuteRequests, averagePerMinute: 0.2, shared: false })
+    ({ platformCode, storeName: 'Mağaza', bucket: `${platformCode}:X`, label: 'Okuma', limitPerMinute, lastHourRequests: 10, peakMinuteRequests, averagePerMinute: 0.2, shared: false, baseLimit: false })
 
   it('tabs the quota buckets by marketplace and shows a bucket without a limit by its use alone', () => {
     const rows = [bucket('PAZARAMA', 30, 27), bucket('TRENDYOL', 12, 8), bucket('TRENDYOL', null, 3)]
@@ -113,5 +113,22 @@ describe('lane wait state', () => {
     expect(waitState('OK')).toEqual({ label: 'Hedefte', tone: 'ok' })
     expect(waitState('OVER_TARGET')).toEqual({ label: 'Hedef Aşıldı', tone: 'warn' })
     expect(waitState('ALERT')).toEqual({ label: 'Uyarı', tone: 'bad' })
+  })
+})
+
+import { jobLaneText, laneDetail, laneHint } from './queue-quota'
+// Queue phase 1A: the job-type table names the lane(s) that ran a type, most attempts first.
+describe('queue phase 1A lanes', () => {
+  it('names the lane that ran a type and lists every lane with its attempts in the tooltip', () => {
+    expect(jobLaneText([])).toMatchObject({ text: '—' })
+    expect(jobLaneText(null).text).toBe('—')
+    expect(jobLaneText([{ lane: 'BACKGROUND', attempts: 40, borrowed: 0 }])).toEqual({ text: 'Arka Plan', title: 'Arka Plan: 40 deneme' })
+    const two = jobLaneText([{ lane: 'BACKGROUND', attempts: 40, borrowed: 2 }, { lane: 'PAZARAMA_ORDERS', attempts: 1, borrowed: 0 }])
+    expect(two.text).toBe('Arka Plan +1')
+    expect(two.title).toBe('Arka Plan: 40 deneme (2 ödünç slotta)\nPazarama Siparişleri: 1 deneme')
+    // The platform lanes say the scheduled history scan runs elsewhere.
+    expect(laneHint('PAZARAMA_ORDERS')).toContain('Arka Plan')
+    expect(laneDetail('BACKGROUND')).toContain('sipariş geçmişi taramaları (Hepsiburada, Pazarama ve PTT AVM dahil)')
+    expect(laneDetail('INITIAL')).toBe(laneHint('INITIAL'))
   })
 })

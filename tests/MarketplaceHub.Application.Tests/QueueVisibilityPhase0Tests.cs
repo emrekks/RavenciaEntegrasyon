@@ -186,8 +186,11 @@ public sealed class QueueVisibilityPhase0Tests(ITestOutputHelper output)
     {
         var catalog = new QuotaBucketCatalog(new TrendyolOptions(), new N11Options(), new PazaramaOptions(), new PttAvmOptions());
         var (foreground, background) = TrendyolResilienceHandler.OrderQuotaSplit(new TrendyolOptions());
-        Assert.Equal(new QuotaBucketCatalog.Bucket("TRENDYOL", "TRENDYOL:ORDERS_FG", "Sipariş Okuma · Ön Plan", foreground), catalog.Describe("trendyol:orders:apigw.trendyol.com:111:fg"));
+        Assert.Equal(new QuotaBucketCatalog.Bucket("TRENDYOL", "TRENDYOL:ORDERS_FG", "Sipariş Okuma · Ön Plan", foreground, BaseLimit: true), catalog.Describe("trendyol:orders:apigw.trendyol.com:111:fg"));
         Assert.Equal(background, catalog.Describe("trendyol:orders:apigw.trendyol.com:111:bg")!.LimitPerMinute);
+        // Queue phase 1A: the order quota's number is the code's base tier (the worker learns the real one), labelled so.
+        Assert.True(catalog.Describe("trendyol:orders:apigw.trendyol.com:111:bg")!.BaseLimit);
+        Assert.False(catalog.Describe("trendyol:orders:apigw.trendyol.com:111:spacing")!.BaseLimit);
         Assert.Equal(12, catalog.Describe("trendyol:orders:apigw.trendyol.com:111:spacing")!.LimitPerMinute);
         Assert.Equal(60, catalog.Describe("trendyol:orders:apigw.trendyol.com:111:spacing:start")!.LimitPerMinute);
         Assert.Equal(100, catalog.Describe("trendyol:finance:apigw.trendyol.com:111")!.LimitPerMinute);

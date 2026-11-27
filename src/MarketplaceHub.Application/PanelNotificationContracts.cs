@@ -15,7 +15,7 @@ public static class PanelNotificationPolicy
 
     // The background notices (AttentionNoticePolicy) and the server's own records: written by the server only.
     public const string AttentionKeyPrefix = "attention:";
-    public static readonly IReadOnlyList<string> ServerKeyPrefixes = [AttentionKeyPrefix, "offsite-backup:", NewOrderNoticePolicy.KeyPrefix];
+    public static readonly IReadOnlyList<string> ServerKeyPrefixes = [AttentionKeyPrefix, "offsite-backup:", NewOrderNoticePolicy.KeyPrefix, JobFailureAlertPolicy.KeyPrefix];
 
     public static bool IsServerKey(string? clientKey) =>
         clientKey is not null && ServerKeyPrefixes.Any(prefix => clientKey.TrimStart().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
@@ -116,6 +116,7 @@ public interface IPanelNotificationService
     Task<int> MarkReadAsync(Guid tenantId, Guid userId, PanelNotificationSelection selection, CancellationToken cancellationToken);
     // Removes them from the bell only: the center keeps listing them until the retention removes them.
     Task<int> DismissAsync(Guid tenantId, Guid userId, PanelNotificationSelection selection, CancellationToken cancellationToken);
-    // The tenant's new-order notifications (NewOrderNoticePolicy) within the retention, newest first, for the bell.
+    // The tenant's new-order notifications (NewOrderNoticePolicy) and job alerts (JobFailureAlertPolicy) within the
+    // retention, newest first, for the bell.
     Task<IReadOnlyList<PanelNotificationView>> NewOrdersAsync(Guid tenantId, Guid userId, CancellationToken cancellationToken);
 }
