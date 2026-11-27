@@ -3,6 +3,7 @@ using System.Text.Json;
 using MarketplaceHub.Infrastructure.Jobs;
 using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.Security;
+using MarketplaceHub.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -108,6 +109,79 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         finally
         {
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.connection_backoffs WHERE \"ConnectionId\" = {backedOff}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.outbox_events WHERE \"TenantId\" = {tenant.Id}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.jobs WHERE \"TenantId\" = {tenant.Id}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM iam.tenants WHERE \"Id\" = {tenant.Id}");
+        }
+    }
+
+    // Review of 27 Nov (C1): the census names the store that alone holds a kind (a running job in its lock group, an order read
+    // queued ahead of a status scan or a reconciliation in the same lock group), and the lease refuses the deferred job for the
+    // same reason; a kind nothing holds is free (HeldBy null).
+    [PostgreSqlFact]
+    public async Task TheCensusNamesTheStoreThatHoldsAKindAndTheLeaseDefersForTheSameReason()
+    {
+        var tenant = ScheduledPolicyIsolationTests.NewTenant("dispatcher-held");
+        Guid busyStore = Guid.NewGuid(), orderStore = Guid.NewGuid(), freeStore = Guid.NewGuid();
+        Assert.Equal(MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.N11OrderSync), MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderReconciliation));
+        Assert.Equal(MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.N11OrderSync), MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderStatusSync));
+        var settings = DispatcherSettings.Default;
+        await using var seed = fixture.CreateContext();
+        try
+        {
+            seed.Tenants.Add(tenant);
+            var now = DateTimeOffset.UtcNow;
+            Guid Add(Guid connection, string type, int priority, string key)
+            {
+                var id = Guid.NewGuid();
+                JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, connection, type, "{}", $"held:{key}", "test", now.AddMinutes(-1)) { Priority = priority, Id = id });
+                return id;
+            }
+            var running = Add(busyStore, MarketplaceJobTypes.N11OrderSync, 0, "running");
+            Add(busyStore, MarketplaceJobTypes.OrderStatusSync, 0, "busy-scan");
+            var orderRead = Add(orderStore, MarketplaceJobTypes.N11OrderSync, 0, "order-read");
+            Add(orderStore, MarketplaceJobTypes.OrderStatusSync, 0, "deferred-scan");
+            var reconciliation = Add(orderStore, MarketplaceJobTypes.OrderReconciliation, 4, "deferred-reconciliation");
+            Add(freeStore, MarketplaceJobTypes.StockReconciliation, 4, "free");
+            await seed.SaveChangesAsync();
+            await seed.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE integration.jobs SET "Status" = 'LEASED', "LeaseExpiresAt" = {now.AddMinutes(2)} WHERE "Id" = {running}
+                """);
+
+            await using var db = fixture.CreateContext();
+            var bulkhead = BulkheadSettings.From(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Worker:LaneModel"] = "dispatcher" }).Build(), true)
+                .For(DispatcherLanes.OrderReads, WorkerLanes.DefaultHotPriorityCeiling);
+            var rows = await QueueHealthService.RunnableJobKindsAsync(db, now, CancellationToken.None, DispatcherLanes.ConnectionCap(settings),
+                DispatcherLanes.DeferredRules(settings), DispatcherLanes.DeferralFor(DispatcherLanes.StatusScans, settings), bulkhead);
+            var mine = rows.Where(row => row.ConnectionId is { } id && (id == busyStore || id == orderStore || id == freeStore))
+                .Select(row => $"{Name(row.ConnectionId)}:{row.JobType}:{Name(row.HeldBy)}").Order(StringComparer.Ordinal).ToArray();
+            Assert.Equal(new[]
+            {
+                $"busy:{MarketplaceJobTypes.OrderStatusSync}:busy",
+                $"free:{MarketplaceJobTypes.StockReconciliation}:-",
+                $"orders:{MarketplaceJobTypes.N11OrderSync}:-",
+                $"orders:{MarketplaceJobTypes.OrderReconciliation}:orders",
+                $"orders:{MarketplaceJobTypes.OrderStatusSync}:orders"
+            }.Order(StringComparer.Ordinal), mine);
+
+            // The lease defers the reconciliation for the store's queued order read, and takes it without the deferral.
+            var background = DispatcherLanes.All().First(lane => lane.Name == DispatcherLanes.Background);
+            Assert.Null(await Lease(reconciliation, background, DispatcherLanes.DeferralFor(DispatcherLanes.Background, settings)));
+            Assert.NotNull(await Lease(reconciliation, background, null));
+            // The order read now waits for the reconciliation's lock group (the lease's own busy rule), not for a deferral.
+            Assert.Null(await Lease(orderRead, DispatcherLanes.All().First(lane => lane.Name == DispatcherLanes.OrderReads), null));
+
+            string Name(Guid? id) => id == busyStore ? "busy" : id == orderStore ? "orders" : id == freeStore ? "free" : id is null ? "-" : "other";
+            async Task<LeasedJob?> Lease(Guid jobId, WorkerLane lane, JobDeferral? deferral)
+            {
+                await using var leaseDb = fixture.CreateContext();
+                return await new JobLeaseService(leaseDb, fixture.TokenHasher, fixture.TimeProvider).TryLeaseAsync(TimeSpan.FromMinutes(2), lane.MaximumPriority, lane.MinimumPriority, CancellationToken.None,
+                    includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], onlyJobId: jobId, deferral: deferral);
+            }
+        }
+        finally
+        {
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.job_attempts WHERE \"TenantId\" = {tenant.Id}");
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.outbox_events WHERE \"TenantId\" = {tenant.Id}");
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.jobs WHERE \"TenantId\" = {tenant.Id}");
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM iam.tenants WHERE \"Id\" = {tenant.Id}");

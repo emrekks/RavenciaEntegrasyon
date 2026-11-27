@@ -12,19 +12,21 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     private static readonly string[] LockGroupJobTypes = [.. MarketplaceJobTypes.ProcessorJobTypes];
     private static readonly string[] LockGroups = [.. MarketplaceJobTypes.ProcessorJobTypes.Select(MarketplaceSyncExecutionLock.GroupFor)];
 
-    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null)
+    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null, JobDeferral? deferral = null)
     {
         // Queue phase 2, the dispatcher's per-store cap (JobConnectionCap): off (null) for the earlier lane models, so their
         // lease is the same query as before (every cap term is constant false).
         var capOn = connectionCap is { Cap: > 0 };
         var cap = connectionCap?.Cap ?? 0;
-        var capUser = connectionCap?.UserWork ?? false;
-        var capInitial = connectionCap?.InitialImports ?? false;
-        var capUrgent = connectionCap?.UrgentWork ?? false;
-        var capBackground = connectionCap?.BackgroundWork ?? false;
-        var capTypedJobTypes = connectionCap?.TypedJobTypes.ToArray() ?? [];
-        var cappedTypedJobTypes = connectionCap?.CappedTypedJobTypes.ToArray() ?? [];
-        var capCeiling = connectionCap?.HotPriorityCeiling ?? 0;
+        // Each rule as parallel arrays; its types as "|TYPE|TYPE|" ("" = any included type, none excluded).
+        var capRules = connectionCap?.Rules ?? [];
+        var capMinimums = capRules.Select(rule => rule.MinimumPriority ?? int.MinValue).ToArray();
+        var capMaximums = capRules.Select(rule => rule.MaximumPriority ?? int.MaxValue).ToArray();
+        var capIncluded = capRules.Select(rule => rule.IncludedJobTypes.Count == 0 ? "" : "|" + string.Join('|', rule.IncludedJobTypes) + "|").ToArray();
+        var capExcluded = capRules.Select(rule => "|" + string.Join('|', rule.ExcludedJobTypes) + "|").ToArray();
+        // Queue phase 2, deferral (JobDeferral): off (null) unless the dispatcher passes it for its status scans.
+        var deferOn = deferral is { AheadJobTypes.Count: > 0 };
+        var aheadJobTypes = deferral?.AheadJobTypes.ToArray() ?? [];
         var now = timeProvider.GetUtcNow();
         includedJobTypes ??= [];
         excludedJobTypes ??= [];
@@ -94,11 +96,11 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                   AND running."Status" = 'LEASED'
                   AND running."LeaseExpiresAt" > {now}
                   AND running."ConnectionId" IS NOT NULL
-                  AND CASE WHEN running."Priority" <= {JobPriorityPolicy.BulkUserAction} THEN {capUser}
-                           WHEN running."Priority" < 0 THEN {capInitial}
-                           WHEN running."JobType" = ANY({capTypedJobTypes}::text[]) THEN running."JobType" = ANY({cappedTypedJobTypes}::text[])
-                           WHEN running."Priority" <= {capCeiling} THEN {capUrgent}
-                           ELSE {capBackground} END
+                  AND EXISTS (
+                      SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS rule(minimum, maximum, included, excluded)
+                      WHERE running."Priority" BETWEEN rule.minimum AND rule.maximum
+                        AND (rule.included = '' OR strpos(rule.included, '|' || running."JobType" || '|') > 0)
+                        AND strpos(rule.excluded, '|' || running."JobType" || '|') = 0)
                 GROUP BY running."ConnectionId"),
             -- One candidate owner per tenant, or per tenant and connection with connection fairness.
             queued_tenants AS (
@@ -181,12 +183,31 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                   -- capped jobs.
                   AND NOT ({capOn}
                       AND candidate."ConnectionId" IS NOT NULL
-                      AND CASE WHEN candidate."Priority" <= {JobPriorityPolicy.BulkUserAction} THEN {capUser}
-                               WHEN candidate."Priority" < 0 THEN {capInitial}
-                               WHEN candidate."JobType" = ANY({capTypedJobTypes}::text[]) THEN candidate."JobType" = ANY({cappedTypedJobTypes}::text[])
-                               WHEN candidate."Priority" <= {capCeiling} THEN {capUrgent}
-                               ELSE {capBackground} END
+                      AND EXISTS (
+                          SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS rule(minimum, maximum, included, excluded)
+                          WHERE candidate."Priority" BETWEEN rule.minimum AND rule.maximum
+                            AND (rule.included = '' OR strpos(rule.included, '|' || candidate."JobType" || '|') > 0)
+                            AND strpos(rule.excluded, '|' || candidate."JobType" || '|') = 0)
                       AND {cap} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = candidate."ConnectionId"), 0))
+                  -- Queue phase 2, deferral: a job waits while its connection has a runnable job of an ahead type queued.
+                  AND NOT ({deferOn}
+                      AND candidate."ConnectionId" IS NOT NULL
+                      AND EXISTS (
+                          SELECT 1 FROM integration.jobs ahead
+                          LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS ahead_group(job_type, lock_group)
+                            ON ahead_group.job_type = ahead."JobType"
+                          WHERE ahead."ConnectionId" = candidate."ConnectionId"
+                            AND ahead."Id" <> candidate."Id"
+                            AND ahead."JobType" = ANY({aheadJobTypes}::text[])
+                            AND coalesce(ahead."LockGroup", ahead_group.lock_group) = coalesce(candidate."LockGroup", candidate_group.lock_group)
+                            AND ahead."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+                            AND ahead."AvailableAt" <= {now}
+                            AND ahead."AttemptCount" < ahead."MaxAttempts"
+                            AND NOT EXISTS (
+                                SELECT 1 FROM integration.connection_backoffs ahead_backoff
+                                WHERE ahead_backoff."ConnectionId" = ahead."ConnectionId"
+                                  AND ahead_backoff."LockGroup" = coalesce(ahead."LockGroup", ahead_group.lock_group)
+                                  AND ahead_backoff."Until" > {now})))
                   -- Quota-aware leasing: a job whose marketplace quota is full right now waits in the queue, not in a slot.
                   -- Background work only (never a user action, a new-order read, a webhook or a write), and never longer
                   -- than the hold allows since the job became runnable.

@@ -254,7 +254,7 @@ public sealed class JobShutdownSignalTests
         public int Released => released;
         public ConcurrentQueue<JobExecutionResult> Completed { get; } = new();
 
-        public Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null) =>
+        public Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null, JobDeferral? deferral = null) =>
             Task.FromResult<LeasedJob?>(null);
         public Task<bool> HeartbeatAsync(Guid jobId, string leaseToken, TimeSpan extension, CancellationToken cancellationToken) => Task.FromResult(true);
         public Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken, JobAttemptRun? run = null)

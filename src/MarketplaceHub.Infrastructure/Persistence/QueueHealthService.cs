@@ -32,7 +32,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
         var lanes = WorkerLaneModel.Lanes(configuration, hotPriorityCeiling);
         string LaneOf(string jobType, int priority) => WorkerLaneModel.LaneFor(configuration, jobType, priority, hotPriorityCeiling);
         // The lanes are the worker's own (WorkerLanes): a job belongs to the first lane that would lease it.
-        var lane = LaneCaseSql(lanes, out var laneParameters);
+        var lane = LaneCaseSql(WorkerLaneModel.ClassifyingLanes(lanes), out var laneParameters);
         var parameters = new List<object>
         {
             new Npgsql.NpgsqlParameter("tenant", tenantId),
@@ -155,27 +155,108 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
     // Queue phase 2, the dispatcher's census (LaneDispatcher): the type and priority of every queued job, across every tenant,
     // that a lease could take by time. A connection in a quota backoff waits for its end, which the due-time wake announces; a
     // busy lock group, a quota hold or the per-store cap still count (the lease tells those apart, and a job's end retries them).
-    public static async Task<IReadOnlyCollection<(string JobType, int Priority)>> RunnableJobKindsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    // Review of 27 Nov: each kind is listed per connection with HeldByStore when only its own store holds it now, by the same
+    // rules the lease refuses for (a running job of the connection in its lock group, the per-store cap when cap names its
+    // type, an order read of the connection queued ahead of a status scan when deferral is passed), so a lane held by a store
+    // waits for that store's job end instead of retrying on every job end anywhere.
+    public static async Task<IReadOnlyList<JobKindRow>> RunnableJobKindsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken,
+        JobConnectionCap? cap = null, IReadOnlyList<JobConnectionCap.Rule>? deferredRules = null, JobDeferral? deferral = null, JobBulkhead? bulkhead = null)
     {
+        // A bulkhead class of cap 1 (the default) held by the store running the class's job for the tenant and marketplace; a
+        // class of a larger cap is left to the lease (counted as free here).
+        var singleClasses = bulkhead is null ? [] : bulkhead.ClassNames.Where((_, index) => bulkhead.ClassCaps[index] == 1).ToHashSet(StringComparer.Ordinal);
+        var bulkPairs = bulkhead is null ? [] : bulkhead.JobTypes.Zip(bulkhead.Classes).Where(pair => singleClasses.Contains(pair.Second)).ToList();
+        var bulkOn = bulkPairs.Count > 0;
+        var bulkJobTypes = bulkPairs.Select(pair => pair.First).ToArray();
+        var bulkClasses = bulkPairs.Select(pair => pair.Second).ToArray();
+        var deferMinimums = (deferredRules ?? []).Select(rule => rule.MinimumPriority ?? int.MinValue).ToArray();
+        var deferMaximums = (deferredRules ?? []).Select(rule => rule.MaximumPriority ?? int.MaxValue).ToArray();
+        var deferIncluded = (deferredRules ?? []).Select(rule => rule.IncludedJobTypes.Count == 0 ? "" : "|" + string.Join('|', rule.IncludedJobTypes) + "|").ToArray();
+        var deferExcluded = (deferredRules ?? []).Select(rule => "|" + string.Join('|', rule.ExcludedJobTypes) + "|").ToArray();
+        var bulkMinimum = bulkhead?.ClassMinimumPriority ?? 0;
+        var bulkMaximum = bulkhead?.ClassMaximumPriority ?? 0;
         now = now.ToUniversalTime();
-        var rows = await db.Database.SqlQuery<JobKindRow>($"""
-            SELECT DISTINCT job."JobType" AS "JobType", job."Priority" AS "Priority"
-            FROM integration.jobs job
-            LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS job_group(job_type, lock_group)
-              ON job_group.job_type = job."JobType"
-            WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED')
-              AND job."AvailableAt" <= {now}
-              AND job."AttemptCount" < job."MaxAttempts"
-              AND NOT EXISTS (
-                  SELECT 1 FROM integration.connection_backoffs backoff
-                  WHERE backoff."ConnectionId" = job."ConnectionId"
-                    AND backoff."LockGroup" = coalesce(job."LockGroup", job_group.lock_group)
-                    AND backoff."Until" > {now})
+        var capOn = cap is { Cap: > 0 };
+        var capCount = cap?.Cap ?? 0;
+        var rules = cap?.Rules ?? [];
+        var capMinimums = rules.Select(rule => rule.MinimumPriority ?? int.MinValue).ToArray();
+        var capMaximums = rules.Select(rule => rule.MaximumPriority ?? int.MaxValue).ToArray();
+        var capIncluded = rules.Select(rule => rule.IncludedJobTypes.Count == 0 ? "" : "|" + string.Join('|', rule.IncludedJobTypes) + "|").ToArray();
+        var capExcluded = rules.Select(rule => "|" + string.Join('|', rule.ExcludedJobTypes) + "|").ToArray();
+        var ahead = deferral?.AheadJobTypes.ToArray() ?? [];
+        return await db.Database.SqlQuery<JobKindRow>($"""
+            WITH busy AS (
+                SELECT DISTINCT running."ConnectionId", coalesce(running."LockGroup", running_group.lock_group) AS lock_group
+                FROM integration.jobs running
+                LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS running_group(job_type, lock_group)
+                  ON running_group.job_type = running."JobType"
+                WHERE running."Status" = 'LEASED' AND running."LeaseExpiresAt" > {now} AND running."ConnectionId" IS NOT NULL),
+            capped_load AS (
+                SELECT running."ConnectionId", count(*) AS running_count
+                FROM integration.jobs running
+                WHERE {capOn} AND running."Status" = 'LEASED' AND running."LeaseExpiresAt" > {now} AND running."ConnectionId" IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS rule(minimum, maximum, included, excluded)
+                      WHERE running."Priority" BETWEEN rule.minimum AND rule.maximum
+                        AND (rule.included = '' OR strpos(rule.included, '|' || running."JobType" || '|') > 0)
+                        AND strpos(rule.excluded, '|' || running."JobType" || '|') = 0)
+                GROUP BY running."ConnectionId"),
+            runnable AS (
+                SELECT job."Id", job."JobType", job."Priority", job."ConnectionId", coalesce(job."LockGroup", job_group.lock_group) AS lock_group
+                FROM integration.jobs job
+                LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS job_group(job_type, lock_group)
+                  ON job_group.job_type = job."JobType"
+                WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+                  AND job."AvailableAt" <= {now}
+                  AND job."AttemptCount" < job."MaxAttempts"
+                  AND NOT EXISTS (
+                      SELECT 1 FROM integration.connection_backoffs backoff
+                      WHERE backoff."ConnectionId" = job."ConnectionId"
+                        AND backoff."LockGroup" = coalesce(job."LockGroup", job_group.lock_group)
+                        AND backoff."Until" > {now}))
+            SELECT held."JobType" AS "JobType", held."Priority" AS "Priority", held."ConnectionId" AS "ConnectionId", held.held_by AS "HeldBy"
+            FROM runnable
+            CROSS JOIN LATERAL (
+                SELECT runnable."JobType", runnable."Priority", runnable."ConnectionId",
+                    CASE
+                        WHEN runnable."ConnectionId" IS NULL THEN NULL
+                        WHEN EXISTS (SELECT 1 FROM busy WHERE busy."ConnectionId" = runnable."ConnectionId" AND busy.lock_group = runnable.lock_group)
+                          OR ({capOn}
+                              AND EXISTS (
+                                  SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS rule(minimum, maximum, included, excluded)
+                                  WHERE runnable."Priority" BETWEEN rule.minimum AND rule.maximum
+                                    AND (rule.included = '' OR strpos(rule.included, '|' || runnable."JobType" || '|') > 0)
+                                    AND strpos(rule.excluded, '|' || runnable."JobType" || '|') = 0)
+                              AND {capCount} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = runnable."ConnectionId"), 0))
+                          OR (EXISTS (
+                                  SELECT 1 FROM unnest({deferMinimums}::int[], {deferMaximums}::int[], {deferIncluded}::text[], {deferExcluded}::text[]) AS rule(minimum, maximum, included, excluded)
+                                  WHERE runnable."Priority" BETWEEN rule.minimum AND rule.maximum
+                                    AND (rule.included = '' OR strpos(rule.included, '|' || runnable."JobType" || '|') > 0)
+                                    AND strpos(rule.excluded, '|' || runnable."JobType" || '|') = 0)
+                              AND EXISTS (SELECT 1 FROM runnable ahead_job WHERE ahead_job."ConnectionId" = runnable."ConnectionId" AND ahead_job."Id" <> runnable."Id"
+                                  AND ahead_job."JobType" = ANY({ahead}::text[]) AND ahead_job.lock_group = runnable.lock_group))
+                          THEN runnable."ConnectionId"
+                        -- A bulkhead class at its cap for the tenant and marketplace: held by the store running the class's job.
+                        ELSE (SELECT min(class_running."ConnectionId"::text)::uuid
+                              FROM unnest({bulkJobTypes}::text[], {bulkClasses}::text[]) AS candidate_class(job_type, class_name)
+                              JOIN unnest({bulkJobTypes}::text[], {bulkClasses}::text[]) AS running_class(job_type, class_name) ON running_class.class_name = candidate_class.class_name
+                              JOIN integration.jobs class_running ON class_running."JobType" = running_class.job_type
+                              JOIN integration.platform_connections class_connection ON class_connection."Id" = class_running."ConnectionId"
+                              JOIN integration.platform_connections candidate_connection ON candidate_connection."Id" = runnable."ConnectionId"
+                              WHERE {bulkOn} AND runnable."Priority" BETWEEN {bulkMinimum} AND {bulkMaximum}
+                                AND candidate_class.job_type = runnable."JobType"
+                                AND class_running."TenantId" = candidate_connection."TenantId"
+                                AND class_connection."PlatformCode" = candidate_connection."PlatformCode"
+                                AND class_running."Status" = 'LEASED' AND class_running."LeaseExpiresAt" > {now}
+                                AND class_running."Priority" BETWEEN {bulkMinimum} AND {bulkMaximum})
+                    END AS held_by) held
+            GROUP BY held."JobType", held."Priority", held."ConnectionId", held.held_by
             """).ToListAsync(cancellationToken);
-        return [.. rows.Select(row => (row.JobType, row.Priority))];
     }
 
-    public sealed record JobKindRow(string JobType, int Priority);
+    // HeldBy: the store whose running job alone keeps these runnable jobs of the kind and connection waiting (its lock group, the
+    // store cap, its queued order read ahead, or a bulkhead class at its cap); null: free for a lease now.
+    public sealed record JobKindRow(string JobType, int Priority, Guid? ConnectionId, Guid? HeldBy);
 
     // The oldest AvailableAt among queued jobs a slot could take now, across every tenant, for /health/queues. Same
     // rule as RunnableDepthAsync (keep the two in step): a job waiting for its connection's busy lock group or a quota

@@ -45,7 +45,7 @@ public sealed class CommittedPrivateFile(string relativePath) : IStagedPrivateFi
 
 public interface IJobLeaseService
 {
-    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null);
+    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null, JobDeferral? deferral = null);
     Task<bool> HeartbeatAsync(Guid jobId, string leaseToken, TimeSpan extension, CancellationToken cancellationToken);
     Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken, JobAttemptRun? run = null);
     Task<int> ReapExpiredAsync(CancellationToken cancellationToken);
@@ -90,24 +90,26 @@ public sealed record JobBulkhead(IReadOnlyList<string> JobTypes, IReadOnlyList<s
 }
 
 // Queue phase 2 (27 Nov 2026), the dispatcher's per-store cap: a capped job is not leased while Cap capped jobs of its
-// connection already run. Which jobs are capped (and counted) follows the dispatcher's lanes (DispatcherLanes.LaneFor):
-//   priority BulkUserAction or lower (kullanici)              UserWork
-//   priority InitialDataSync (ilk-cekim)                       InitialImports
-//   a type of TypedJobTypes (siparis-okuma, durum-taramasi,    capped when it is one of CappedTypedJobTypes
-//     iade, katalog), priority 0 and above
-//   any other type, priority 0..HotPriorityCeiling (acil)      UrgentWork
-//   any other type above the ceiling (arka-plan)               BackgroundWork
-// Counted from the LEASED rows in the database, so the lease query stays the one source of truth; the dispatcher leases one
-// job at a time, so two of its own leases never both see Cap - 1. Null: no cap (the lane models before the dispatcher).
-public sealed record JobConnectionCap(int Cap, bool UserWork, bool InitialImports, bool UrgentWork, bool BackgroundWork, IReadOnlyList<string> CappedTypedJobTypes, IReadOnlyList<string> TypedJobTypes, int HotPriorityCeiling)
+// connection already run. A job is capped (and counted) when it matches one of the Rules, the filters of the capped lanes
+// (DispatcherLanes.ConnectionCap): priority within MinimumPriority..MaximumPriority (null: open), its type one of IncludedJobTypes
+// (empty: any) and none of ExcludedJobTypes. Counted from the LEASED rows in the database, so the lease query stays the one
+// source of truth; the dispatcher leases one job at a time, so two of its own leases never both see Cap - 1. Null: no cap (the
+// lane models before the dispatcher).
+public sealed record JobConnectionCap(int Cap, IReadOnlyList<JobConnectionCap.Rule> Rules)
 {
-    public bool Caps(string jobType, int priority) =>
-        priority <= JobPriorityPolicy.BulkUserAction ? UserWork
-        : priority < 0 ? InitialImports
-        : TypedJobTypes.Contains(jobType) ? CappedTypedJobTypes.Contains(jobType)
-        : priority <= HotPriorityCeiling ? UrgentWork
-        : BackgroundWork;
+    public sealed record Rule(int? MinimumPriority, int? MaximumPriority, IReadOnlyList<string> IncludedJobTypes, IReadOnlyList<string> ExcludedJobTypes);
+
+    public bool Caps(string jobType, int priority) => Rules.Any(rule =>
+        (rule.MinimumPriority is not { } minimum || priority >= minimum)
+        && (rule.MaximumPriority is not { } maximum || priority <= maximum)
+        && (rule.IncludedJobTypes.Count == 0 || rule.IncludedJobTypes.Contains(jobType))
+        && !rule.ExcludedJobTypes.Contains(jobType));
 }
+
+// Queue phase 2 (review of 27 Nov 2026): a job is not leased while its connection has a runnable job of one of AheadJobTypes
+// queued in the same lock group (not under a quota backoff). The dispatcher passes it for the status scans and the background
+// reads, so a store's order read goes before its next status scan or order reconciliation ("orders" lock group). Null: none.
+public sealed record JobDeferral(IReadOnlyList<string> AheadJobTypes);
 
 // QueueWait: how long the job waited between becoming runnable and this lease (slot, lock group or backoff wait).
 // Priority, LockGroup (the group the lease's busy check uses; null when the job has none) and EligibleAt (when it became

@@ -27,6 +27,10 @@ public static class WorkerLaneModel
     public static IReadOnlyList<WorkerLane> Lanes(IConfiguration? configuration, int hotPriorityCeiling) =>
         IsDispatcher(configuration) ? DispatcherLanes.All(hotPriorityCeiling, DispatcherSettings.From(configuration)) : WorkerLanes.All(hotPriorityCeiling);
 
+    // The filters a CASE over the lanes tests, in order (a dispatcher lane with two lease filters, toplu, listed twice under its
+    // name): every job lands in the lane LaneFor names.
+    public static IReadOnlyList<WorkerLane> ClassifyingLanes(IReadOnlyList<WorkerLane> lanes) => [.. lanes.SelectMany(DispatcherLanes.LeaseFilters)];
+
     public static string LaneFor(IConfiguration? configuration, string jobType, int priority, int hotPriorityCeiling) =>
         IsDispatcher(configuration) ? DispatcherLanes.LaneFor(jobType, priority, hotPriorityCeiling) : WorkerLanes.LaneFor(jobType, priority, hotPriorityCeiling);
 }

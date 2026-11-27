@@ -32,7 +32,7 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
     {
         var now = timeProvider.GetUtcNow();
         var lanes = WorkerLaneModel.Lanes(configuration, hotPriorityCeiling);
-        var lane = QueueHealthService.LaneCaseSql(lanes, out var laneParameters);
+        var lane = QueueHealthService.LaneCaseSql(WorkerLaneModel.ClassifyingLanes(lanes), out var laneParameters);
         var parameters = new List<object>
         {
             new Npgsql.NpgsqlParameter("since", now - window),
