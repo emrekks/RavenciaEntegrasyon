@@ -1,69 +1,84 @@
 using System.Linq.Expressions;
-using System.Text.RegularExpressions;
+using System.Runtime.CompilerServices;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 /// <summary>
-/// The one rule for a micro-export order (owner, 16 Nov 2026, SIPARIS-STOK-3: the "Mikro İhracat" type label's rule is
-/// the rule). An order is micro export when its package (the customer snapshot) says so in any of three ways:
-/// <list type="bullet">
-/// <item>a flag micro, microExport or 3pByTrendyol is true (Trendyol's 3P partner exports send micro = false with
-/// 3pByTrendyol = true);</item>
-/// <item>shipmentPackageType or orderType names it (MICRO, İHRAC);</item>
-/// <item>the buyer is Trendyol's former export partner (PM3 and ARVATO in the buyer's name), for old snapshots that
-/// predate the flags.</item>
-/// </list>
-/// Any one positive indicator makes the order micro export, whatever the order of the fields: an explicit micro = false
-/// does not cancel 3pByTrendyol = true (Trendyol documents exactly that pair for its export partnership). A missing field
-/// says nothing. The label read the flags by first match before (JsonText), so {"micro":false,"3pByTrendyol":true} was
-/// domestic and the same fields the other way round export; live on 16 Nov 2026 no order carried such a pair (0). The
-/// indicators are read at any depth of the package, as the label always did: Trendyol sends them at the package's top
-/// level (docs: the package fields micro and 3pByTrendyol) and live no order has micro = true anywhere but there (0 of
-/// 1845 Trendyol orders), so top level and any depth are the same orders; any depth is what both engines can match alike.
-/// The label (OrderSnapshotReader.Customer), the row's flag (RowMarks), the list's Mikro İhracat and Fatura Bölgesi filters
-/// and the micro-export card all read this rule: the label and the flag in memory (Matches), the filters and the card in
-/// the database (InDatabase), which are the same expression (OrderMicroExportRulesTests). The invoice keeps its own rule
-/// (InvoiceIssuePolicy.IsMicroExport): which invoice an order gets is the owner's tax rule, not this one.
+/// The one micro-export rule (MicroExportRule; owner's decision of 27 Nov 2026, finding C-11.9) in PostgreSQL: the
+/// order list's Mikro İhracat and Fatura Bölgesi filters and the micro-export card read these; the label, the row mark
+/// and the invoice read MicroExportRule.Classify in memory. MicroExportRuleTests run every case through both.
+/// <para>Each order is read once (review O-1, 27 Nov 2026): its marketplace by one join, its snapshot detoasted once,
+/// checked for <c>\u0000</c>, validated and decoded once as <c>json</c> (a snapshot with a <c>\uD…</c> escape is also
+/// checked as <c>jsonb</c>, which refuses a lone surrogate the field read would fail on), and the top-level fields taken from that one
+/// decode (<c>json_to_record</c>); the key count is one <c>regexp_count</c>. OFFSET 0 keeps PostgreSQL from inlining
+/// the subqueries (which would decode again for every use). No stored column, no function created.</para>
 /// </summary>
 internal static class OrderMicroExportRules
 {
-    // Written for both engines alike: case is spelled out letter by letter ([mM][iI]…) rather than left to a case-insensitive
-    // match, because PostgreSQL folds İ and ı by its collation and .NET by its own table; JSON whitespace is listed
-    // (space, tab, CR, LF) rather than \s, whose set differs between the two.
-    private const string Space = "[ \t\r\n]*";
+    private static string Quoted(IEnumerable<string> values) => string.Join(",", values.Select(value => $"'{value}'"));
 
-    private static string Letters(string word) => string.Concat(word.Select(letter =>
-        char.IsAsciiLetter(letter) ? $"[{char.ToLowerInvariant(letter)}{char.ToUpperInvariant(letter)}]" : Regex.Escape(letter.ToString())));
+    private static string Field(string name) => $"\"{name}\" json";
 
-    private static string Key(params string[] names) => $"\"(?:{string.Join("|", names.Select(Letters))})\"{Space}:{Space}";
+    private static string Strings(IEnumerable<string> fields) =>
+        $"NULLIF(concat_ws('|', {string.Join(", ", fields.Select(field => $"CASE WHEN left(r.\"{field}\"::text, 1) = '\"' THEN r.\"{field}\"::text END"))}), '')";
 
-    // A flag that reads as true: the JSON literal, the number 1, or the text "true" (any case, padded), "1", "YES", "EVET".
-    internal static readonly string FlagPattern =
-        Key("microExport", "micro", "3pByTrendyol") + $"(?:{Letters("true")}|1|\"{Space}{Letters("true")}{Space}\"|\"1\"|\"YES\"|\"EVET\"){Space}[,}}\\]]";
+    // {0} the tenant, {1} the state (MicroExportState as a number). The patterns and lists are the rule's constants.
+    private static readonly string StateSql = $"""
+        SELECT b."Id" AS "Value"
+        FROM (
+            SELECT o."Id", o."StoreFrontCode" AS sf, c."PlatformCode" AS platform, (o."CustomerSnapshotJson" || '') AS t
+            FROM sales.orders AS o
+            LEFT JOIN integration.platform_connections AS c ON c."Id" = o."ConnectionId"
+            WHERE o."TenantId" = {"{0}"}
+            OFFSET 0) AS b
+        CROSS JOIN LATERAL (
+            SELECT CASE WHEN b.platform = '{MicroExportRule.Trendyol}' AND strpos(b.t, '{MicroExportRule.NulEscape}') = 0 AND pg_input_is_valid(b.t, 'json')
+                             AND (strpos(b.t, '\ud') = 0 AND strpos(b.t, '\uD') = 0 OR pg_input_is_valid(b.t, 'jsonb'))
+                        THEN b.t::json END AS j,
+                   CASE WHEN b.platform = '{MicroExportRule.Trendyol}' THEN regexp_count(b.t, '{MicroExportRule.SignalKeyPattern}') END AS keys
+            OFFSET 0) AS d
+        LEFT JOIN LATERAL json_to_record(CASE WHEN json_typeof(d.j) = 'object' THEN d.j END)
+            AS r({Field("micro")}, {Field("3pByTrendyol")}, {string.Join(", ", MicroExportRule.TypeFields.Concat(MicroExportRule.NameFields).Select(Field))}) ON true
+        CROSS JOIN LATERAL (
+            SELECT r.micro::text AS m, r."3pByTrendyol"::text AS p,
+                   {Strings(MicroExportRule.TypeFields)} AS types, {Strings(MicroExportRule.NameFields)} AS names
+            OFFSET 0) AS f
+        WHERE (CASE
+            WHEN b.platform IS NULL THEN {(int)MicroExportState.Unknown}
+            WHEN b.platform <> '{MicroExportRule.Trendyol}' THEN {(int)MicroExportState.Domestic}
+            WHEN json_typeof(d.j) IS DISTINCT FROM 'object' THEN {(int)MicroExportState.Unknown}
+            WHEN d.keys <> (CASE WHEN f.m IS NULL THEN 0 ELSE 1 END) + (CASE WHEN f.p IS NULL THEN 0 ELSE 1 END) THEN {(int)MicroExportState.Unknown}
+            WHEN f.m IS NULL AND f.p IS DISTINCT FROM 'true' THEN {(int)MicroExportState.Unknown}
+            WHEN f.m = 'true' AND f.p = 'true' THEN {(int)MicroExportState.Unknown}
+            WHEN (f.m = 'true' AND (f.p IS NULL OR f.p = 'false')) OR (f.p = 'true' AND (f.m IS NULL OR f.m = 'false'))
+                THEN CASE WHEN upper(b.sf COLLATE "C") = 'TR' THEN {(int)MicroExportState.Unknown} ELSE {(int)MicroExportState.MicroExport} END
+            WHEN f.m = 'false' AND (f.p IS NULL OR f.p = 'false')
+                THEN CASE WHEN upper(b.sf COLLATE "C") IN ({Quoted(MicroExportRule.MicroExportStorefronts)})
+                            OR f.types ~ '{MicroExportRule.TypeWordPattern}'
+                            OR (f.names ~ '{MicroExportRule.Pm3Pattern}' AND f.names ~ '{MicroExportRule.ArvatoPattern}')
+                          THEN {(int)MicroExportState.Unknown} ELSE {(int)MicroExportState.Domestic} END
+            ELSE {(int)MicroExportState.Unknown} END) = {"{1}"}
+        """;
 
-    // The package type's text naming a micro export (MICRO, İHRAC; the ASCII letters in any case).
-    internal static readonly string TypePattern = Key("shipmentPackageType", "orderType") + $"\"[^\"]*(?:{Letters("MICRO")}|İ{Letters("HRAC")})";
+    /// <summary>The tenant's orders the rule gives this answer, as a subquery the database runs.</summary>
+    internal static IQueryable<Guid> Ids(AppDbContext db, Guid tenantId, MicroExportState state) =>
+        db.Database.SqlQuery<Guid>(FormattableStringFactory.Create(StateSql, tenantId, (int)state));
 
-    // Trendyol's former export partner as the buyer: PM3 and ARVATO in the buyer's name fields.
-    private static readonly string NameKey = Key("customerFirstName", "customerLastName", "customerName", "customerFullName", "buyerName", "fullName");
-    internal static readonly string PartnerPm3Pattern = NameKey + $"\"[^\"]*{Letters("PM3")}";
-    internal static readonly string PartnerArvatoPattern = NameKey + $"\"[^\"]*{Letters("ARVATO")}";
+    /// <summary>The orders the rule calls micro export: the "Mikro İhracat" region, filter and card.</summary>
+    internal static Expression<Func<Order, bool>> InDatabase(AppDbContext db, Guid tenantId) => Is(db, tenantId, MicroExportState.MicroExport);
 
-    /// <summary>The rule on a customer snapshot, as the database runs it (Npgsql writes Regex.IsMatch as ~).</summary>
-    internal static readonly Expression<Func<string, bool>> SnapshotIsMicroExport = json =>
-        Regex.IsMatch(json, FlagPattern)
-        || Regex.IsMatch(json, TypePattern)
-        || (Regex.IsMatch(json, PartnerPm3Pattern) && Regex.IsMatch(json, PartnerArvatoPattern));
+    /// <summary>The orders the rule calls domestic: the "Türkiye" region.</summary>
+    internal static Expression<Func<Order, bool>> DomesticInDatabase(AppDbContext db, Guid tenantId) => Is(db, tenantId, MicroExportState.Domestic);
 
-    private static readonly Func<string, bool> Compiled = SnapshotIsMicroExport.Compile();
+    /// <summary>The orders whose kind the rule cannot tell: the "Belirsiz" region.</summary>
+    internal static Expression<Func<Order, bool>> UnknownInDatabase(AppDbContext db, Guid tenantId) => Is(db, tenantId, MicroExportState.Unknown);
 
-    /// <summary>The rule in memory: the same expression, compiled.</summary>
-    internal static bool Matches(string? customerSnapshotJson) => !string.IsNullOrWhiteSpace(customerSnapshotJson) && Compiled(customerSnapshotJson);
-
-    /// <summary>The rule as a database condition on an order.</summary>
-    internal static readonly Expression<Func<Order, bool>> InDatabase = PolicyExpressions.On<Order, string>(SnapshotIsMicroExport, order => order.CustomerSnapshotJson);
-
-    /// <summary>An order that is no micro export: the "Türkiye" invoice region.</summary>
-    internal static readonly Expression<Func<Order, bool>> NotInDatabase = Expression.Lambda<Func<Order, bool>>(Expression.Not(InDatabase.Body), InDatabase.Parameters);
+    private static Expression<Func<Order, bool>> Is(AppDbContext db, Guid tenantId, MicroExportState state)
+    {
+        var ids = Ids(db, tenantId, state);
+        return order => ids.Contains(order.Id);
+    }
 }

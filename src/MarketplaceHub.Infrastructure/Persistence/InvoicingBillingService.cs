@@ -1253,7 +1253,7 @@ public sealed partial class InvoicingBillingService(
             new AdapterContext(tenantId, provider.Id, "invoice-draft", $"invoice-draft:{order.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
             orderPlatform, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken);
         var invoiceType = recipient.InvoiceType;
-        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, recipient) is { } refusal)
+        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, MicroExportRule.Classify(orderPlatform, order.StoreFrontCode, order.CustomerSnapshotJson), recipient) is { } refusal)
             return Refuse<InvoiceDetailView>(refusal);
         if (command.OriginalInvoiceId is null && invoiceType == "EARSIVFATURA")
         {
@@ -2240,8 +2240,8 @@ public sealed partial class InvoicingBillingService(
     private async Task<InvoiceIssueRefusal?> SaleIssueRefusalAsync(Guid tenantId, Invoice invoice, CancellationToken cancellationToken)
     {
         var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
-            .Select(x => new { x.CustomerSnapshotJson, x.InvoiceAddressSnapshotJson, x.ConnectionId }).SingleOrDefaultAsync(cancellationToken);
-        if (order is null) return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, null);
+            .Select(x => new { x.CustomerSnapshotJson, x.InvoiceAddressSnapshotJson, x.ConnectionId, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
+        if (order is null) return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, MicroExportRule.Classify(null, null, null));
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId)
             .Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (await InvoicePreIssueCheck.HasUnreadableLinesAsync(db, tenantId, invoice.OrderId, cancellationToken))
@@ -2252,7 +2252,7 @@ public sealed partial class InvoicingBillingService(
         var recipient = await EInvoiceRecipientResolver.ResolveAsync(invoiceProvider,
             new AdapterContext(tenantId, invoice.ProviderConnectionId, "invoice-submit-gate", $"invoice-submit-gate:{invoice.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
             platformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken);
-        return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, order.CustomerSnapshotJson, recipient);
+        return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, MicroExportRule.Classify(platformCode, order.StoreFrontCode, order.CustomerSnapshotJson), recipient);
     }
 
     private static ServiceResult<T> Refuse<T>(InvoiceIssueRefusal refusal) => ServiceResult<T>.Fail(refusal.Code, refusal.Message, 422);

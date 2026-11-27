@@ -34818,6 +34818,12 @@
               "null",
               "string"
             ]
+          },
+          "microExportUnknownReason": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

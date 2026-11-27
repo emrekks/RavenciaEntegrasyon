@@ -53,20 +53,33 @@ public static class InvoiceIssuePolicy
     public static readonly InvoiceIssueRefusal ExportFlowRequired = new(ExportFlowRequiredCode,
         "Bu sipariş mikro ihracat siparişi veya TRY dışı para birimiyle geldi. Yurt içi e-Arşiv satış faturası kesilemez; ihracat faturası akışı gerekli.");
 
+    // 27 Nov 2026 (owner, finding C-11.9): an order the one micro-export rule (MicroExportRule) cannot call micro export or
+    // domestic, because a field is missing or its signals disagree, gets no invoice type by guess: it waits for the owner.
+    public const string MicroExportUnknownCode = "INVOICE_MICRO_EXPORT_UNKNOWN";
+
+    /// <summary>The refusal without the order's own reason, for a stored validation code.</summary>
+    public static readonly InvoiceIssueRefusal MicroExportUnknown = MicroExportUnknownFor(null);
+
+    public static InvoiceIssueRefusal MicroExportUnknownFor(string? reason) => new(MicroExportUnknownCode,
+        "Siparişin mikro ihracat mı yurt içi satış mı olduğu açık değil"
+        + (string.IsNullOrWhiteSpace(reason) ? "" : $" ({reason})")
+        + ". Fatura türü tahmin edilmedi ve fatura kesilmedi; sahibin incelemesini bekliyor. Siparişi Trendyol satıcı panelinde kontrol edin: mikro ihracatsa ihracat faturasını, yurt içiyse e-Arşiv ya da e-Fatura'yı E-Faturam portalında düzenleyip siparişe manuel belge olarak ekleyin.");
+
     /// <summary>The first reason the automatic SALE flow must not issue this invoice, or null.</summary>
-    public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, string? customerSnapshotJson)
+    public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, MicroExportDecision microExport)
     {
-        if (RequiresExportFlow(currency, customerSnapshotJson)) return ExportFlowRequired;
+        if (!IsTurkishLira(currency) || microExport.State == MicroExportState.MicroExport) return ExportFlowRequired;
+        if (microExport.State == MicroExportState.Unknown) return MicroExportUnknownFor(microExport.Reason);
         return null;
     }
 
     /// <summary>
-    /// <see cref="Refusal(string, string, string)"/> plus the taxpayer lookup (<see cref="EInvoiceRecipientPolicy"/>):
+    /// <see cref="Refusal(string, string, MicroExportDecision)"/> plus the taxpayer lookup (<see cref="EInvoiceRecipientPolicy"/>):
     /// its own refusal, or an invoice whose saved type is not the type the lookup asks for now.
     /// </summary>
-    public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, string? customerSnapshotJson, EInvoiceRecipientDecision recipient)
+    public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, MicroExportDecision microExport, EInvoiceRecipientDecision recipient)
     {
-        if (Refusal(invoiceType, currency, customerSnapshotJson) is { } refusal) return refusal;
+        if (Refusal(invoiceType, currency, microExport) is { } refusal) return refusal;
         if (recipient.Refusal is { } recipientRefusal) return recipientRefusal;
         return string.Equals(invoiceType, recipient.InvoiceType, StringComparison.Ordinal) ? null : EInvoiceTaxpayerChanged;
     }
@@ -182,28 +195,13 @@ public static class InvoiceIssuePolicy
     /// <summary>The GİB invoice number format (three letters/digits and thirteen digits) Trendyol accepts with a link.</summary>
     public static bool IsGibInvoiceNumber(string? invoiceNumber) => invoiceNumber is not null && GibInvoiceNumberPattern.IsMatch(invoiceNumber.Trim());
 
-    public static bool RequiresExportFlow(string? currency, string? customerSnapshotJson) =>
-        !string.Equals(currency?.Trim(), "TRY", StringComparison.OrdinalIgnoreCase) || IsMicroExport(customerSnapshotJson);
+    private static bool IsTurkishLira(string? currency) => string.Equals(currency?.Trim(), "TRY", StringComparison.OrdinalIgnoreCase);
 
-    public static bool IsMicroExport(string? customerSnapshotJson)
-    {
-        if (string.IsNullOrWhiteSpace(customerSnapshotJson)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(customerSnapshotJson);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return false;
-            if (root.TryGetProperty("micro", out var micro) && micro.ValueKind == JsonValueKind.True) return true;
-            if (root.TryGetProperty("microExport", out var microExport) && microExport.ValueKind == JsonValueKind.True) return true;
-            if (root.TryGetProperty("3pByTrendyol", out var thirdParty) && thirdParty.ValueKind == JsonValueKind.True) return true;
-            foreach (var name in new[] { "shipmentPackageType", "orderType" })
-                if (root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-                    && (value.GetString()?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true
-                        || value.GetString()?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true)) return true;
-        }
-        catch (JsonException) { }
-        return false;
-    }
+    /// <summary>
+    /// The package needs Trendyol's micro-export invoice fields (a GİB-format number and the date) on delivery: a micro
+    /// export, and also an order whose kind is unknown (the stricter form is kept rather than guessing domestic).
+    /// </summary>
+    public static bool NeedsMicroExportInvoiceFields(MicroExportDecision microExport) => microExport.State != MicroExportState.Domestic;
 
     /// <summary>Turkish text for the validation codes an operator sees after a failed check.</summary>
     public static string DescribeValidationCode(string? code) => code switch
@@ -216,6 +214,7 @@ public static class InvoiceIssuePolicy
         RecipientKindUnknownCode => RecipientKindUnknown.Message,
         RecipientPlaceholderForCorporateCode => RecipientPlaceholderForCorporate.Message,
         ExportFlowRequiredCode => ExportFlowRequired.Message,
+        MicroExportUnknownCode => MicroExportUnknown.Message,
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
         LineVatRateUnknownCode => LineVatRateUnknown.Message,
         OrderLineUnreadableCode => OrderLineUnreadable.Message,

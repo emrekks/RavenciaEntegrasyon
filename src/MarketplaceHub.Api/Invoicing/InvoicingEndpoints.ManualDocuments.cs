@@ -43,8 +43,10 @@ public static partial class InvoicingEndpoints
         var invoiceNumber = form["invoiceNumber"].ToString().Trim();
         if (invoiceNumber.Length > 64) return Problem(http, new("INVOICE_NUMBER_INVALID", "Fatura numarası en fazla 64 karakter olabilir.", 422));
         // Trendyol takes the link of a micro-export invoice only with its GİB number; a domestic package's link is
-        // sent without a number Trendyol would refuse (the number is optional there).
-        if (connection.PlatformCode == "TRENDYOL" && InvoiceIssuePolicy.IsMicroExport(order.CustomerSnapshotJson)
+        // sent without a number Trendyol would refuse (the number is optional there). An order whose kind the one rule
+        // (MicroExportRule) cannot tell needs the number too: the delivery sends it in the micro-export form.
+        if (connection.PlatformCode == "TRENDYOL"
+            && InvoiceIssuePolicy.NeedsMicroExportInvoiceFields(MicroExportRule.Classify(connection.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson))
             && !InvoiceIssuePolicy.IsGibInvoiceNumber(invoiceNumber))
             return Problem(http, new("INVOICE_NUMBER_INVALID", "Mikro ihracat faturası için GİB biçiminde fatura numarası gerekli: 3 harf/rakam ve 13 rakam (örnek: ABC2026000000045).", 422));
         // n11 takes an invoice link only with its 16-character number (3 letters or digits and 13 digits).

@@ -9,6 +9,8 @@ export type OrderRowMarks = {
   deliveryPoint: boolean
   deliveryPointType: string | null
   fastDeliveryType: string | null
+  // The one micro-export rule cannot tell micro export from domestic (MicroExportRule): the Belirsiz mark, with its reason.
+  microExportUnknownReason?: string | null
 }
 
 const countryNames: Record<string, string> = {
@@ -33,6 +35,11 @@ export function fastDeliveryLabel(type: string | null | undefined) {
 
 export function microExportLabel(code: string | null | undefined) {
   return code ? `Mikro İhracat · ${countryName(code)}` : 'Mikro İhracat'
+}
+
+// The Belirsiz mark's tip: the rule's own Turkish reason (MicroExportRule), with the first letter capitalised.
+export function microExportUnknownLabel(reason: string) {
+  return `Belirsiz · ${reason.charAt(0).toLocaleUpperCase('tr-TR')}${reason.slice(1)}`
 }
 
 // Local flag drawings (16 × 11), simplified to read at icon size; no emoji, no remote images.
@@ -72,10 +79,11 @@ export function unreadableLinesLabel(count: number, amountMayBeIncomplete = fals
 
 export function OrderRowMarkIcons({ marks, unreadableLines = 0, amountMayBeIncomplete = false }: { marks: OrderRowMarks | null | undefined; unreadableLines?: number; amountMayBeIncomplete?: boolean }) {
   const fastLabel = fastDeliveryLabel(marks?.fastDeliveryType)
-  if (!marks?.microExport && !marks?.deliveryPoint && !fastLabel && unreadableLines <= 0) return null
+  if (!marks?.microExport && !marks?.microExportUnknownReason && !marks?.deliveryPoint && !fastLabel && unreadableLines <= 0) return null
   return <span className="rr-omarks">
     {unreadableLines > 0 && <Mark kind="unreadable" tip={unreadableLinesLabel(unreadableLines, amountMayBeIncomplete)}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1.8 14.6 13.6H1.4z" /><path d="M8 6.2v3.4M8 11.6v.1" /></svg></Mark>}
     {marks?.microExport && <Mark kind="micro" tip={microExportLabel(marks.microExportCountryCode)}><Flag code={marks.microExportCountryCode ?? ''} /></Mark>}
+    {!marks?.microExport && marks?.microExportUnknownReason && <Mark kind="unknown" tip={microExportUnknownLabel(marks.microExportUnknownReason)}><span className="rr-omark-word">Belirsiz</span></Mark>}
     {fastLabel && <Mark kind="fast" tip={fastLabel}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5" /><circle cx="4.5" cy="11.8" r="1.2" /><circle cx="11.8" cy="11.8" r="1.2" /></svg></Mark>}
     {marks?.deliveryPoint && <Mark kind="point" tip="Teslimat Noktası Siparişi"><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 14.2s4.6-4.3 4.6-7.8a4.6 4.6 0 0 0-9.2 0c0 3.5 4.6 7.8 4.6 7.8z" /><circle cx="8" cy="6.4" r="1.7" /></svg></Mark>}
   </span>

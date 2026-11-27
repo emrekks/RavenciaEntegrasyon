@@ -53,7 +53,7 @@ public sealed class InvoiceRecipientReviewTests
 
         Assert.Equal("EARSIVFATURA", decision.InvoiceType);
         Assert.Null(decision.TaxpayerState);
-        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", customer, decision));
+        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", MicroExportRule.Classify("HEPSIBURADA", null, customer), decision));
     }
 
     [Fact]
@@ -64,9 +64,9 @@ public sealed class InvoiceRecipientReviewTests
         Assert.Equal("TEMELFATURA", decision.InvoiceType);
         Assert.Equal("urn:mail:defaultpk@ornek.com.tr", decision.TargetAlias);
         Assert.Equal("ÖRNEK A.Ş.", decision.TaxpayerTitle);
-        Assert.Null(InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", HepsiburadaCustomer, decision));
+        Assert.Null(InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", MicroExportRule.Classify("HEPSIBURADA", null, HepsiburadaCustomer), decision));
         // An e-Archive draft saved before the lookup is not sent: its type no longer matches.
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceTaxpayerChangedCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", HepsiburadaCustomer, decision)?.Code);
+        Assert.Equal(InvoiceIssuePolicy.EInvoiceTaxpayerChangedCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", MicroExportRule.Classify("HEPSIBURADA", null, HepsiburadaCustomer), decision)?.Code);
     }
 
     [Theory]
@@ -90,7 +90,7 @@ public sealed class InvoiceRecipientReviewTests
 
         Assert.Equal("EARSIVFATURA", decision.InvoiceType);
         Assert.Equal(EInvoiceTaxpayerState.NotRegistered, decision.TaxpayerState);
-        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", HepsiburadaCustomer, decision));
+        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", MicroExportRule.Classify("HEPSIBURADA", null, HepsiburadaCustomer), decision));
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class InvoiceRecipientReviewTests
         var decision = EInvoiceRecipientPolicy.Decide(marketplaceType, corporateRecipient: true, EInvoiceTaxpayerLookup.NotRegistered());
 
         Assert.Equal("TEMELFATURA", marketplaceType);
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceTaxpayerConflictCode, InvoiceIssuePolicy.Refusal(decision.InvoiceType, "TRY", obligedCustomer, decision)?.Code);
+        Assert.Equal(InvoiceIssuePolicy.EInvoiceTaxpayerConflictCode, InvoiceIssuePolicy.Refusal(decision.InvoiceType, "TRY", MicroExportRule.Classify("HEPSIBURADA", null, obligedCustomer), decision)?.Code);
     }
 
     [Theory]
@@ -117,7 +117,7 @@ public sealed class InvoiceRecipientReviewTests
             var decision = EInvoiceRecipientPolicy.Decide(marketplaceType, corporateRecipient: true, lookup);
 
             Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, decision.Refusal?.Code);
-            Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, InvoiceIssuePolicy.Refusal(marketplaceType, "TRY", "{}", decision)?.Code);
+            Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, InvoiceIssuePolicy.Refusal(marketplaceType, "TRY", MicroExportRule.Classify("HEPSIBURADA", null, "{}"), decision)?.Code);
         }
     }
 
@@ -139,7 +139,7 @@ public sealed class InvoiceRecipientReviewTests
     {
         var decision = EInvoiceRecipientPolicy.Decide("EARSIVFATURA", corporateRecipient: true, EInvoiceTaxpayerLookup.Unknown("EFATURAM_TIMEOUT"));
 
-        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", HepsiburadaCustomer, decision)?.Code);
+        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", MicroExportRule.Classify("HEPSIBURADA", null, HepsiburadaCustomer), decision)?.Code);
     }
 
     [Fact]

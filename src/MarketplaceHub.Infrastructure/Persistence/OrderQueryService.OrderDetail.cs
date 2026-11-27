@@ -77,12 +77,13 @@ internal sealed partial class OrderQueryService
             .FirstOrDefault(x => x is not null)
             ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-        var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport, order.BuyerType);
+        var microExport = IsMicroExport(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson);
+        var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, microExport, order.BuyerType);
         return ServiceResult<OrderDetailView>.Ok(new(
             order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt,
             lines, visiblePackages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
-            customer.Name, customer.Email, customer.TaxOrIdentityNumber, buyer.OrderType, customer.IsMicroExport,
+            customer.Name, customer.Email, customer.TaxOrIdentityNumber, buyer.OrderType, microExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), PackageInvoiceLabel(displayPackage, invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson),
             UnreadableLineCount(packages), AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packages)), buyer.BuyerType));
