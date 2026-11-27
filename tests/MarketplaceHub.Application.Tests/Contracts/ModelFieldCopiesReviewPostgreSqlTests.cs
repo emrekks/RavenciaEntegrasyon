@@ -134,6 +134,41 @@ public sealed class ModelFieldCopiesReviewPostgreSqlTests(PostgreSqlTenantIsolat
             db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenantId && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix)).Select(x => x.Status).SingleAsync();
     }
 
+    // 4 (review 2, 28 Nov 2026): with the switch on, a save walks the tracker for ModelFieldCopyHold only while a rebased row
+    // holds a stale copy. Saves with no rebased row, and saves after a rebase that found every copy fresh, do no walk; the
+    // one save that heals a stale copy walks once, and the saves after it walk no more.
+    [PostgreSqlFact]
+    public async Task WithTheSwitchOn_ASaveWalksTheTrackerOnlyWhileARebasedRowHoldsAStaleCopy()
+    {
+        using var position = ModelFieldCopies.Use(true);
+        var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
+        await using var db = fixture.CreateContext();
+        var card = await db.Products.SingleAsync(x => x.Id == seeded.Cards[0].Id);
+        card.Title += " 1";
+        await db.SaveChangesAsync();
+        card.Title += " 2";
+        await db.SaveChangesAsync();
+        Assert.Equal((0, 0), (db.StaleRebasedRows, db.CopyHoldWalks));
+
+        Assert.True(await EffectiveCatalog.RebaseAsync(db, CancellationToken.None) > 0);
+        card.Title += " 3";
+        await db.SaveChangesAsync();
+        Assert.Equal((0, 0), (db.StaleRebasedRows, db.CopyHoldWalks));
+
+        // A stale VAT copy on a second colour (as left by a save while the switch was off).
+        await db.Products.Where(x => x.Id == seeded.Cards[1].Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.VatRate, 1m));
+        var second = await db.Products.SingleAsync(x => x.Id == seeded.Cards[1].Id);
+        await EffectiveCatalog.RebaseAsync(db, CancellationToken.None);
+        Assert.Equal(1, db.StaleRebasedRows);
+        second.Title += " 1";
+        await db.SaveChangesAsync();
+        Assert.Equal((0, 1), (db.StaleRebasedRows, db.CopyHoldWalks));
+        Assert.Equal(10m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == second.Id)).VatRate);
+        second.Title += " 2";
+        await db.SaveChangesAsync();
+        Assert.Equal(1, db.CopyHoldWalks);
+    }
+
     // An editor save of a card as the editor shows it; what it queued: link states, jobs, outbox kinds.
     private async Task<string> NoChangeSaveAsync(AppDbContext db, Guid cardId)
     {

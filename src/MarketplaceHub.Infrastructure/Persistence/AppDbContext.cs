@@ -289,7 +289,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             if (_rebasedRows is null)
             {
                 var rows = new System.Runtime.CompilerServices.ConditionalWeakTable<object, HashSet<string>>();
-                ChangeTracker.Tracked += (_, e) => rows.Remove(e.Entry.Entity);
+                ChangeTracker.Tracked += (_, e) =>
+                {
+                    if (rows.TryGetValue(e.Entry.Entity, out var stale) && stale.Count > 0) StaleRebasedRows--;
+                    rows.Remove(e.Entry.Entity);
+                };
                 _rebasedRows = rows;
             }
             return _rebasedRows;
@@ -297,6 +301,20 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     }
 
     private System.Runtime.CompilerServices.ConditionalWeakTable<object, HashSet<string>>? _rebasedRows;
+
+    // How many rebased rows still hold a stale copy column (review 2 of B2b, 28 Nov 2026): while it is 0, a save has no copy
+    // to heal and ModelFieldCopyHold does not walk the tracker. An upper bound: a row the garbage collector took from
+    // RebasedRows is not subtracted, which costs one walk, never a missed heal.
+    internal int StaleRebasedRows { get; set; }
+
+    // How many saves walked the tracker for ModelFieldCopyHold (tests count it).
+    internal int CopyHoldWalks { get; set; }
+
+    internal void MarkRebased(object row, HashSet<string> stale)
+    {
+        RebasedRows.AddOrUpdate(row, stale);
+        if (stale.Count > 0) StaleRebasedRows++;
+    }
 
     // True while SaveChanges runs its own transaction around a save and its model links (KATALOG-14 phase D5a): the
     // reconcile then takes its advisory locks inside it (ProductModelLinks.ReconcileAsync).

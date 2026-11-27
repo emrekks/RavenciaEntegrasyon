@@ -29,12 +29,16 @@ internal static class ModelFieldCopyHold
         var tracker = db.ChangeTracker;
         if (ModelFieldCopies.Written)
         {
+            // No rebased row holds a stale copy (every save outside a rebasing writer): nothing to heal, no tracker walk.
+            if (db.StaleRebasedRows <= 0) return null;
+            db.CopyHoldWalks++;
             foreach (var entry in tracker.Entries().Where(x => x.State == EntityState.Modified && x.Entity is Product or ProductVariant))
                 if (db.RebasedRows.TryGetValue(entry.Entity, out var stale) && stale.Count > 0)
                 {
                     foreach (var name in stale)
                         if (entry.Property(name) is { IsModified: false } property && Equals(property.OriginalValue, property.CurrentValue)) property.IsModified = true;
                     stale.Clear();
+                    db.StaleRebasedRows--;
                 }
             return null;
         }

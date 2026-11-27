@@ -194,13 +194,13 @@ public static class EffectiveCatalog
                 Rebase(entry.Property(x => x.WarrantyMonths), model.WarrantyMonths, stale);
                 Rebase(entry.Property(x => x.DeliveryDays), model.DeliveryDays, stale);
             }
-            db.RebasedRows.AddOrUpdate(entry.Entity, stale);
+            db.MarkRebased(entry.Entity, stale);
         }
         foreach (var entry in variants)
         {
             var stale = new HashSet<string>(StringComparer.Ordinal);
             if (models.TryGetValue(entry.Entity.ProductId, out var model) && model.Desi is not null) Rebase(entry.Property(x => x.Desi), model.Desi, stale);
-            db.RebasedRows.AddOrUpdate(entry.Entity, stale);
+            db.MarkRebased(entry.Entity, stale);
         }
         return products.Count + variants.Count;
     }
