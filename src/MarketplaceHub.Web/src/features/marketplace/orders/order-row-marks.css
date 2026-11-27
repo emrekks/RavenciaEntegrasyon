@@ -11,9 +11,8 @@
 .rr-omark-micro:focus-visible { box-shadow: none; outline: 1px solid var(--rr-info); outline-offset: 2px; }
 /* Orange, the same in both themes: the warning token is brown in the light theme. */
 .rr-omark-point { color: #e8711c; }
-/* Belirsiz: the micro-export rule cannot tell micro export from domestic (its invoice waits for the owner). An amber word
-   chip on the number's line, 18 px high like the other marks; its tip (the rule's reason) may wrap. */
-.rr-omark-unknown { width: auto; padding: 0 6px; color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--rr-warn) 40%, transparent); }
+/* Belirsiz: the micro-export rule cannot tell micro export from domestic (its invoice waits for the owner): an amber word
+   chip on the number's line, 18 px high like the other marks (its look is with the button rules below). */
 .rr-omark-word { font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; }
 /* An order with a product line that could not be read: the danger colour, as no invoice is issued for it. */
 .rr-omark-unreadable { color: var(--rv-color-danger, #d64545); }
@@ -21,8 +20,16 @@
 .rr-omark[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 70; bottom: calc(100% + 6px); left: 50%; width: max-content; max-width: 240px; padding: 6px 10px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
 /* the first row's tip opens downwards: the table panel clips what rises above its header */
 tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus-visible)::after { top: calc(100% + 6px); bottom: auto; }
-/* The Belirsiz tip (the rule's reason) is a sentence: it wraps and opens leftwards from the mark's right edge, so it stays inside a phone's width. */
-.rr-omark-unknown[data-tip]:is(:hover, :focus-visible)::after { right: 0; left: auto; width: min(240px, calc(100vw - 32px)); white-space: normal; transform: none; }
+/* The micro-export and Belirsiz marks are buttons (HelpMark): the repeated class beats the global button rule (44 px height,
+   padding, ground) so they keep the marks' size. Their card is drawn on the page body, never cut by the table's scroll box,
+   opens under the mark with its left edge at the mark and wraps at 260 px (inside the window on a phone). */
+:root button.rr-omark-btn.rr-omark-btn.rr-omark-btn { box-sizing: border-box; min-width: 0; min-height: 0; margin: 0; padding: 0; font: inherit; line-height: 1; text-transform: none; letter-spacing: 0; background: none; border: 0; box-shadow: none; cursor: default; }
+:root button.rr-omark-btn.rr-omark-btn.rr-omark-micro { width: auto; height: auto; border-radius: 0; }
+:root button.rr-omark-btn.rr-omark-btn.rr-omark-unknown { width: auto; height: 18px; padding: 0 6px; color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--rr-warn) 40%, transparent); border-radius: 7px; }
+:root button.rr-omark-btn.rr-omark-btn:focus-visible { outline: 1px solid var(--rr-info); outline-offset: 2px; box-shadow: none; }
+.rr-omark-tip { position: fixed; z-index: 2000; box-sizing: border-box; width: max-content; max-width: min(260px, calc(100vw - 24px)); padding: 6px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; white-space: normal; overflow-wrap: anywhere; pointer-events: auto; }
+.rr-omark-tip.is-above { transform: translateY(-100%); }
+.rr-omark-tip[hidden] { display: none; }
 /* a narrow order column moves the marks under the number instead of letting them run into the next column */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no:has(> .rr-omarks) { flex-wrap: wrap; }
 /* The buyer kind tag (Bireysel / Kurumsal / Kurumsal · Vergi No Yok) beside the buyer's name: a compact 20 px chip;
