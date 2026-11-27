@@ -183,6 +183,7 @@ public sealed partial class ApiResponseSchemaTests(ApiEndToEndFixture fixture) :
             await run.ProbeAsync("JobEndpoints", "GET", "/api/v1/jobs/page");
             await run.ProbeAsync("JobEndpoints", "GET", "/api/v1/jobs/counts");
             await run.ProbeAsync("JobEndpoints", "GET", "/api/v1/jobs/metrics");
+            await run.ProbeAsync("JobEndpoints", "GET", "/api/v1/jobs/metrics/failures", "/api/v1/jobs/metrics/failures?jobType=PTTAVM_ORDER_SYNC");
             await run.ProbeAsync("JobEndpoints", "GET", "/api/v1/jobs/metrics/lanes");
             await run.ProbeAsync("JobEndpoints", "GET", "/api/v1/jobs/metrics/quota");
             await run.ProbeAsync("JobEndpoints", "GET", "/api/v1/jobs/metrics/order-latency");

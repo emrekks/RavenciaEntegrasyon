@@ -261,6 +261,20 @@ public sealed record JobTypeMetricView(
     int Queued,
     int Running);
 
+// The Hata cell of İşlem Takibi › Kuyruk ve Kota behind its number: the failed attempts of one job type that
+// JobTypeMetricView.Failed counts (same window, same platforms, waiting checks left out). TotalCount equals that number.
+// Groups: one row per error code and the sentence a job screen shows for it, most frequent first (at most
+// MaximumGroups; GroupCount is how many there are). Transient: the code is one that comes and goes
+// (ConnectionRetestPolicy.IsTransient), so the job retries on its own. Items: the attempts, newest first, one page.
+// JobStatus is the job's stored status now (SUCCEEDED: it succeeded later; DEAD / MANUAL_REVIEW: still failing;
+// PENDING / RETRY_SCHEDULED / LEASED: it will be or is being retried).
+public sealed record JobTypeFailureGroupView(string? ErrorCode, string? Reason, int Count, DateTimeOffset FirstSeen, DateTimeOffset LastSeen, bool Transient);
+public sealed record JobTypeFailureView(Guid JobId, Guid AttemptId, DateTimeOffset AttemptedAt, int AttemptNumber, string? StoreName, string? PlatformCode, string? ErrorCode, string? Reason, string JobStatus, bool Transient);
+public sealed record JobTypeFailuresView(string JobType, int TotalCount, int GroupCount, IReadOnlyList<JobTypeFailureGroupView> Groups, IReadOnlyList<JobTypeFailureView> Items, int Page, int PageSize)
+{
+    public const int MaximumGroups = 50;
+}
+
 // Job counts by status and type over the requested window. The job list returns only the newest jobs, so the tab and
 // status counts come from here to show real totals.
 public sealed record JobCountView(string Status, string JobType, int Count);
@@ -324,6 +338,8 @@ public interface IJobOperationsService
     // Platforms (connection PlatformCode values) limits the counts to jobs of those connections; jobs without a connection count only without it.
     Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, IReadOnlyList<string>? platforms, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, IReadOnlyList<string>? platforms, CancellationToken cancellationToken);
+    // The failed attempts behind one job type's Failed metric (same window and platforms), grouped and one page of them.
+    Task<JobTypeFailuresView> FailuresAsync(Guid tenantId, string jobType, TimeSpan window, IReadOnlyList<string>? platforms, int page, int pageSize, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
     // Cursor-paged list: Items holds at most EffectiveLimit jobs; NextCursor continues after the last one.
     Task<ServiceResult<PageResult<JobSummaryView>>> PageAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);

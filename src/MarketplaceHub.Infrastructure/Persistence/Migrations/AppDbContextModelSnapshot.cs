@@ -5332,7 +5332,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("DescriptionOverride")
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("FamilyId")
+                    b.Property<Guid>("FamilyId")
                         .HasColumnType("uuid");
 
                     b.Property<long>("SourcePolicyVersion")
@@ -8855,7 +8855,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "FamilyId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductAttributeAssignment", b =>

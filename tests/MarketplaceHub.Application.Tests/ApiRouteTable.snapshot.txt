@@ -157,6 +157,7 @@ GET    /api/v1/jobs/ | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_R
 GET    /api/v1/jobs/attention | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/jobs/counts | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/jobs/metrics | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+GET    /api/v1/jobs/metrics/failures | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=400 INVALID_REQUEST | cross=400 INVALID_REQUEST
 GET    /api/v1/jobs/metrics/lanes | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/jobs/metrics/order-latency | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/jobs/metrics/quota | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR

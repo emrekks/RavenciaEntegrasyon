@@ -424,6 +424,29 @@ const jobMetrics = [
 ]
 // Invented figures (queue phase 0 adds each lane's recorded wait causes, every quota bucket and the order block).
 const laneWait = (targetSeconds, waitCauses = null) => ({ targetSeconds, recentP95WaitSeconds: null, oldestWaitSeconds: null, waitStatus: 'OK', alertSince: null, borrowed: 0, waitCauses })
+// The Hata window of İş Türüne Göre Kuyruk (invented values): the clicked type's failed attempts, as many as its Hata
+// number, in two reasons; one page of 20, newest first, every outcome shown.
+const failureReasons = [
+  { errorCode: 'TRENDYOL_NETWORK_ERROR', reason: 'Trendyol bağlantısı geçici olarak kurulamadı.', transient: true },
+  { errorCode: 'TRENDYOL_REQUEST_REJECTED', reason: 'Trendyol isteği reddetti: fiyat liste fiyatından yüksek olamaz.', transient: false }
+]
+const failureStatuses = ['SUCCEEDED', 'RETRY_SCHEDULED', 'DEAD', 'SUCCEEDED', 'LEASED']
+function jobFailures(url) {
+  const jobType = url.searchParams.get('jobType') ?? ''
+  const page = Number(url.searchParams.get('page') ?? 1)
+  const pageSize = Number(url.searchParams.get('pageSize') ?? 20)
+  const total = jobMetrics.find(row => row.jobType === jobType)?.failed ?? 0
+  const end = Date.parse('2026-10-20T06:20:00Z')
+  const attempts = Array.from({ length: total }, (_, index) => {
+    const cause = failureReasons[index % 4 === 3 ? 1 : 0]
+    return { jobId: `job-fail-${index + 1}`, attemptId: `attempt-fail-${index + 1}`, attemptedAt: new Date(end - index * 7 * 60_000).toISOString(), attemptNumber: 1 + (index % 3), storeName: index % 2 ? 'Ravencia Trendyol' : 'Ravencia Moda', platformCode: 'TRENDYOL', ...cause, jobStatus: failureStatuses[index % failureStatuses.length] }
+  })
+  const groups = failureReasons.map(cause => {
+    const rows = attempts.filter(row => row.errorCode === cause.errorCode)
+    return rows.length ? { ...cause, count: rows.length, firstSeen: rows.at(-1).attemptedAt, lastSeen: rows[0].attemptedAt } : null
+  }).filter(Boolean).sort((a, b) => b.count - a.count)
+  return { jobType, totalCount: total, groupCount: groups.length, groups, items: attempts.slice((page - 1) * pageSize, page * pageSize), page, pageSize }
+}
 const laneMetrics = [
   { lane: 'USER', attempts: 64, averageWaitSeconds: 0.8, p95WaitSeconds: 3, queued: 0, running: 0, slots: 2, ...laneWait(5) },
   { lane: 'INITIAL', attempts: 4, averageWaitSeconds: 12, p95WaitSeconds: 40, queued: 1, running: 0, slots: 3, ...laneWait(600) },
@@ -494,6 +517,7 @@ export const catalog = [
   ['GET /jobs/page', ({ url }) => { const matching = jobsMatching(url); const items = url.searchParams.get('groupBy') === 'model' ? jobRows(matching) : matching; return { items, nextCursor: null, hasMore: false, totalCount: items.length, supportedFilters: null } }],
   ['GET /jobs/counts', jobCounts],
   ['GET /jobs/metrics', jobMetrics],
+  ['GET /jobs/metrics/failures', ({ url }) => jobFailures(url)],
   ['GET /jobs/metrics/lanes', laneMetrics],
   ['GET /jobs/metrics/quota', quotaUsage],
   ['GET /jobs/metrics/order-latency', orderLatency],
