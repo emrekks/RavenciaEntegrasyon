@@ -109,6 +109,8 @@ builder.Services.AddOpenApi("v1", options => options
     .AddOperationTransformer<MarketplaceHub.Api.Common.OpenApiOperationContract>()
     .AddDocumentTransformer<MarketplaceHub.Api.Common.OpenApiContract>());
 
+// KATALOG-14 D5 step B2b: whether saves still write the model fields' copy columns (Catalog:MirrorModelFields).
+MarketplaceHub.Infrastructure.Persistence.ModelFieldCopies.Configure(builder.Configuration);
 var app = builder.Build();
 var isAdministrativeCommand = args.Any(argument => argument is "migrate" or "bootstrap" or "healthcheck");
 if (!isAdministrativeCommand && builder.Environment.IsDevelopment() && string.Equals(builder.Configuration["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase))
