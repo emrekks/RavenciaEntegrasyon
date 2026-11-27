@@ -13,6 +13,22 @@ public static class ModelFieldCopiesTestPosition
 {
     public static bool CopiesWritten => ModelFieldCopies.Written;
 
+    private static int printed;
+
+    // Throws when the run asked for a position and the process holds the other (the fixture calls it at every start).
+    public static void Verify()
+    {
+        var asked = bool.TryParse(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_MIRROR_MODEL_FIELDS"), out var value) ? value : (bool?)null;
+        if (Interlocked.Exchange(ref printed, 1) == 0)
+        {
+            var line = $"[model-field-copies] Catalog:MirrorModelFields = {ModelFieldCopies.Written} (asked: {asked?.ToString() ?? "default"})";
+            Console.WriteLine(line);
+            File.AppendAllText(Path.Combine(Path.GetTempPath(), "marketplacehub-model-field-copies.log"), $"{DateTimeOffset.UtcNow:O} {line}{Environment.NewLine}");
+        }
+        if (asked is { } expected && ModelFieldCopies.Written != expected)
+            throw new InvalidOperationException($"Catalog:MirrorModelFields is {ModelFieldCopies.Written}; the run asked for {expected}.");
+    }
+
     [ModuleInitializer]
     internal static void Initialize()
     {

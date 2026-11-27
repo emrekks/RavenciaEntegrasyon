@@ -18,15 +18,24 @@ public static class ModelFieldCopies
     public const string Key = "Catalog:MirrorModelFields";
 
     private static volatile bool configured = true;
+    private static volatile bool pinned;
     private static readonly AsyncLocal<bool?> Scoped = new();
 
     // True: the copies are still written (the shipped default until the flip release).
     public static bool Written => Scoped.Value ?? configured;
 
-    public static void Configure(IConfiguration configuration) => configured = configuration.GetValue(Key, true);
+    // A host started inside a test run (an API test) reads its appsettings.json too; a value the run pinned wins.
+    public static void Configure(IConfiguration configuration)
+    {
+        if (!pinned) configured = configuration.GetValue(Key, true);
+    }
 
-    // The whole process (a test run's module initializer).
-    public static void Set(bool written) => configured = written;
+    // The whole process, pinned (a test run's module initializer).
+    public static void Set(bool written)
+    {
+        configured = written;
+        pinned = true;
+    }
 
     // One flow (a test that compares both positions): the value holds for this async flow until disposed.
     public static IDisposable Use(bool written)
