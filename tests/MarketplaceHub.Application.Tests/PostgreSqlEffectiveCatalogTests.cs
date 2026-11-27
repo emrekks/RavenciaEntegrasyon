@@ -118,12 +118,12 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             var gap = !ModelFieldCopiesTestPosition.CopiesWritten ? null : await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
             if (gap is not null)
             {
-            Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
-            Assert.Contains("KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
-            // Only the VAT is warned about (owner, 17 Nov 2026); the delivery days and warranty are only logged.
-            Assert.DoesNotContain("teslimat süresi", gap.Summary);
-            Assert.DoesNotContain("garanti", gap.Summary);
-            Assert.Contains("fatura modelin KDV'siyle kesilir", gap.Summary);
+                Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
+                Assert.Contains("KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
+                // Only the VAT is warned about (owner, 17 Nov 2026); the delivery days and warranty are only logged.
+                Assert.DoesNotContain("teslimat süresi", gap.Summary);
+                Assert.DoesNotContain("garanti", gap.Summary);
+                Assert.Contains("fatura modelin KDV'siyle kesilir", gap.Summary);
             }
 
             var model = await ModelOfAsync(db, card.Id);

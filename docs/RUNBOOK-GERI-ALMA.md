@@ -611,14 +611,22 @@ ulaşmaz. Flip bir sürümdür: `src/MarketplaceHub.Api/appsettings.json` **ve**
 içinde `"Catalog": { "MirrorModelFields": false }` yapıp gönderin (tam deploy; iki dosya aynı değeri taşımalı, bir test
 bunu denetler). Önce `.local-docs/model-b2b-verify.sql` (git dışı) ile modellerin kendi içinde tutarlı olduğunu görün.
 
+**Açık konum (bu sürüm):** davranış main ile aynıdır; kopya-model farkı uyarıları (`ModelMirror.ReportGapsAsync`, renkler
+arası KDV uyarısı, `PRODUCT_MODEL_VALUES_DIFFER`) ve Worker'ın açılıştaki tek seferlik garanti onarımı eskisi gibi çalışır.
+Bu sürümün düzeltmeleri iki konumda da geçerlidir: yazıcılar "değişti mi" sorusunu kopyaya değil modele sorar, editörün
+kayıt sonrası model yazımı yalnız "editör kaydetti" işaretini (ve boşaltılan garantiyi) yazar, başarısız bir kayıt aynı
+bağlamda yeniden denenince uygulanır.
+
 **Geri alma:** iki dosyada `true` yapıp gönderin. Kendiliğinden hiçbir şey yeniden yazılmaz (geri doldurma yok, sahip
-kuralı): kapalıyken düzenlenen satırların kopyaları bayat kalır; hiçbir okuyucu onları okumadığı için zararsızdır. Açık
-konumda gece taraması bayat bir KDV kopyası için bilgi amaçlı `PRODUCT_MODEL_VALUES_DIFFER` uyarısı açabilir; fatura ve
-ekranlar modelin değerini kullanır, uyarıyı kapatmak için modeli düzenleyicide bir kez kaydetmek yeter. Worker'ın açılıştaki
-tek seferlik garanti onarımı açık konumda önceki sürüm gibi boş kart kopyasına 0 yazabilir; model alanına dokunmaz.
+kuralı): kapalıyken düzenlenen satırların kopyaları bayat kalır; hiçbir okuyucu onları okumaz. Açık konumda gece kontrolü,
+kapalıyken KDV'si değişen modeller için bilgi amaçlı `PRODUCT_MODEL_VALUES_DIFFER` uyarısı açar (main'in her kopya farkında
+açtığı uyarı); fatura ve ekranlar modelin değerini kullanır. Kapatmak için sahibin o ürünün renklerini düzenleyicide bir kez
+(hiçbir şey değiştirmeden) kaydetmesi yeter: kayıt bayat kopyayı modelden iyileştirir (alan değişikliği sayılmaz; pazaryeri
+bağı, iş ya da outbox olarak aynı kaydın main'de yaptığından fazlası olmaz) ve sonraki kontrol uyarıyı kapatır
+(`ModelFieldCopiesReviewPostgreSqlTests`). Kaydedilmeyen satırların kopyası bayat ve okunmadan kalır.
 
 **Kapalı konumda değişenler:** sahibin kaydı (düzenleyici, Excel, Toplu Değer Ata, API) değeri modele yazar ve modelin
 bütün renklerine uygular; pazaryeri bağları açık konumdakiyle aynı biçimde "düzenlendi" işaretlenir (aynı gönderimler
 sıraya girer, `ModelFieldCopiesPostgreSqlTests`). Yazıcılar "değişti mi" sorusunu kopyaya değil modele sorar (iki konumda).
-Kopya-model farkını ölçen denetimler (`ModelMirror.ReportGapsAsync`, renkler arası KDV uyarısı) kapalıyken fark aramaz;
-garanti onarımı hiçbir şey yazmaz, yalnız modele göre sayar. C (sütunları düşürmek) ayrı sahip onayı ister ve geri alınamaz.
+Kopya-model farkını ölçen denetimler (`ModelMirror.ReportGapsAsync`, renkler arası KDV uyarısı) yalnız kapalıyken fark aramaz
+(hiçbir okuyucu kopyayı okumadığı için fark yoktur); garanti onarımı yalnız kapalıyken hiçbir şey yazmaz, modele göre sayar. C (sütunları düşürmek) ayrı sahip onayı ister ve geri alınamaz.
