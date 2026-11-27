@@ -134,9 +134,11 @@ public sealed class ModelRecordComposerEqualityPostgreSqlTests(PostgreSqlTenantI
         var written = await PayloadsAsync();
         // Not vacuous: the Trendyol payload of every colour is built (the others build or refuse alike each time).
         Assert.Equal(3, written.Count(x => x.StartsWith("TRENDYOL", StringComparison.Ordinal) && x.Contains(" publication: ", StringComparison.Ordinal) && x.Contains("\"Succeeded\":true", StringComparison.Ordinal)));
+        string description;
         await using (var db = fixture.CreateContext())
         {
             var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
+            description = model.Description;
             Assert.Equal(1m, model.Desi);
             Assert.True(await db.ProductModelSizeCharts.AsNoTracking().AnyAsync(x => x.ModelId == model.Id));
             Assert.True(await db.ProductModelAttributes.AsNoTracking().AnyAsync(x => x.ModelId == model.Id));
@@ -145,15 +147,15 @@ public sealed class ModelRecordComposerEqualityPostgreSqlTests(PostgreSqlTenantI
             await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_model_attributes WHERE "TenantId" = {tenant.Id}""");
             await db.Database.ExecuteSqlInterpolatedAsync($$"""UPDATE catalog.product_model_size_charts SET "MeasurementsJson" = '{"columns":["X"],"rows":[]}' WHERE "TenantId" = {{tenant.Id}}""");
         }
-        // KATALOG-14 phase D5b: the model is the source of the VAT, warranty and delivery days, so a scrambled record reaches
-        // the payloads (the name, description and desi are read from the copies the writers mirror from the model).
+        // KATALOG-14 phase D5b / D5 step B2a: the model is the source of the description, VAT, warranty, delivery days and desi,
+        // so a scrambled record reaches the payloads (the name is each colour card's own).
         var scrambled = await PayloadsAsync();
         Assert.NotEqual(written, scrambled);
 
         // The model's values back (the attributes and the chart rebuilt by the refresh): the very same payloads.
         await using (var db = fixture.CreateContext())
         {
-            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "VatRate" = 10, "VatInclusion" = 'INCLUDED', "WarrantyMonths" = 24, "DeliveryDays" = 2, "Desi" = 1 WHERE "TenantId" = {tenant.Id}""");
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "Description" = {description}, "VatRate" = 10, "VatInclusion" = 'INCLUDED', "WarrantyMonths" = 24, "DeliveryDays" = 2, "Desi" = 1 WHERE "TenantId" = {tenant.Id}""");
             await ProductModelValues.RefreshTenantAsync(db, tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         }
         var restored = await PayloadsAsync();

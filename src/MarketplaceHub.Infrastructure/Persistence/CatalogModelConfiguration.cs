@@ -28,11 +28,12 @@ internal static class CatalogModelConfiguration
             // KATALOG-14 D5 step B1 stage 2: every card belongs to a model (its brand's model of its code, or its own "#<card id>"),
             // so FamilyId is NOT NULL in the database (20261127111010_ProductFamilyRequired). A save gives a new card its model
             // before the insert (ProductModelLinks.GiveNewCardsModels) and every delete removes the cards before their model.
-            // KATALOG-15: the key carries the tenant, so a card can only be linked to a model of its own tenant; in the database
-            // it stays ON DELETE SET NULL ("FamilyId") (PostgreSQL 15+ column list, written by hand in place of EF's all-column
-            // SET NULL): with the column NOT NULL, deleting a model that still has a card is refused (not_null_violation).
+            // KATALOG-15: the key carries the tenant, so a card can only be linked to a model of its own tenant. ON DELETE RESTRICT
+            // (20261127170948_ProductFamilyRestrict, B1 review): deleting a model that still has a card is refused with
+            // restrict_violation (ProductModelLinks.DeleteModelsWithoutCardsAsync runs such a delete again); EF never nulls
+            // or cascades a tracked card for it.
             entity.Property(x => x.FamilyId).IsRequired();
-            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.FamilyId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.FamilyId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(x => x.FamilyId);
         });
         builder.Entity<ProductModel>(entity =>
@@ -47,8 +48,8 @@ internal static class CatalogModelConfiguration
             // cards without a brand are one brand too (NULLS NOT DISTINCT). The code alone is looked up, not unique.
             entity.HasIndex(x => new { x.TenantId, x.BrandId, x.ModelCodeKey }).IsUnique().AreNullsDistinct(false);
             entity.HasIndex(x => new { x.TenantId, x.ModelCodeKey });
-            // A model is derived from its cards: when its tenant or brand goes, it goes too and its cards fall back to the
-            // model-code rule (products.FamilyId SET NULL) until ProductModelLinks links them again.
+            // A model is derived from its cards: when its tenant or brand goes, it goes too; a model that still has a card is
+            // refused (products.FamilyId ON DELETE RESTRICT), so its cards are moved or deleted first (PanelFactoryResetInventory).
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Brand>().WithMany().HasForeignKey(x => new { x.TenantId, x.BrandId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             // KATALOG-7: the category is a field of the model, not its identity: a deleted category (the Kategoriler reset)

@@ -78,7 +78,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         // attributes travel. Required marketplace fields are still checked above and per variant.
         var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
             .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
-        var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var cardVariants = await EffectiveCatalog.Variants(db).Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // VaryantGroupID is the whole card's model code, so the variants a matched card adds join its Hepsiburada group.
         // KATALOG-14 phase D5b: the model's code (EffectiveCatalog.CardModelCodesAsync).

@@ -22,11 +22,18 @@ public static class ProductWarranty
     // family write-through refuse or skip it), but that is a rule, not a guarantee; so every later pass writes nothing and
     // only counts such cards, for the Worker to warn about instead of silently turning them into 0.
     // Idempotent, set-based (two statements; about a thousand cards on live); no Version, UpdatedAt or change log.
+    // KATALOG-14 D5 step B2a (review L3): the later passes count the cards whose warranty every reader sees empty (the
+    // model's, EffectiveCatalog), not their copies. The first pass after a start writes exactly where the release before it
+    // wrote and nowhere else (owner rule: automatic passes write none of the model fields beyond this one-time repair of
+    // migration 20261115170000): a card copy left empty on a card that is not a draft takes 0, and a model record takes 0
+    // only when none of its cards' copies is empty. A model with an empty warranty and a draft beside a card on sale keeps
+    // its empty warranty, as does the draft's copy.
     public static async Task<PassResult> RunPassAsync(AppDbContext db, bool firstPassAfterStart, CancellationToken cancellationToken)
     {
-        var emptyNotDraft = db.Products.Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft);
-        if (!firstPassAfterStart) return new(0, 0, await emptyNotDraft.CountAsync(cancellationToken));
-        var cards = await emptyNotDraft.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
+        if (!firstPassAfterStart)
+            return new(0, 0, await EffectiveCatalog.Products(db).CountAsync(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft, cancellationToken));
+        var cards = await db.Products.Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
         var models = await db.ProductModels
             .Where(model => model.WarrantyMonths == null
                 && !db.Products.Any(card => card.TenantId == model.TenantId && card.FamilyId == model.Id && card.WarrantyMonths == null))

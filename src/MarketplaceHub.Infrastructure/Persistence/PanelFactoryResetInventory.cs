@@ -200,8 +200,8 @@ public static class PanelFactoryResetInventory
         new("catalog.product_attribute_assignments", "catalog.attribute_values", """DELETE FROM catalog.product_attribute_assignments WHERE "TenantId" = @tenant"""),
         new("catalog.products", "catalog.categories", """UPDATE catalog.products SET "CategoryId" = NULL WHERE "TenantId" = @tenant AND "CategoryId" IS NOT NULL"""),
         // KATALOG-14 D5 step B1: a model goes with its brand (ON DELETE CASCADE) but a card cannot lose its model any more
-        // (products.FamilyId NOT NULL; its key is ON DELETE SET NULL ("FamilyId"), which the NOT NULL column refuses with
-        // not_null_violation while the model still has a card). Before the brands go:
+        // (products.FamilyId NOT NULL; its key is ON DELETE RESTRICT since 20261127170948_ProductFamilyRestrict, which refuses
+        // the delete with restrict_violation while the model still has a card). Before the brands go:
         // - a model of its own ("#<card id>") and a model whose code no other model holds just drop their brand: the model, its
         //   fields (name, colour word, saved values), attributes and marketplace model links stay, its cards stay on it
         //   (review, 18 Nov 2026; before B1 such a model went with its brand and was opened again from its cards);
@@ -209,6 +209,8 @@ public static class PanelFactoryResetInventory
         //   their own without a brand, and the branded models go with their brand. The reset then reconciles the tenant
         //   (PanelFactoryResetService): the code's model without a brand stays and takes them, else one opens from the cards
         //   (the first brought in, its colour word, its own model re-keyed), as the nightly reconcile did before B1.
+        //   KATALOG-14 D5 step B2a: the model of its own opens with the values of the model the card leaves (description,
+        //   category, VAT, warranty, delivery days, desi), never the card's copies; the name is the card's own.
         // The pictures follow their card's model.
         new("catalog.products", "catalog.brands", """
             UPDATE catalog.products SET "BrandId" = NULL WHERE "TenantId" = @tenant AND "BrandId" IS NOT NULL;
@@ -218,8 +220,8 @@ public static class PanelFactoryResetInventory
             UPDATE catalog.product_models m SET "BrandId" = NULL, "UpdatedAt" = now(), "Version" = m."Version" + 1
             WHERE m."TenantId" = @tenant AND m."BrandId" IS NOT NULL AND m."ModelCodeKey" NOT LIKE '#%'
               AND NOT EXISTS (SELECT 1 FROM catalog.product_models o WHERE o."TenantId" = m."TenantId" AND o."ModelCodeKey" = m."ModelCodeKey" AND o."Id" <> m."Id");
-            INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
-            SELECT gen_random_uuid(), p."TenantId", NULL, '', '#' || replace(p."Id"::text, '-', ''), left(p."Title", 320), NULL, p."Description", p."CategoryId", p."VatRate", p."VatInclusion", p."WarrantyMonths", p."DeliveryDays", NULL, now(), now(), 1
+            INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "Desi", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
+            SELECT gen_random_uuid(), p."TenantId", NULL, '', '#' || replace(p."Id"::text, '-', ''), left(p."Title", 320), NULL, m."Description", m."CategoryId", m."VatRate", m."VatInclusion", m."WarrantyMonths", m."DeliveryDays", m."Desi", NULL, now(), now(), 1
             FROM catalog.products p JOIN catalog.product_models m ON m."TenantId" = p."TenantId" AND m."Id" = p."FamilyId"
             WHERE p."TenantId" = @tenant AND m."BrandId" IS NOT NULL
             ON CONFLICT DO NOTHING;

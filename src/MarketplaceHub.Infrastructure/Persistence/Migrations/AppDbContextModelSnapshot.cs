@@ -8855,7 +8855,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "FamilyId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

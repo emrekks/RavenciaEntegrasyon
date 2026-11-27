@@ -11,6 +11,13 @@ public sealed class ModelRuleException(string code, string message) : InvalidOpe
     public static ModelRuleException BrandCodeTaken(string modelCode, string brandName) =>
         new(ModelCodeUniquenessPolicy.BrandCodeTakenCode, ModelCodeUniquenessPolicy.BrandCodeTakenMessage(modelCode, brandName));
 
+    // KATALOG-14 D5 (B1 review): a model the save meant to delete because it had no colour card took one meanwhile (a
+    // concurrent save added a card to it); the key refuses the delete (ON DELETE RESTRICT) and the retries kept meeting it.
+    public const string ModelGainedCardCode = "PRODUCT_MODEL_GAINED_CARD";
+    public const string ModelGainedCardMessage = "Model silinemedi: bu sırada modele başka bir işlemle yeni bir renk kartı eklendi. Hiçbir değişiklik kaydedilmedi; sayfayı yenileyip tekrar deneyin.";
+
+    public static ModelRuleException ModelGainedCard() => new(ModelGainedCardCode, ModelGainedCardMessage);
+
     public static ModelRuleException CodeInUse(string productTitle) =>
         new(ModelCodeUniquenessPolicy.ChangeConflictCode, ModelCodeUniquenessPolicy.ChangeMessage(productTitle));
 }

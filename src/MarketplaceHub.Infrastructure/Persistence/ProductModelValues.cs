@@ -263,7 +263,7 @@ public static class ProductModelValues
         var attributesSpread = setKeys.Distinct(StringComparer.Ordinal).Skip(1).Any();
         // What the owner saved in the editor after the last change of every card stays (the editor's own rule).
         var updatedAt = cards.Select(card => snapshot.CardUpdatedAt[card.Id]).ToList();
-        var fieldsSaved = ProductModelLinks.HoldsSavedFields(model, cards.Select(card => (snapshot.CardUpdatedAt[card.Id], card.CategoryId)));
+        var fieldsSaved = ProductModelLinks.HoldsSavedFields(model, updatedAt);
         var attributesDiffer = !ProductModelLinks.HoldsSavedAttributes(model.AttributesSavedAt, updatedAt)
             && AttributeSetKey(snapshot.ModelAttributes.GetValueOrDefault(model.Id) ?? []) != setKeys[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
         return new Target(model, cards, fields, title, titleColor, description, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing, overrides, chartAsset, attributesSpread);

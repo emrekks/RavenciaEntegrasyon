@@ -192,11 +192,11 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal((2, 0), (second.Models, second.Written));
         Assert.Equal(1, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == gap.Id)).OccurrenceCount);
         // No card's text, model field, Version or UpdatedAt, no variant's desi, no model field was written; every reader
-        // reads the copies' text.
+        // reads each card's own name and the model's description (KATALOG-14 D5 step B2a), stale or not.
         Assert.Equal(JsonSerializer.Serialize(cardsBefore), JsonSerializer.Serialize(await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Version, x.UpdatedAt, x.Title, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.BrandId }).ToListAsync()));
         Assert.Equal(JsonSerializer.Serialize(variantsBefore), JsonSerializer.Serialize(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Desi }).ToListAsync()));
         Assert.Equal(JsonSerializer.Serialize(modelsBefore), JsonSerializer.Serialize(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Title, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.Desi, x.BrandId, x.Version }).ToListAsync()));
-        Assert.Equal(cardsBefore.Select(x => (x.Title, x.Description)), (await EffectiveCatalog.Products(db).Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Title, x.Description }).ToListAsync()).Select(x => (x.Title, x.Description)));
+        Assert.Equal(cardsBefore.Select(x => (x.Title, "eski")), (await EffectiveCatalog.Products(db).Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Title, x.Description }).ToListAsync()).Select(x => (x.Title, x.Description)));
     }
 
     // Phase C: the editor's GET of every card of a rich catalog is byte-identical before the backfill and after it. The
@@ -260,9 +260,9 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.NotNull(await ProductModelValues.RecordFieldsAsync(db, seed.Tenant.Id, agreeing[0].FamilyId, agreeing, fields, "Siyah", ProductFamilySharedFields.ModelValues(fields, "Siyah"), CancellationToken.None));
         Assert.Equal("Kadın Siyah Etek", shown.Title);
 
-        // KATALOG-14 phase D5b: the model is the source of the VAT, warranty and delivery days, so a scrambled record (here
-        // every record the editor did not save) is what the editor shows; the name and description are read from the
-        // colours' copies, which only the model's own writes change (ModelMirror).
+        // KATALOG-14 phase D5b / D5 step B2a: the model is the source of the description, VAT, warranty, delivery days and
+        // desi, so a scrambled record (here every record the editor did not save) is what the editor shows; the name is the
+        // colour card's own.
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "Title" = 'Bozuk', "TitleColor" = NULL, "Description" = 'Bozuk', "VatRate" = 99, "WarrantyMonths" = 99, "DeliveryDays" = 99, "Desi" = 99 WHERE "TenantId" = {seed.Tenant.Id} AND "FieldsSavedAt" IS NULL""");
         var scrambledModels = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.FieldsSavedAt == null).Select(x => x.Id).ToListAsync();
         foreach (var card in cards)
@@ -273,7 +273,9 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             var modelId = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).FamilyId!.Value;
             // KATALOG-14 phase D5b review 6c: the whole response is the one before the scramble with only the model's VAT,
             // warranty and delivery days in it (byte for byte otherwise), and the editor-saved record is untouched.
-            if (scrambledModels.Contains(modelId)) expected = expected with { VatRate = 99.0000m, WarrantyMonths = 99, DeliveryDays = 99 };
+            // KATALOG-14 D5 step B2a: the description and every variant's desi are the model's too; the name stays the card's.
+            if (scrambledModels.Contains(modelId))
+                expected = expected with { Description = "Bozuk", VatRate = 99.0000m, WarrantyMonths = 99, DeliveryDays = 99, Variants = [.. expected.Variants.Select(variant => variant with { Desi = 99.0000m })] };
             Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(view));
         }
     }
@@ -399,12 +401,13 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // F4: a save inside a caller's serializable transaction (the editor's save, the delete) does not touch the model row,
-    // so another session that writes the model meanwhile neither waits for it nor makes its commit fail; the model takes
-    // the values after the commit (KATALOG-14 phase D5a keeps this for serializable callers; review, 17 Nov 2026).
-    // Meanwhile the readers read the cards, whose values win where they differ from the model.
+    // F4, revised by the KATALOG-14 D5 B2a review (M1): a save inside a caller's serializable transaction (the editor's save
+    // that deletes a variant) writes its model fields in that transaction, as every other save does, so the readers give
+    // the saved text at once and an owner edit can never stand on the cards while the model (which every reader reads)
+    // keeps the old value. Another session that writes the model row meanwhile waits for the commit (here it gives up
+    // after its 1 s lock timeout); the save commits.
     [PostgreSqlFact]
-    public async Task ASaveInsideATransaction_LeavesTheModelRowAlone_AndRefreshesItAfterTheCommit()
+    public async Task ASaveInsideASerializableTransaction_WritesItsModelFieldsInIt()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
@@ -418,14 +421,13 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             siyah.Description = "Editör açıklaması";
             mavi.Description = "Editör açıklaması";
             await db.SaveChangesAsync();
-            // The readers already give the saved text (the card's, which differs from the model's).
             Assert.Equal("Editör açıklaması", (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == siyah.Id)).Description);
-            // Another session (the scan, a worker's save) writes the model row meanwhile, without waiting.
             await using (var other = fixture.CreateContext())
             {
                 await other.Database.OpenConnectionAsync();
                 await other.Database.ExecuteSqlRawAsync("SET lock_timeout = '1s'");
-                await other.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "UpdatedAt" = now() WHERE "Id" = {model.Id}""");
+                var waited = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => other.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "UpdatedAt" = now() WHERE "Id" = {model.Id}"""));
+                Assert.Equal(Npgsql.PostgresErrorCodes.LockNotAvailable, waited.SqlState);
             }
             await transaction.CommitAsync();
         }

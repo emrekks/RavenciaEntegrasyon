@@ -1420,7 +1420,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (current is PostgresException
                 {
                     SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.CheckViolation or PostgresErrorCodes.StringDataRightTruncation
-                        or PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.NotNullViolation or PostgresErrorCodes.NumericValueOutOfRange
+                        or PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.RestrictViolation or PostgresErrorCodes.NotNullViolation or PostgresErrorCodes.NumericValueOutOfRange
                         or PostgresErrorCodes.InvalidTextRepresentation or PostgresErrorCodes.DatetimeFieldOverflow
                 } postgres)
                 return postgres;

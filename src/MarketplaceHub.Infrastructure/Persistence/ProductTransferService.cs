@@ -186,9 +186,10 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             return ServiceResult<ProductTransferImportPreview>.Fail("PRODUCT_TRANSFER_FILE_EMPTY", "Dosyada ürün satırı yok.", 422);
 
         // Every variant of the tenant, archived ones included: a row is matched against the catalog as it is, and the
-        // keys are compared in memory with the shared key so legacy stored forms ("ABC_01") still match.
+        // keys are compared in memory with the shared key so legacy stored forms ("ABC_01") still match. The desi a row is
+        // compared with is the model's (EffectiveCatalog.Variants).
         var variants = await (
-            from variant in db.ProductVariants.AsNoTracking()
+            from variant in EffectiveCatalog.Variants(db)
             where variant.TenantId == tenantId
             join product in EffectiveCatalog.Products(db) on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
             select new
@@ -586,6 +587,21 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             followersRepriced = followers.Count;
             foreach (var offer in followers) Written(byId[offer.VariantId]);
         }
+        // KATALOG-14 D5 step B2a: a card that takes a VAT keeps its model's "KDV Dahil mi" (EffectiveCatalog), never its copy's.
+        var modelInclusion = new Dictionary<Guid, string?>();
+        async Task<string> InclusionOf(Guid cardId)
+        {
+            if (!modelInclusion.TryGetValue(cardId, out var inclusion))
+            {
+                inclusion = await EffectiveCatalog.Products(db).Where(item => item.TenantId == tenantId && item.Id == cardId).Select(item => item.VatInclusion).SingleOrDefaultAsync(cancellationToken);
+                modelInclusion[cardId] = inclusion;
+            }
+            return inclusion?.Trim().ToUpperInvariant() == "EXCLUDED" ? "EXCLUDED" : "INCLUDED";
+        }
+        var vatCardIds = productChanges.Where(change => change.VatRate is not null).Select(change => change.ProductId).ToArray();
+        foreach (var chunk in vatCardIds.Chunk(Chunk))
+            foreach (var row in await EffectiveCatalog.Products(db).Where(item => item.TenantId == tenantId && chunk.Contains(item.Id)).Select(item => new { item.Id, item.VatInclusion }).ToListAsync(cancellationToken))
+                modelInclusion[row.Id] = row.VatInclusion;
         foreach (var change in productChanges)
         {
             var product = productById[change.ProductId];
@@ -608,7 +624,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             {
                 // As the editor and the bulk VAT: a card without "KDV Dahil mi" takes the default, included.
                 product.VatRate = vatRate;
-                product.VatInclusion = product.VatInclusion?.Trim().ToUpperInvariant() == "EXCLUDED" ? "EXCLUDED" : "INCLUDED";
+                product.VatInclusion = await InclusionOf(product.Id);
                 vatUpdated++;
                 touchedProducts.Add(product.Id);
             }
@@ -644,7 +660,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                     if (change.VatRate is decimal modelVat && !ownVats.Contains(cardId) && card.VatRate != modelVat)
                     {
                         card.VatRate = modelVat;
-                        card.VatInclusion = card.VatInclusion?.Trim().ToUpperInvariant() == "EXCLUDED" ? "EXCLUDED" : "INCLUDED";
+                        card.VatInclusion = await InclusionOf(cardId);
                         vatUpdated++;
                         touchedProducts.Add(cardId);
                         fromModel.Add((cardId, null, ProductChangeFields.VatRate));
@@ -891,9 +907,9 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     private static bool HoldsPrice(ChannelOffer offer, ProductTransferPriceChange price) => offer.SalePrice == price.SalePrice && offer.ListPrice == price.ListPrice;
 
     // The variants the export lists and the summary counts: those of products that are not archived, themselves not
-    // archived.
+    // archived. The desi is the model's (EffectiveCatalog.Variants, KATALOG-14 D5 step B2a).
     private IQueryable<ProductVariant> ListedVariants(Guid tenantId) =>
-        from variant in db.ProductVariants.AsNoTracking()
+        from variant in EffectiveCatalog.Variants(db)
         where variant.TenantId == tenantId && variant.Status != ProductStatus.Archived
         join product in EffectiveCatalog.Products(db) on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
         where product.Status != ProductStatus.Archived

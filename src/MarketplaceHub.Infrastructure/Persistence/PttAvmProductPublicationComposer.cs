@@ -47,7 +47,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         if (!await db.ReferenceItems.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.SnapshotId == categoryMapping.SnapshotId && x.ResourceType == "CATEGORIES" && x.ExternalId == categoryMapping.ExternalId && x.IsActive && x.IsLeaf, cancellationToken))
             return Fail("CATEGORY_LEAF_REQUIRED", "PttAVM'de ürün yalnız en alt kategoriye açılabilir; kategori eşlemesini bir alt kategoriye güncelleyin.", "categoryId");
 
-        var allVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var allVariants = await EffectiveCatalog.Variants(db).Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = allVariants.Where(x => x.Status != ProductStatus.Archived).ToList();
         if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
 
@@ -62,7 +62,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             .ToListAsync(cancellationToken);
         var memberIds = members.Select(x => x.Id).ToArray();
         var memberIndex = members.Select((member, index) => (member.Id, index)).ToDictionary(x => x.Id, x => x.index);
-        var familyVariants = (await db.ProductVariants.AsNoTracking()
+        var familyVariants = (await EffectiveCatalog.Variants(db)
                 .Where(x => x.TenantId == tenantId && memberIds.Contains(x.ProductId) && x.Status != ProductStatus.Archived)
                 .ToListAsync(cancellationToken))
             .OrderBy(x => memberIndex[x.ProductId]).ThenBy(x => x.SortOrder).ThenBy(x => x.Id)

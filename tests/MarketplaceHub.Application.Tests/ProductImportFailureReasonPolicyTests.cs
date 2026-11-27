@@ -44,6 +44,18 @@ public sealed class ProductImportFailureReasonPolicyTests
         Assert.Contains("tekilleştiriliyor", reasons[1].Description);
     }
 
+    // KATALOG-14 D5 (B1 review): a model the import meant to delete took a card meanwhile (products.FamilyId ON DELETE
+    // RESTRICT, 23001): a clear Turkish reason, not the generic one.
+    [Fact]
+    public void Build_ExplainsARefusedModelDelete()
+    {
+        var reasons = ProductImportFailureReasonPolicy.Build([Issue("200", "exception=PostgresException; sqlState=23001; detail=update or delete on table \"product_models\" violates RESTRICT setting of foreign key constraint")]);
+
+        var reason = Assert.Single(reasons);
+        Assert.Equal("postgres-restrict-violation", reason.Key);
+        Assert.Contains("model korundu", reason.Description);
+    }
+
     private static OperationalIssue Issue(string productId, string technicalDetail) => new()
     {
         Id = Guid.NewGuid(),

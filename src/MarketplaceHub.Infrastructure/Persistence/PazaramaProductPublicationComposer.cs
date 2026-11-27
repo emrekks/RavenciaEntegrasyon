@@ -88,7 +88,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         // attributes travel. Required marketplace fields are still checked above and per variant.
         var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
             .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
-        var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var cardVariants = await EffectiveCatalog.Variants(db).Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // groupCode comes from the whole card, so the variants a matched card adds join its Pazarama group: the group the
         // card's product link records ("group:<code>", read from Pazarama), else the one the panel derives from the model code.

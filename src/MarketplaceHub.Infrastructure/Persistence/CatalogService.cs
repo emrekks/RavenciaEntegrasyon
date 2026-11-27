@@ -702,7 +702,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     {
         if (products.Count == 0) return [];
         var ids = products.Select(product => product.Id).ToArray();
-        var rows = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId))
+        // The desi as every reader sees it (its model's, EffectiveCatalog.Variants).
+        var rows = (await EffectiveCatalog.Variants(db).Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId))
                 .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
                 .Select(x => new { x.ProductId, Row = new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice) }).ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.Select(x => x.Row).ToList());
@@ -1571,6 +1572,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || variantIdsToDelete.Count > 0 || placeholderIdsToDelete.Count > 0 || command.Status is not null
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : [];
+        // KATALOG-14 D5 step B2a: the stored desi a check reads is the model's (EffectiveCatalog), never the variant's copy.
+        var storedDesi = existingVariants.Count == 0 ? [] : await EffectiveCatalog.DesiOfAsync(db, tenantId, existingVariants.Select(x => x.Id), cancellationToken);
         if (variantIdsToDelete.Count > 0)
         {
             if (variantIdsToDelete.Any(deleteId => existingVariants.All(existing => existing.Id != deleteId))) return Invalid<ProductView>("variantIdsToDelete", "Silinecek varyant bu ürün ailesinde bulunamadı.");
@@ -1599,11 +1602,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .. variantUpdates.Select(update =>
                 {
                     var stored = existingVariants.FirstOrDefault(variant => variant.Id == update.Id);
-                    return new ProductRequiredFields.Row(update.Sku, update.Barcode, update.ModelCode, update.Desi ?? stored?.Desi, update.DefaultListPrice ?? stored?.DefaultListPrice, update.DefaultSalePrice ?? stored?.DefaultSalePrice);
+                    return new ProductRequiredFields.Row(update.Sku, update.Barcode, update.ModelCode, update.Desi ?? (stored is null ? null : storedDesi.GetValueOrDefault(stored.Id)), update.DefaultListPrice ?? stored?.DefaultListPrice, update.DefaultSalePrice ?? stored?.DefaultSalePrice);
                 }),
                 .. variantsToCreate.Select(variant => new ProductRequiredFields.Row(variant.Sku, variant.Barcode, variant.ModelCode, variant.Desi, variant.DefaultListPrice, variant.DefaultSalePrice))];
             if (requiredRows.Count == 0)
-                requiredRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && !variantIdsToDelete.Contains(x.Id))
+                requiredRows = await EffectiveCatalog.Variants(db).Where(x => x.TenantId == tenantId && x.ProductId == id && !variantIdsToDelete.Contains(x.Id))
                     .Select(x => new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice)).ToListAsync(cancellationToken);
             var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: WarrantyAfterSave(command, modelShared.WarrantyMonths) is not null, DeliveryDaysGiven: (command.DeliveryDays ?? modelShared.DeliveryDays) is not null, cardListPrice, cardSalePrice, requiredRows));
             if (updateGaps.Count > 0) return ProductRequiredFields.Refusal<ProductView>(updateGaps);
@@ -1649,8 +1652,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             // is refused instead of silently overwritten. A value already equal to the sent one is no conflict.
             if (update.CostPrice is decimal sentCost && existing.CostPrice != PositiveOrNull(sentCost) && existing.CostPrice != update.LoadedCostPrice)
                 return Conflict<ProductView>("VARIANT_COST_CHANGED", $"{existing.Sku} varyantının maliyeti bu form açıkken başka bir işlemle (ör. ürün içe aktarma) değişti; güncel maliyet {(existing.CostPrice is decimal storedCost ? storedCost.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")) + " TL" : "boş")}. Sayfayı yenileyip maliyeti tekrar girin.");
-            if (update.Desi is decimal sentDesi && existing.Desi != sentDesi && existing.Desi != update.LoadedDesi)
-                return Conflict<ProductView>("VARIANT_DESI_CHANGED", $"{existing.Sku} varyantının desisi bu form açıkken başka bir işlemle (ör. ürün içe aktarma) değişti; güncel desi {(existing.Desi is decimal storedDesi ? storedDesi.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")) : "boş")}. Sayfayı yenileyip desiyi tekrar girin.");
+            var existingDesi = storedDesi.GetValueOrDefault(existing.Id);
+            if (update.Desi is decimal sentDesi && existingDesi != sentDesi && existingDesi != update.LoadedDesi)
+                return Conflict<ProductView>("VARIANT_DESI_CHANGED", $"{existing.Sku} varyantının desisi bu form açıkken başka bir işlemle (ör. ürün içe aktarma) değişti; güncel desi {(existingDesi is decimal storedDesiValue ? storedDesiValue.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")) : "boş")}. Sayfayı yenileyip desiyi tekrar girin.");
             var effectiveVariantListPrice = update.DefaultListPrice ?? existing.DefaultListPrice ?? product.DefaultListPrice;
             var effectiveVariantSalePrice = update.DefaultSalePrice ?? existing.DefaultSalePrice ?? product.DefaultSalePrice;
             if (effectiveVariantListPrice is decimal variantList && effectiveVariantSalePrice is decimal variantSale && variantList < variantSale)
@@ -2939,6 +2943,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken, Guid? variantAttributeProductId = null, bool listShape = false)
     {
         if (products.Count == 0) return [];
+        // KATALOG-14 D5 step B2a: every view shows the model's desi (EffectiveCatalog), never the variant's copy.
+        variants = await EffectiveCatalog.WithModelDesiAsync(db, tenantId, variants, cancellationToken);
         var productIds = products.Select(x => x.Id).ToArray();
         var variantIds = variants.Select(x => x.Id).ToArray();
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToListAsync(cancellationToken);
@@ -3407,6 +3413,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var attributeNames = attributeIds.Length == 0 ? [] : await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id)).Select(x => new { x.Id, x.Name }).ToListAsync(cancellationToken);
         var colorAttributeIds = attributeNames.Where(x => VariantOptionSignature.IsColorName(x.Name) || VariantOptionSignature.IsWebColorName(x.Name)).Select(x => x.Id).ToHashSet();
         var colorValues = colorAttributeIds.Count == 0 ? [] : await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && colorAttributeIds.Contains(x.AttributeId) && x.IsActive).Select(x => new { x.Id, x.AttributeId, x.Value, x.SortOrder }).ToListAsync(cancellationToken);
+        // KATALOG-14 D5 step B2a: a value the command leaves out is the model's (EffectiveCatalog, as stored before this save),
+        // never the opened card's copy.
+        var shared = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == opened.Id)
+            .Select(x => new { x.WarrantyMonths, x.DeliveryDays, x.VatRate, x.VatInclusion }).SingleAsync(cancellationToken);
         foreach (var (cardId, color) in cards)
         {
             db.Products.Add(new Product
@@ -3419,11 +3429,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 CategoryId = command.CategoryId,
                 DefaultListPrice = command.DefaultListPrice ?? opened.DefaultListPrice,
                 DefaultSalePrice = command.DefaultSalePrice ?? opened.DefaultSalePrice,
-                WarrantyMonths = WarrantyAfterSave(command, opened.WarrantyMonths),
-                DeliveryDays = command.DeliveryDays ?? opened.DeliveryDays ?? ProductDeliveryDays.Default,
+                WarrantyMonths = WarrantyAfterSave(command, shared.WarrantyMonths),
+                DeliveryDays = command.DeliveryDays ?? shared.DeliveryDays ?? ProductDeliveryDays.Default,
                 TrendyolWebColorValueId = null,
-                VatRate = command.VatRate ?? opened.VatRate,
-                VatInclusion = command.VatRate is not null ? NormalizeVatInclusion(command.VatInclusion ?? opened.VatInclusion) : opened.VatInclusion,
+                VatRate = command.VatRate ?? shared.VatRate,
+                VatInclusion = command.VatRate is not null ? NormalizeVatInclusion(command.VatInclusion ?? shared.VatInclusion) : shared.VatInclusion,
                 Status = status,
                 ArchivedAt = status == ProductStatus.Archived ? now : null,
                 CreatedAt = now,

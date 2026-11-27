@@ -40,6 +40,7 @@ public sealed class JobQueueAuditTests
     // KUYRUK-4: a foreign key, NOT NULL, range or format fault is not "transient"; it goes to review at once.
     [Theory]
     [InlineData(PostgresErrorCodes.ForeignKeyViolation)]
+    [InlineData(PostgresErrorCodes.RestrictViolation)]
     [InlineData(PostgresErrorCodes.NotNullViolation)]
     [InlineData(PostgresErrorCodes.NumericValueOutOfRange)]
     [InlineData(PostgresErrorCodes.InvalidTextRepresentation)]
