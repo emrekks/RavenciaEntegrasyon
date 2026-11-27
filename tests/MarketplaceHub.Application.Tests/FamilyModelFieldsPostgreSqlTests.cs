@@ -109,7 +109,7 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
 
         async Task AssertCards(Func<string, string> title)
         {
-            var stored = await (ModelFieldCopiesTestPosition.CopiesWritten ? db.Products.AsNoTracking() : EffectiveCatalog.Products(db)).Where(product => product.TenantId == tenant.Id).ToListAsync();
+            var stored = await ModelFieldCopiesTestPosition.Cards(db).Where(product => product.TenantId == tenant.Id).ToListAsync();
             foreach (var (card, colour) in cards)
             {
                 var product = stored.Single(item => item.Id == card.Id);

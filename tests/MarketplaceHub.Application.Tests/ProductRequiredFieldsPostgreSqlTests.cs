@@ -246,7 +246,7 @@ public sealed class ProductRequiredFieldsPostgreSqlTests(PostgreSqlTenantIsolati
             Assert.True(await new MarketplaceHub.Infrastructure.Imports.ImportJobProcessor(db, null!, fixture.TimeProvider, new ConfigurationBuilder().Build()).ProcessAsync(seed.Tenant.Id, session.Id, "APPLY", CancellationToken.None));
 
         await using var check = fixture.CreateContext();
-        var cards = await EffectiveCatalog.Products(check).Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Title);
+        var cards = await ModelFieldCopiesTestPosition.Cards(check).Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Title);
         Assert.Equal(((int?)24, (int?)3, ProductStatus.Active), (cards["Bluz A"].WarrantyMonths, cards["Bluz A"].DeliveryDays, cards["Bluz A"].Status));
         Assert.Equal(((int?)0, (int?)1, ProductStatus.Active), (cards["Bluz B"].WarrantyMonths, cards["Bluz B"].DeliveryDays, cards["Bluz B"].Status));
         // 0 is "no warranty", kept as 0 (owner, 15 Nov 2026: 0 and empty differ); an empty cell takes the default.

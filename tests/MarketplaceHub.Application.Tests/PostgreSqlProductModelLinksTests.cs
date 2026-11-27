@@ -256,7 +256,7 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         AddSeed(db, seed);
         // KATALOG-14 D5 step B2b: the state before the backfill migration (which reads the cards' copies) is one the copies
         // were kept in, whatever the run's position.
-        using var copies = ModelFieldCopies.Use(true);
+        var copies = ModelFieldCopies.Use(true);
         var a1 = AddCard(db, seed, seed.Ravencia, "MZ056", "Gri", "Kadın Gri Bluz", 0);
         var a2 = AddCard(db, seed, seed.Ravencia, "mz056", "Lacivert", "Kadın Lacivert Bluz", 1);
         var a3 = AddCard(db, seed, seed.Ravencia, "MZ056", "Zümrüt", "Kadın Lacivert Bluz", 2);
@@ -266,6 +266,8 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         var turkish = AddCard(db, seed, seed.Ravencia, "TYBCamKırıgı", "Beyaz", "Kadın Beyaz Bluz", 6);
         var other = AddCard(db, seed, seed.Ravencia, "ŒUVRE-1", "Beyaz", "Kadın Beyaz Gömlek", 7);
         await db.SaveChangesAsync();
+        // The backfill and the application's reconcile below run in the run's own position.
+        copies.Dispose();
         db.ChangeTracker.Clear();
         var applicationLinks = await LinksAsync(db, seed.Tenant.Id);
 

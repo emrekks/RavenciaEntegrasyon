@@ -81,12 +81,15 @@ public sealed class ReportCostSnapshotPostgreSqlTests(PostgreSqlTenantIsolationF
     public async Task The_migration_backfills_existing_lines_with_the_variants_current_values()
     {
         // KATALOG-14 D5 step B2b: the backfill is a migration that ran on live while the copies were kept (it reads the
-        // variants' desi copy); its state is seeded with the copies on, whatever the run's position.
+        // variants' desi copy); its state is seeded with the copies on, whatever the run's position. The checks run in the run's
+        // own position.
+        var runPosition = ModelFieldCopiesTestPosition.CopiesWritten;
         using var copies = MarketplaceHub.Infrastructure.Persistence.ModelFieldCopies.Use(true);
         var seed = Seed("cs-fill", lineMatched: true, costAtSale: null);
         var zero = Seed("cs-zero", lineMatched: true, costAtSale: null, variantCost: 0m, variantDesi: null);
         await RunAsync(seed, () => RunAsync(zero, async () =>
         {
+            using var checks = MarketplaceHub.Infrastructure.Persistence.ModelFieldCopies.Use(runPosition);
             var before = await ReportAsync(seed.Tenant.Id);
             await using (var db = fixture.CreateContext())
             {

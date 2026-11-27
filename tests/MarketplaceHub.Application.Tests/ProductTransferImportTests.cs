@@ -642,7 +642,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 2, ModelColours: 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
-            var stored = await EffectiveCatalog.Variants(check).Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Sku).ToListAsync();
+            var stored = await ModelFieldCopiesTestPosition.VariantRows(check).Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Sku).ToListAsync();
             Assert.Equal(new decimal?[] { 1234.50m, null }, stored.Select(x => x.CostPrice));
             Assert.Equal(new decimal?[] { 2m, 3.5m }, stored.Select(x => x.Desi));
             Assert.Equal(1, await check.AuditLogs.CountAsync(x => x.TenantId == tenant.Id && x.Action == "PRODUCT_TRANSFER_IMPORTED"));
@@ -782,7 +782,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(new ProductTransferApplyResult(2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, ModelColours: 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
-            var storedProduct = await EffectiveCatalog.Products(check).SingleAsync(x => x.Id == product.Id);
+            var storedProduct = await ModelFieldCopiesTestPosition.Cards(check).SingleAsync(x => x.Id == product.Id);
             Assert.Equal(("Yeni Ad", 20m, "INCLUDED", 2L), (storedProduct.Title, storedProduct.VatRate, storedProduct.VatInclusion, storedProduct.Version));
             var stored = await check.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Sku).ToListAsync();
             Assert.Equal(("8690000399999", "8690000399999", (string?)null, 110m, 120m), (stored[0].Barcode, stored[0].BarcodeNormalized, stored[0].ModelCode, stored[0].DefaultSalePrice, stored[0].DefaultListPrice));
@@ -961,7 +961,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal((1, 3), (applied.Value!.DescriptionsUpdated, applied.Value.ModelColours));
         await using var check = fixture.CreateContext();
         var ids = cards.Select(card => card.Id).ToArray();
-        Assert.All(await EffectiveCatalog.Products(check).Where(x => ids.Contains(x.Id)).ToListAsync(), x => Assert.Equal("<p>Yeni açıklama</p>", x.Description));
+        Assert.All(await ModelFieldCopiesTestPosition.Cards(check).Where(x => ids.Contains(x.Id)).ToListAsync(), x => Assert.Equal("<p>Yeni açıklama</p>", x.Description));
         var model = await check.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ModelCodeKey == "DESC1");
         Assert.Equal("<p>Yeni açıklama</p>", model.Description);
         Assert.Equal(longCard.Description, (await check.Products.AsNoTracking().SingleAsync(x => x.Id == longCard.Id)).Description);
