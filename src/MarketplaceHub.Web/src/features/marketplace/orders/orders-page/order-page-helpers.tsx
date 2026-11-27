@@ -11,7 +11,15 @@ export type ProductImagePreview = { url: string; fallbackUrl?: string | null; fa
 
 const invoiceCreationStatuses = new Set(['FATURA_BEKLIYOR', 'FATURA_INCELENECEK', 'FATURA_REDDEDILDI', 'FATURA_ISLENIYOR'])
 export function isInvoicePending(item: Pick<Order, 'invoiceStatus'>) { return invoiceCreationStatuses.has(item.invoiceStatus) }
-export function isMicroExportLabelBlocked(item: Pick<Order, 'isMicroExport' | 'invoiceStatus'>) { return item.isMicroExport && isInvoicePending(item) }
+// No cargo label before the invoice: for a micro export (its export invoice first) and for an order whose export status the
+// one rule could not determine (MicroExportRule, Belirsiz): its invoice waits for the owner's review first (review D-1).
+export const microExportLabelBlockedText = 'Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.'
+export const unknownExportLabelBlockedText = 'Siparişin ihracat durumu belirlenemedi; fatura incelenmeden kargo etiketi yazdırılamaz.'
+export function labelBlockedByInvoiceReason(item: Pick<Order, 'isMicroExport' | 'invoiceStatus' | 'marks'>) {
+  if (!isInvoicePending(item)) return null
+  return item.isMicroExport ? microExportLabelBlockedText : item.marks?.microExportUnknownReason ? unknownExportLabelBlockedText : null
+}
+export function isMicroExportLabelBlocked(item: Pick<Order, 'isMicroExport' | 'invoiceStatus' | 'marks'>) { return labelBlockedByInvoiceReason(item) !== null }
 
 export type OrderDetail = ApiAnswer<'getOrdersById'>
 // The server could not confirm an action yet (it reads the marketplace and updates the panel) or

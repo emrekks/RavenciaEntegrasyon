@@ -35,7 +35,7 @@ import { Connection, IntegrationFeedback, Order, Page, ReturnColumnPop, ReturnHe
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { ListEmptyState } from '../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
-import { invoiceCreationDisabledHelp, type ProductImagePreview, isMicroExportLabelBlocked, isPendingAction, type IntegrationFeedbackHandler, orderNotificationContext, canChangeOrderCargo } from './orders-page/order-page-helpers'
+import { invoiceCreationDisabledHelp, type ProductImagePreview, isMicroExportLabelBlocked, labelBlockedByInvoiceReason, isPendingAction, type IntegrationFeedbackHandler, orderNotificationContext, canChangeOrderCargo } from './orders-page/order-page-helpers'
 import { ProductImagePreviewModal, InvoiceInfoModal, InvoiceDraftModal, InvoiceViewerModal, InvoiceUploadModal } from './orders-page/OrderInvoiceModals'
 import { CourierChangeModal, ShippingLabelModal, ShippingLabelBatchModal, SingleOrderSyncModal } from './orders-page/OrderShippingModals'
 import { OrderListRow, type OrderRowActions } from './orders-page/OrderReferenceRow'
@@ -354,7 +354,7 @@ export function OrdersPage() {
   const cargoOptions = [{ value: 'ALL', label: 'Tüm Kargolar' }, ...cargoFilterOptions(cargos)]
   const invoiceOptions = [{ value: 'ALL', label: 'Tüm Fatura Durumları' }, ...invoiceStatuses.map(([value, label]) => ({ value, label }))]
   const invoiceTypeOptions = [{ value: 'ALL', label: 'Tüm Türler' }, { value: 'BIREYSEL', label: 'Bireysel' }, { value: 'KURUMSAL', label: 'Kurumsal' }, { value: 'KURUMSAL_VERGI_NO_YOK', label: 'Kurumsal · Vergi No Yok' }]
-  const invoiceRegionOptions = [{ value: 'ALL', label: 'Tüm Bölgeler' }, { value: 'TR', label: 'Türkiye' }, { value: 'MICRO_EXPORT', label: 'Mikro İhracat' }]
+  const invoiceRegionOptions = [{ value: 'ALL', label: 'Tüm Bölgeler' }, { value: 'TR', label: 'Türkiye' }, { value: 'MICRO_EXPORT', label: 'Mikro İhracat' }, { value: 'UNKNOWN', label: 'Belirsiz' }]
   const cancelPartOptions = [{ value: 'ALL', label: 'Tüm Siparişler' }, { value: 'PARTIAL', label: 'Kısmi İptali Olanlar' }]
   // Sipariş Türü: every order, the micro-export ones, and (in Yeniden Gönderimler only) the resends not yet handed to the carrier.
   const kindOptions = [{ value: 'ALL', label: 'Tüm Siparişler' }, { value: 'MICRO', label: 'Mikro İhracat Siparişleri' }, ...(filters.status === 'RESENT' ? [{ value: 'RESENT_UNSHIPPED', label: 'Kargoya Verilmeyenler' }] : [])]
@@ -384,7 +384,7 @@ export function OrdersPage() {
     orderStatusChange: item => { setMenu(null); setShopifyStatusOrder(item) },
     processOrder: item => void processSingleOrder(item),
     createPackage: item => { setMenu(null); setHepsiburadaPackageOrder(item) },
-    printLabel: (item, format) => { if (isMicroExportLabelBlocked(item)) { showBulkNotice('Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.', 'error'); return } setMenu(null); setShippingLabel({ item, format }) },
+    printLabel: (item, format) => { const blocked = labelBlockedByInvoiceReason(item); if (blocked) { showBulkNotice(blocked, 'error'); return } setMenu(null); setShippingLabel({ item, format }) },
     previewImage: preview => setPreviewImage(preview)
   })
   const picked = new Set(selectedIds)

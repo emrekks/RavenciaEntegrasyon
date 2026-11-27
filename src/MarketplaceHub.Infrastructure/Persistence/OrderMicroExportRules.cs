@@ -1,82 +1,84 @@
-using System.Data;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 /// <summary>
-/// The one micro-export rule (MicroExportRule; owner's decision of 27 Nov 2026, finding C-11.9) as database conditions on
-/// an order. The order list's Mikro İhracat and Fatura Bölgesi filters and the micro-export card read these; the label,
-/// the row flag and the invoice read MicroExportRule.Classify in memory. Both are the same rule (MicroExportRuleTests run
-/// every case through both engines). The order's marketplace comes from its connection.
+/// The one micro-export rule (MicroExportRule; owner's decision of 27 Nov 2026, finding C-11.9) in PostgreSQL: the
+/// order list's Mikro İhracat and Fatura Bölgesi filters and the micro-export card read these; the label, the row mark
+/// and the invoice read MicroExportRule.Classify in memory. MicroExportRuleTests run every case through both.
+/// <para>Each order is read once (review O-1, 27 Nov 2026): its marketplace by one join, its snapshot detoasted once,
+/// checked for <c>\u0000</c>, validated and decoded once as <c>json</c> (a snapshot with a <c>\uD…</c> escape is also
+/// checked as <c>jsonb</c>, which refuses a lone surrogate the field read would fail on), and the top-level fields taken from that one
+/// decode (<c>json_to_record</c>); the key count is one <c>regexp_count</c>. OFFSET 0 keeps PostgreSQL from inlining
+/// the subqueries (which would decode again for every use). No stored column, no function created.</para>
 /// </summary>
 internal static class OrderMicroExportRules
 {
-    private static readonly RelationalTypeMapping TextMapping = new StringTypeMapping("text", DbType.String);
-    private static readonly RelationalTypeMapping JsonbMapping = new StringTypeMapping("jsonb", DbType.String);
-    private static readonly RelationalTypeMapping BoolMapping = new BoolTypeMapping("boolean");
-    private static readonly RelationalTypeMapping IntMapping = new IntTypeMapping("integer");
+    private static string Quoted(IEnumerable<string> values) => string.Join(",", values.Select(value => $"'{value}'"));
 
-    /// <summary>
-    /// Maps the rule's two helpers to PostgreSQL: TopLevelJson(json, key) is
-    /// <c>CASE WHEN pg_input_is_valid(json, 'jsonb') THEN jsonb_extract_path(json::jsonb, key)::text END</c> (a text that
-    /// is no JSON reads as missing, as JsonDocument does in memory, and never fails the query); SignalKeyCount(json) is
-    /// <c>regexp_count(json, SignalKeyPattern)</c>.
-    /// </summary>
-    internal static void MapFunctions(ModelBuilder builder)
+    private static string Field(string name) => $"\"{name}\" json";
+
+    private static string Strings(IEnumerable<string> fields) =>
+        $"NULLIF(concat_ws('|', {string.Join(", ", fields.Select(field => $"CASE WHEN left(r.\"{field}\"::text, 1) = '\"' THEN r.\"{field}\"::text END"))}), '')";
+
+    // {0} the tenant, {1} the state (MicroExportState as a number). The patterns and lists are the rule's constants.
+    private static readonly string StateSql = $"""
+        SELECT b."Id" AS "Value"
+        FROM (
+            SELECT o."Id", o."StoreFrontCode" AS sf, c."PlatformCode" AS platform, (o."CustomerSnapshotJson" || '') AS t
+            FROM sales.orders AS o
+            LEFT JOIN integration.platform_connections AS c ON c."Id" = o."ConnectionId"
+            WHERE o."TenantId" = {"{0}"}
+            OFFSET 0) AS b
+        CROSS JOIN LATERAL (
+            SELECT CASE WHEN b.platform = '{MicroExportRule.Trendyol}' AND strpos(b.t, '{MicroExportRule.NulEscape}') = 0 AND pg_input_is_valid(b.t, 'json')
+                             AND (strpos(b.t, '\ud') = 0 AND strpos(b.t, '\uD') = 0 OR pg_input_is_valid(b.t, 'jsonb'))
+                        THEN b.t::json END AS j,
+                   CASE WHEN b.platform = '{MicroExportRule.Trendyol}' THEN regexp_count(b.t, '{MicroExportRule.SignalKeyPattern}') END AS keys
+            OFFSET 0) AS d
+        LEFT JOIN LATERAL json_to_record(CASE WHEN json_typeof(d.j) = 'object' THEN d.j END)
+            AS r({Field("micro")}, {Field("3pByTrendyol")}, {string.Join(", ", MicroExportRule.TypeFields.Concat(MicroExportRule.NameFields).Select(Field))}) ON true
+        CROSS JOIN LATERAL (
+            SELECT r.micro::text AS m, r."3pByTrendyol"::text AS p,
+                   {Strings(MicroExportRule.TypeFields)} AS types, {Strings(MicroExportRule.NameFields)} AS names
+            OFFSET 0) AS f
+        WHERE (CASE
+            WHEN b.platform IS NULL THEN {(int)MicroExportState.Unknown}
+            WHEN b.platform <> '{MicroExportRule.Trendyol}' THEN {(int)MicroExportState.Domestic}
+            WHEN json_typeof(d.j) IS DISTINCT FROM 'object' THEN {(int)MicroExportState.Unknown}
+            WHEN d.keys <> (CASE WHEN f.m IS NULL THEN 0 ELSE 1 END) + (CASE WHEN f.p IS NULL THEN 0 ELSE 1 END) THEN {(int)MicroExportState.Unknown}
+            WHEN f.m IS NULL AND f.p IS DISTINCT FROM 'true' THEN {(int)MicroExportState.Unknown}
+            WHEN f.m = 'true' AND f.p = 'true' THEN {(int)MicroExportState.Unknown}
+            WHEN (f.m = 'true' AND (f.p IS NULL OR f.p = 'false')) OR (f.p = 'true' AND (f.m IS NULL OR f.m = 'false'))
+                THEN CASE WHEN upper(b.sf COLLATE "C") = 'TR' THEN {(int)MicroExportState.Unknown} ELSE {(int)MicroExportState.MicroExport} END
+            WHEN f.m = 'false' AND (f.p IS NULL OR f.p = 'false')
+                THEN CASE WHEN upper(b.sf COLLATE "C") IN ({Quoted(MicroExportRule.MicroExportStorefronts)})
+                            OR f.types ~ '{MicroExportRule.TypeWordPattern}'
+                            OR (f.names ~ '{MicroExportRule.Pm3Pattern}' AND f.names ~ '{MicroExportRule.ArvatoPattern}')
+                          THEN {(int)MicroExportState.Unknown} ELSE {(int)MicroExportState.Domestic} END
+            ELSE {(int)MicroExportState.Unknown} END) = {"{1}"}
+        """;
+
+    /// <summary>The tenant's orders the rule gives this answer, as a subquery the database runs.</summary>
+    internal static IQueryable<Guid> Ids(AppDbContext db, Guid tenantId, MicroExportState state) =>
+        db.Database.SqlQuery<Guid>(FormattableStringFactory.Create(StateSql, tenantId, (int)state));
+
+    /// <summary>The orders the rule calls micro export: the "Mikro İhracat" region, filter and card.</summary>
+    internal static Expression<Func<Order, bool>> InDatabase(AppDbContext db, Guid tenantId) => Is(db, tenantId, MicroExportState.MicroExport);
+
+    /// <summary>The orders the rule calls domestic: the "Türkiye" region.</summary>
+    internal static Expression<Func<Order, bool>> DomesticInDatabase(AppDbContext db, Guid tenantId) => Is(db, tenantId, MicroExportState.Domestic);
+
+    /// <summary>The orders whose kind the rule cannot tell: the "Belirsiz" region.</summary>
+    internal static Expression<Func<Order, bool>> UnknownInDatabase(AppDbContext db, Guid tenantId) => Is(db, tenantId, MicroExportState.Unknown);
+
+    private static Expression<Func<Order, bool>> Is(AppDbContext db, Guid tenantId, MicroExportState state)
     {
-        builder.HasDbFunction(typeof(MicroExportRule).GetMethod(nameof(MicroExportRule.TopLevelJson), [typeof(string), typeof(string)])!)
-            .HasTranslation(arguments =>
-            {
-                var json = Text(arguments[0]);
-                var key = Text(arguments[1]);
-                var valid = new SqlFunctionExpression("pg_input_is_valid", [json, new SqlConstantExpression("jsonb", typeof(string), TextMapping)],
-                    nullable: true, argumentsPropagateNullability: [true, false], typeof(bool), BoolMapping);
-                var value = new SqlUnaryExpression(ExpressionType.Convert,
-                    new SqlFunctionExpression("jsonb_extract_path", [new SqlUnaryExpression(ExpressionType.Convert, json, typeof(string), JsonbMapping), key],
-                        nullable: true, argumentsPropagateNullability: [true, true], typeof(string), JsonbMapping),
-                    typeof(string), TextMapping);
-                return new CaseExpression([new CaseWhenClause(valid, value)], elseResult: null);
-            });
-        builder.HasDbFunction(typeof(MicroExportRule).GetMethod(nameof(MicroExportRule.SignalKeyCount), [typeof(string)])!)
-            .HasTranslation(arguments => new SqlFunctionExpression("regexp_count",
-                [Text(arguments[0]), new SqlConstantExpression(MicroExportRule.SignalKeyPattern, typeof(string), TextMapping)],
-                nullable: true, argumentsPropagateNullability: [true, false], typeof(int), IntMapping));
-    }
-
-    private static SqlExpression Text(SqlExpression expression) => expression switch
-    {
-        { TypeMapping: not null } => expression,
-        SqlConstantExpression constant => new SqlConstantExpression(constant.Value, typeof(string), TextMapping),
-        _ => expression
-    };
-
-    /// <summary>The rule's answer for an order, as the database runs it.</summary>
-    internal static Expression<Func<Order, MicroExportState>> State(AppDbContext db)
-    {
-        Expression<Func<Order, string?>> platform = order => db.PlatformConnections.Where(connection => connection.Id == order.ConnectionId)
-            .Select(connection => connection.PlatformCode).FirstOrDefault();
-        Expression<Func<Order, string?>> storefront = order => order.StoreFrontCode;
-        Expression<Func<Order, string?>> json = order => order.CustomerSnapshotJson;
-        var row = Expression.Parameter(typeof(Order), "order");
-        var arguments = new[] { platform, storefront, json }
-            .Select(field => Microsoft.EntityFrameworkCore.Query.ReplacingExpressionVisitor.Replace(field.Parameters[0], row, field.Body)).ToArray();
-        return Expression.Lambda<Func<Order, MicroExportState>>(PolicyExpressions.Inline(MicroExportRule.StateRule, arguments), row);
-    }
-
-    /// <summary>The orders the rule calls micro export: the "Mikro İhracat" filter and card.</summary>
-    internal static Expression<Func<Order, bool>> InDatabase(AppDbContext db) => Is(db, MicroExportState.MicroExport);
-
-    /// <summary>The orders the rule calls domestic: the "Türkiye" invoice region. An Unknown order is in neither region.</summary>
-    internal static Expression<Func<Order, bool>> DomesticInDatabase(AppDbContext db) => Is(db, MicroExportState.Domestic);
-
-    private static Expression<Func<Order, bool>> Is(AppDbContext db, MicroExportState state)
-    {
-        var rule = State(db);
-        return Expression.Lambda<Func<Order, bool>>(Expression.Equal(rule.Body, Expression.Constant(state)), rule.Parameters);
+        var ids = Ids(db, tenantId, state);
+        return order => ids.Contains(order.Id);
     }
 }

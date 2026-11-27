@@ -2203,6 +2203,7 @@ export type OrderRowMarks = {
   deliveryPoint: boolean
   deliveryPointType?: null | string
   fastDeliveryType?: null | string
+  microExportUnknownReason?: null | string
 }
 
 export type OrderSummaryView = {

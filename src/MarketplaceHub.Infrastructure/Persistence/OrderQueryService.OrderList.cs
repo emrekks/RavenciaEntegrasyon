@@ -370,11 +370,14 @@ internal sealed partial class OrderQueryService
         var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
         // The region follows the "Mikro İhracat" label (OrderMicroExportRules, also the row flag and the card), not a text search over the
         // whole package: a company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product is no export (SIPARIS-STOK-3).
-        // "Türkiye" is the orders the rule calls domestic: an order whose kind is unknown (MicroExportRule) is in neither region.
+        // Three regions, one per answer of the rule (MicroExportRule): Türkiye (domestic), Mikro İhracat and Belirsiz (the
+        // rule cannot tell; review O-2, 27 Nov 2026). Every order is in exactly one, so the three add up to all.
         if (invoiceRegion == "MICRO_EXPORT")
-            query = query.Where(OrderMicroExportRules.InDatabase(db));
+            query = query.Where(OrderMicroExportRules.InDatabase(db, tenantId));
         else if (invoiceRegion == "TR")
-            query = query.Where(OrderMicroExportRules.DomesticInDatabase(db));
+            query = query.Where(OrderMicroExportRules.DomesticInDatabase(db, tenantId));
+        else if (invoiceRegion == "UNKNOWN")
+            query = query.Where(OrderMicroExportRules.UnknownInDatabase(db, tenantId));
 
         var status = options.Status?.Trim().ToUpperInvariant();
         // The dashboard's "Geciken Siparişler" card opens this view: exactly the orders that card counts.
@@ -508,7 +511,7 @@ internal sealed partial class OrderQueryService
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
         // Micro-export orders: the "Mikro İhracat" label's rule (OrderMicroExportRules), as the row flag and the card read it.
         if (options.MicroExport == true)
-            query = query.Where(OrderMicroExportRules.InDatabase(db));
+            query = query.Where(OrderMicroExportRules.InDatabase(db, tenantId));
         // Orders with some products cancelled that were not cancelled whole, open or closed.
         if (options.PartialCancel == true)
             query = query.Where(x => x.DerivedStatus != "CANCELLED" && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0));

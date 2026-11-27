@@ -20,6 +20,16 @@ describe('order row marks', () => {
     expect(host.querySelector('img')).toBeNull()
   })
 
+  // Review O-2 (27 Nov 2026): an order the micro-export rule cannot tell is marked Belirsiz, its tip the rule's reason.
+  it('marks an order whose micro-export kind is unknown as Belirsiz with the reason', () => {
+    const { host } = render(<OrderRowMarkIcons marks={{ ...none, microExportUnknownReason: 'Trendyol paketinde mikro ihracat alanı (micro) yok' }} />)
+    expect(tips(host)).toEqual([['Belirsiz · Trendyol paketinde mikro ihracat alanı (micro) yok', 'Belirsiz · Trendyol paketinde mikro ihracat alanı (micro) yok']])
+    expect(host.querySelector('.rr-omark-unknown .rr-omark-word')?.textContent).toBe('Belirsiz')
+    // A micro-export order never shows it.
+    const micro = render(<OrderRowMarkIcons marks={{ ...none, microExport: true, microExportUnknownReason: 'x' }} />)
+    expect(micro.host.querySelector('.rr-omark-unknown')).toBeNull()
+  })
+
   it.each([
     ['TodayDelivery', 'Bugün Teslimat'],
     ['SameDayShipping', 'Aynı Gün Kargo'],

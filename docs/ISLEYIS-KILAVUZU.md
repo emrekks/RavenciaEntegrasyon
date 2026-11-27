@@ -613,7 +613,9 @@ eşitleme kuralları, depo, fatura kuralları) bir sıfırlamada asla silinmez (
   Belgeli sinyaller: paketin üst düzeyindeki `micro` (true/false) ve `3pByTrendyol` (true ise ihracat ortaklığı, mikro
   ihracat sayılır); okunan vitrin yalnız çelişki gösterir (TR'de mikro ihracat ya da SA/AE/AZ/RO/BG/GR… vitrininde
   `micro=false`). `micro` yoksa, değeri true/false değilse, alan iç içe ya da iki kez geçiyorsa veya sinyaller çelişiyorsa
-  sonuç **Bilinmiyor**: liste etiket koymaz, sipariş Türkiye bölgesine de girmez, fatura türü tahmin edilmez ve fatura
+  sonuç **Bilinmiyor**: satırda sarı **Belirsiz** işareti (ipucu kuralın gerekçesi) çıkar, sipariş Fatura Bölgesi'nde
+  **Belirsiz** seçeneğindedir (Türkiye + Mikro İhracat + Belirsiz = tümü), fatura onayı beklenirken kargo etiketi basılmaz,
+  fatura türü tahmin edilmez ve fatura
   `INVOICE_MICRO_EXPORT_UNKNOWN` gerekçesiyle sahibin incelemesini bekler. Trendyol dışı pazaryerleri hep Yurt İçi'dir.
   Ülke fatura adresinden okunur (`OrderQueryService.OrderSummary.cs` `MicroExportCountry`).
 - Hakediş: Azerbaycan ödemeleri ayrı şirket (10,99 TL KDV'siz platform bedeli, stopaj yok); Avrupa ayın 4. pazartesisi ödenir.

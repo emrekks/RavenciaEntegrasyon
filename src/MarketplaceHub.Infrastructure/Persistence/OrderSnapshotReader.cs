@@ -109,35 +109,39 @@ internal static class OrderSnapshotReader
     // - Delivery point: Trendyol deliveryAddressType=CollectionPoint; n11 any deliveryAddressType (KTN, EASYPOINT, PUP).
     // - Fast delivery: Trendyol fastDeliveryType TodayDelivery/SameDayShipping/FastDelivery, unless the same package
     //   says fastDelivery=false (the two disagree; no mark rather than a wrong one).
+    // - Belirsiz (review O-2, 27 Nov 2026): the rule cannot tell micro export from domestic; the mark carries its reason,
+    //   so every order shows the region it is in (Türkiye without a mark, Mikro İhracat, Belirsiz).
     internal static OrderRowMarks? RowMarks(string? platformCode, string? storeFrontCode, string customerJson, string invoiceAddressJson)
     {
         var platform = platformCode?.Trim().ToUpperInvariant();
+        var decision = MicroExportRule.Classify(platformCode, storeFrontCode, customerJson);
+        var micro = decision.IsMicroExport;
+        var unknownReason = decision.State == MicroExportState.Unknown ? decision.Reason : null;
+        var country = micro ? MicroExportCountry(invoiceAddressJson, storeFrontCode) : null;
+        OrderRowMarks marks = new(micro, country, false, null, null, unknownReason);
         try
         {
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerJson) ? "{}" : customerJson);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return null;
-            string? TopText(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
-            bool? TopBool(string name) => root.TryGetProperty(name, out var value) ? value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null } : null;
-
-            var micro = IsMicroExport(platformCode, storeFrontCode, customerJson);
-            var country = micro ? MicroExportCountry(invoiceAddressJson, storeFrontCode) : null;
-            OrderRowMarks marks;
-            if (platform == "N11")
+            if (root.ValueKind == JsonValueKind.Object)
             {
-                var pointType = TopText("deliveryAddressType") is { Length: > 0 } type && !string.Equals(type, "null", StringComparison.OrdinalIgnoreCase) ? type.ToUpperInvariant() : null;
-                marks = new(micro, country, pointType is not null, pointType, null);
+                string? TopText(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
+                bool? TopBool(string name) => root.TryGetProperty(name, out var value) ? value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null } : null;
+                if (platform == "N11")
+                {
+                    var pointType = TopText("deliveryAddressType") is { Length: > 0 } type && !string.Equals(type, "null", StringComparison.OrdinalIgnoreCase) ? type.ToUpperInvariant() : null;
+                    marks = marks with { DeliveryPoint = pointType is not null, DeliveryPointType = pointType };
+                }
+                else if (platform == "TRENDYOL")
+                {
+                    var deliveryPoint = string.Equals(TopText("deliveryAddressType"), "CollectionPoint", StringComparison.OrdinalIgnoreCase);
+                    var fastType = TopText("fastDeliveryType") is { } fast && FastDeliveryTypes.TryGetValue(fast, out var known) && TopBool("fastDelivery") != false ? known : null;
+                    marks = marks with { DeliveryPoint = deliveryPoint, FastDeliveryType = fastType };
+                }
             }
-            else if (platform == "TRENDYOL")
-            {
-                var deliveryPoint = string.Equals(TopText("deliveryAddressType"), "CollectionPoint", StringComparison.OrdinalIgnoreCase);
-                var fastType = TopText("fastDeliveryType") is { } fast && FastDeliveryTypes.TryGetValue(fast, out var known) && TopBool("fastDelivery") != false ? known : null;
-                marks = new(micro, country, deliveryPoint, null, fastType);
-            }
-            else marks = new(micro, country, false, null, null);
-            return marks.MicroExport || marks.DeliveryPoint || marks.FastDeliveryType is not null ? marks : null;
         }
-        catch (JsonException) { return null; }
+        catch (JsonException) { }
+        return marks.MicroExport || marks.MicroExportUnknownReason is not null || marks.DeliveryPoint || marks.FastDeliveryType is not null ? marks : null;
     }
 
     internal static string? MicroExportCountry(string invoiceAddressJson, string? storeFrontCode)

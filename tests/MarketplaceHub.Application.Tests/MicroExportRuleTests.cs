@@ -7,8 +7,8 @@ namespace MarketplaceHub.Application.Tests;
 
 // C-11.9 (owner, 27 Nov 2026): one micro-export rule (MicroExportRule) for the invoice, the order list's label, row flag,
 // filters and card. Three answers; a missing field or signals that disagree are Unknown, never a guess. Every case runs
-// through the rule in memory (Classify), the same rule as an expression (StateRule, compiled) and the database conditions
-// the list uses (OrderMicroExportRules), which must all give the expected answer.
+// through the rule in memory (Classify) and the database conditions
+// the list uses (OrderMicroExportRules, PostgreSQL), which must both give the expected answer.
 public sealed class MicroExportRuleTests
 {
     private const MicroExportState D = MicroExportState.Domestic;
@@ -16,7 +16,7 @@ public sealed class MicroExportRuleTests
     private const MicroExportState U = MicroExportState.Unknown;
 
     // (marketplace, storefront, customer snapshot, expected)
-    internal static readonly (string? Platform, string? Storefront, string Json, MicroExportState Expected)[] Cases =
+    internal static readonly (string? Platform, string? Storefront, string? Json, MicroExportState Expected)[] Cases =
     [
         // Documented: micro at the package's top level (docs ~l.403, l.802, l.4100).
         ("TRENDYOL", "TR", """{"micro":false,"3pByTrendyol":false}""", D),
@@ -75,6 +75,24 @@ public sealed class MicroExportRuleTests
         ("PAZARAMA", null, "{}", D),
         ("PTTAVM", null, "{}", D),
         ("SHOPIFY", null, """{"orderType":"MICRO"}""", D),
+        // Storefront codes in any case (D-2).
+        ("TRENDYOL", "tr", """{"micro":true}""", U),
+        ("TRENDYOL", "sa", """{"micro":false}""", U),
+        ("TRENDYOL", "Sa", """{"micro":true}""", M),
+        ("TRENDYOL", "tr", """{"micro":false}""", D),
+        // \u0000, which PostgreSQL's JSON types refuse, makes the snapshot unreadable in both engines (D-3); an escaped
+        // backslash before it reads the same way (a text check, alike in both).
+        ("TRENDYOL", "TR", """{"micro":false,"note":"a\u0000b"}""", U),
+        ("TRENDYOL", "TR", """{"micro":false,"note":"a\\u0000b"}""", U),
+        ("TRENDYOL", "TR", """{"micro":false,"note":"a\ud800b"}""", U),
+        ("TRENDYOL", "TR", """{"micro":false,"note":"a\uD800"}""", U),
+        ("TRENDYOL", "TR", """{"micro":false,"customerFirstName":"Ayşe 😀","note":"퟿"}""", D),
+        ("TRENDYOL", "TR", null, U),
+        ("TRENDYOL", "TR", Large(), D),
+        // Undocumented indicators count at the top level only, as the documented flags do.
+        ("TRENDYOL", "TR", """{"micro":false,"lines":[{"orderType":"MICRO"}]}""", D),
+        ("TRENDYOL", "TR", """{"micro":false,"orderType":{"name":"MICRO"}}""", D),
+        ("TRENDYOL", "TR", """{"micro":false,"customerFirstName":"PM3","buyerName":"arvato"}""", U),
         // No marketplace known (the order's connection is gone): unknown (in memory only, no order can lack its connection).
         (null, "TR", """{"micro":false}""", U),
     ];
@@ -86,7 +104,13 @@ public sealed class MicroExportRuleTests
         return data;
     }
 
-    private static readonly Func<string?, string?, string?, MicroExportState> CompiledRule = MicroExportRule.StateRule.Compile();
+    // A 200 KB Trendyol package (many lines), domestic: the rule reads it whole in both engines.
+    private static string Large() =>
+        "{\"micro\":false,\"3pByTrendyol\":false,\"lines\":[" + string.Join(",", Enumerable.Range(1, 1400).Select(index =>
+            $"{{\"lineId\":{index},\"productName\":\"Uzun ürün adı kadın elbise yazlık pamuklu desenli model {index}\",\"merchantSku\":\"SKU-{index}\",\"vatRate\":20}}")) + "]}";
+
+    [Fact]
+    public void The_large_case_is_about_200_kb() => Assert.InRange(Large().Length, 150_000, 260_000);
 
     [Theory]
     [MemberData(nameof(CaseIndexes))]
@@ -96,11 +120,11 @@ public sealed class MicroExportRuleTests
         var decision = MicroExportRule.Classify(platform, storefront, json);
         Assert.Equal(expected, decision.State);
         Assert.Equal(expected == U, decision.Reason is not null);
-        // The expression the database runs, compiled, is the same rule.
-        Assert.Equal(expected, CompiledRule(platform, storefront, json));
-        // The label and the row flag read it: only a micro export is labelled.
+        // The label and the row marks read it: only a micro export is labelled micro export, only an unknown one Belirsiz.
         Assert.Equal(expected == M, OrderSnapshotReader.IsMicroExport(platform, storefront, json));
-        Assert.Equal(expected == M, OrderSnapshotReader.RowMarks(platform, storefront, json, "{}")?.MicroExport == true);
+        var marks = OrderSnapshotReader.RowMarks(platform, storefront, json ?? "", "{}");
+        Assert.Equal(expected == M, marks?.MicroExport == true);
+        Assert.Equal(expected == U ? decision.Reason : null, marks?.MicroExportUnknownReason);
     }
 
     [Fact]
@@ -141,7 +165,7 @@ public sealed class MicroExportRulePostgreSqlTests(PostgreSqlTenantIsolationFixt
             OrderedAt = now.AddMinutes(-index),
             LastRemoteModifiedAt = now,
             StoreFrontCode = item.Storefront,
-            CustomerSnapshotJson = item.Json,
+            CustomerSnapshotJson = item.Json ?? "", // the column holds no null: the null case is stored empty, unknown alike
             ShipmentAddressSnapshotJson = "{}",
             InvoiceAddressSnapshotJson = "{}",
             DerivedStatus = "NEW",
@@ -160,21 +184,28 @@ public sealed class MicroExportRulePostgreSqlTests(PostgreSqlTenantIsolationFixt
             }
             await using var read = fixture.CreateContext();
             var tenantOrders = read.Orders.AsNoTracking().Where(order => order.TenantId == tenant.Id);
-            var micro = (await tenantOrders.Where(OrderMicroExportRules.InDatabase(read)).Select(order => order.Id).ToListAsync()).ToHashSet();
-            var domestic = (await tenantOrders.Where(OrderMicroExportRules.DomesticInDatabase(read)).Select(order => order.Id).ToListAsync()).ToHashSet();
+            var micro = (await tenantOrders.Where(OrderMicroExportRules.InDatabase(read, tenant.Id)).Select(order => order.Id).ToListAsync()).ToHashSet();
+            var domestic = (await tenantOrders.Where(OrderMicroExportRules.DomesticInDatabase(read, tenant.Id)).Select(order => order.Id).ToListAsync()).ToHashSet();
+            var unknown = (await tenantOrders.Where(OrderMicroExportRules.UnknownInDatabase(read, tenant.Id)).Select(order => order.Id).ToListAsync()).ToHashSet();
+            // Every order is in exactly one of the three.
             Assert.Equal(orders.Count, await tenantOrders.CountAsync());
-            Assert.Empty(micro.Intersect(domestic));
+            Assert.Equal(orders.Count, micro.Count + domestic.Count + unknown.Count);
+            Assert.Equal(orders.Count, micro.Union(domestic).Union(unknown).Count());
             Assert.All(orders.Select((order, index) => (order, index)), pair =>
             {
                 var expected = cases[pair.index].Expected;
                 var inDatabase = micro.Contains(pair.order.Id) ? MicroExportState.MicroExport : domestic.Contains(pair.order.Id) ? MicroExportState.Domestic : MicroExportState.Unknown;
-                Assert.True(expected == inDatabase, $"case {pair.index} ({cases[pair.index].Platform}, {cases[pair.index].Storefront}, {cases[pair.index].Json}): expected {expected}, the database said {inDatabase}");
+                var json = cases[pair.index].Json ?? "";
+                Assert.True(expected == inDatabase, $"case {pair.index} ({cases[pair.index].Platform}, {cases[pair.index].Storefront}, {json[..Math.Min(json.Length, 120)]}): expected {expected}, the database said {inDatabase}");
             });
-            // The condition is the jsonb top-level read and the key count, never a text search alone.
-            var sql = read.Orders.Where(OrderMicroExportRules.InDatabase(read)).ToQueryString();
-            Assert.Contains("pg_input_is_valid", sql, StringComparison.Ordinal);
-            Assert.Contains("jsonb_extract_path", sql, StringComparison.Ordinal);
-            Assert.Contains("regexp_count", sql, StringComparison.Ordinal);
+            // One read per order: the marketplace joined once, the snapshot validated and decoded once, its fields read
+            // from that decode, the keys counted once.
+            var sql = read.Orders.Where(OrderMicroExportRules.InDatabase(read, tenant.Id)).ToQueryString();
+            Assert.Equal(1, CountOf(sql, "pg_input_is_valid(b.t, 'json')"));
+            Assert.Equal(1, CountOf(sql, "::json END"));
+            Assert.Equal(1, CountOf(sql, "json_to_record"));
+            Assert.Equal(1, CountOf(sql, "regexp_count"));
+            Assert.Equal(1, CountOf(sql, "integration.platform_connections"));
         }
         finally
         {
@@ -184,5 +215,12 @@ public sealed class MicroExportRulePostgreSqlTests(PostgreSqlTenantIsolationFixt
             await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
         }
+    }
+
+    private static int CountOf(string text, string part)
+    {
+        var count = 0;
+        for (var at = text.IndexOf(part, StringComparison.Ordinal); at >= 0; at = text.IndexOf(part, at + part.Length, StringComparison.Ordinal)) count++;
+        return count;
     }
 }

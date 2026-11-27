@@ -271,6 +271,16 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
             Assert.Equal(expected, all.Items.Where(row => row.OrderType == "MIKRO_IHRACAT").Select(row => row.Id).Order());
             Assert.Equal(expected, all.Items.Where(row => row.Marks?.MicroExport == true).Select(row => row.Id).Order());
             Assert.All(all.Items, row => Assert.Equal(row.OrderType == "MIKRO_IHRACAT", row.IsMicroExport));
+            // Review O-2: the Belirsiz region holds the rest, so Türkiye + Mikro İhracat + Belirsiz = Tüm Bölgeler, and the
+            // Belirsiz rows carry the mark with the rule's reason.
+            var unknown = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(InvoiceRegion: "UNKNOWN"), CancellationToken.None);
+            var unknownIds = Enumerable.Range(0, customers.Length).Where(index => !microIndexes.Contains(index) && !domesticIndexes.Contains(index)).Select(index => orders[index].Id).Order().ToList();
+            Assert.Equal(unknownIds, unknown.Items.Select(row => row.Id).Order());
+            Assert.Equal(all.TotalCount, domestic.TotalCount + micro.TotalCount + unknown.TotalCount);
+            Assert.Equal(unknownIds, all.Items.Where(row => row.Marks?.MicroExportUnknownReason is not null).Select(row => row.Id).Order());
+            Assert.All(unknown.Items, row => Assert.Equal(MicroExportRule.Classify(row.PlatformCode, customers[orders.FindIndex(order => order.Id == row.Id)].Storefront, customers[orders.FindIndex(order => order.Id == row.Id)].Customer).Reason, row.Marks!.MicroExportUnknownReason));
+            // The micro-export card still counts micro export only.
+            Assert.Equal(micro.TotalCount, counter.MicroExport);
         }
         finally
         {

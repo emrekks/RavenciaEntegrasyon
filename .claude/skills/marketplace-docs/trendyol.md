@@ -435,7 +435,9 @@ purpose (`TurkeyTime.cs`).
 - The one rule (`MicroExportRule`, owner 27 Nov 2026, C-11.9) for invoice, list label, row flag, filters and card:
   Trendyol only (others Domestic); top-level `micro`/`3pByTrendyol` decide; nested or duplicate flag keys, a missing or
   non-boolean `micro`, both true, a TR storefront on an export flag, a micro-export storefront or an undocumented
-  indicator on `micro: false` give Unknown, and the invoice then stops with `INVOICE_MICRO_EXPORT_UNKNOWN`.
+  top-level indicator on `micro: false` give Unknown (storefront codes any case; a `\u0000` or lone-surrogate escape
+  makes the snapshot unreadable), and the invoice then stops with `INVOICE_MICRO_EXPORT_UNKNOWN`. In PostgreSQL each
+  snapshot is decoded once (`json` + `json_to_record`, one `regexp_count`), ~1.6x the old regex on 50k orders.
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),
