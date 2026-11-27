@@ -30,6 +30,10 @@
 .app-shell.stitch-shell main .qq .qq-table tbody tr:hover td { background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 3%, var(--rv-color-surface))); }
 .app-shell.stitch-shell main .qq .qq-table tbody tr:last-child td { border-bottom: 0; }
 .app-shell.stitch-shell main .qq .qq-table td.is-error { color: var(--rv-color-danger); font-weight: 600; }
+/* The Hata number opens its window: it reads as the number (no 36px control box), underlined on hover and focus. */
+.app-shell.stitch-shell main .qq .qq-table .qq-fail-link { min-height: 0; height: auto; padding: 0; color: inherit; background: none; border: 0; border-radius: 3px; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; text-underline-offset: 3px; }
+.app-shell.stitch-shell main .qq .qq-table .qq-fail-link:is(:hover, :focus-visible) { text-decoration: underline; }
+.app-shell.stitch-shell main .qq .qq-table .qq-fail-link:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .qq-usage { display: flex; align-items: center; gap: 10px; min-width: 150px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .qq-usage > span:last-child { color: var(--rv-color-ink); font-size: 12.5px; }
 

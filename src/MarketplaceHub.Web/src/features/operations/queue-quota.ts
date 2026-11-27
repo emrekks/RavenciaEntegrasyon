@@ -94,6 +94,31 @@ export function windowSince(hours: QueueWindow, now = Date.now()) {
   return new Date(minute - Number(hours) * 3_600_000).toISOString()
 }
 
+export type JobTypeFailures = ApiAnswer<'getJobsMetricsFailures'>
+
+/** Rows per page of the Hata window's attempt list. */
+export const failurePageSize = 20
+
+/** GET /jobs/metrics/failures for one job type: the window (hours) of the table, so its total is the clicked number. */
+export function failuresPath(jobType: string, hours: QueueWindow, page: number) {
+  return `/jobs/metrics/failures?jobType=${encodeURIComponent(jobType)}&hours=${hours}&page=${page}&pageSize=${failurePageSize}`
+}
+
+/** What became of a failed attempt's job, from its stored status only: it succeeded later, still fails, or is retried. */
+export function failureOutcome(jobStatus: string): { label: string; tone: 'ok' | 'bad' | 'wait' | 'muted' } {
+  const status = jobStatus.trim().toUpperCase()
+  if (status === 'SUCCEEDED') return { label: 'Sonra Başarılı', tone: 'ok' }
+  if (status === 'DEAD' || status === 'MANUAL_REVIEW') return { label: 'Hâlâ Hatalı', tone: 'bad' }
+  if (status === 'PENDING' || status === 'RETRY_SCHEDULED') return { label: 'Yeniden Denenecek', tone: 'wait' }
+  if (status === 'LEASED') return { label: 'Yeniden Deneniyor', tone: 'wait' }
+  return { label: jobStatusLabel(status), tone: 'muted' }
+}
+
+/** The reason a failure shows: the stored sentence, else its code, else that none was stored. */
+export function failureReason(reason: string | null | undefined, errorCode: string | null | undefined) {
+  return reason?.trim() || errorCode?.trim() || 'Sebep kaydedilmemiş'
+}
+
 /** The tab of the jobs that belong to no marketplace (question sync, reset, retention, invoice provider…). */
 export const generalJobTab = 'GENERAL'
 

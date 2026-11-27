@@ -33,8 +33,9 @@ public sealed class Product
     public ProductStatus Status { get; set; } = ProductStatus.Active;
     public long SourcePolicyVersion { get; set; } = 1;
     public DateTimeOffset? ArchivedAt { get; set; }
-    // The model (ProductModel) this colour card belongs to; null while it is not linked (a model code shared by several
-    // brands, a card without a model code). Kept by ProductModelLinks only: never set by hand, never part of Version.
+    // The model (ProductModel) this colour card belongs to: its brand's model of its code, or a model of its own ("#<card id>")
+    // when it has no code. NOT NULL in the database (KATALOG-14 D5 step B1); null only on a new card until its save gives it
+    // a model (ProductModelLinks.GiveNewCardsModels). Kept by ProductModelLinks only: never set by hand, never part of Version.
     public Guid? FamilyId { get; set; }
     // KATALOG-14 phase D: this colour's own name / description where it really differs from its model's ("Bu renge
     // özel"); null = the colour takes the model's. Only the name and the description may differ per colour: brand,
