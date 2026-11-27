@@ -630,3 +630,16 @@ bütün renklerine uygular; pazaryeri bağları açık konumdakiyle aynı biçim
 sıraya girer, `ModelFieldCopiesPostgreSqlTests`). Yazıcılar "değişti mi" sorusunu kopyaya değil modele sorar (iki konumda).
 Kopya-model farkını ölçen denetimler (`ModelMirror.ReportGapsAsync`, renkler arası KDV uyarısı) yalnız kapalıyken fark aramaz
 (hiçbir okuyucu kopyayı okumadığı için fark yoktur); garanti onarımı yalnız kapalıyken hiçbir şey yazmaz, modele göre sayar. C (sütunları düşürmek) ayrı sahip onayı ister ve geri alınamaz.
+
+**Testleri iki konumda koşmak:** testler varsayılan olarak gönderilen konumda (açık) koşar;
+`MARKETPLACEHUB_TEST_MIRROR_MODEL_FIELDS=false` bütün koşuyu kapalı konumda çalıştırır. Koşunun konumu test çıktısında
+`[model-field-copies] Catalog:MirrorModelFields = … (asked: …)` satırıyla görünür (ayrıca `%TEMP%\marketplacehub-model-field-copies.log`);
+istenen konum tutmazsa fixture hata verir. Ham kopya sütununu denetleyen testler onu yalnız açık konumda denetler
+(`ModelFieldCopiesTestPosition.Cards`/`VariantRows`: açıkken ham satır, kapalıyken modelin değeri). Kopyalardan etkilenen
+sınıflar (B2b incelemesinde iki konumda koşulan küme) şu süzgeçle seçilir; boş bir veritabanına karşı her konum için bir kez:
+
+```bash
+export MARKETPLACEHUB_TEST_CONNECTION="Host=localhost;Port=<port>;Username=postgres;Database=<boş-db>"
+export MARKETPLACEHUB_TEST_MIRROR_MODEL_FIELDS=false   # sonra true
+dotnet test tests/MarketplaceHub.Application.Tests --filter "(FullyQualifiedName~Catalog|FullyQualifiedName~ProductModel|FullyQualifiedName~Family|FullyQualifiedName~ProductTransfer|FullyQualifiedName~Import|FullyQualifiedName~Bulk|FullyQualifiedName~Composer|FullyQualifiedName~Golden|FullyQualifiedName~StaleCardCopy|FullyQualifiedName~EffectiveCatalog|FullyQualifiedName~ModelSingleSource|FullyQualifiedName~ModelFieldCopies|FullyQualifiedName~ModelBrandCode|FullyQualifiedName~Warranty|FullyQualifiedName~ProductJob|FullyQualifiedName~Publication|FullyQualifiedName~StockPrice|FullyQualifiedName~ModelRecord|FullyQualifiedName~ContractTests|FullyQualifiedName~ProductEditor|FullyQualifiedName~Variant|FullyQualifiedName~PanelFactoryReset|FullyQualifiedName~Report|FullyQualifiedName~Product)&PostgreSqlLane!=Load"
+```

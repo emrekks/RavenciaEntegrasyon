@@ -1,7 +1,11 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
+using Xunit.Abstractions;
+using Xunit.Sdk;
 
 namespace MarketplaceHub.Application.Tests;
 
@@ -13,15 +17,24 @@ public static class ModelFieldCopiesTestPosition
 {
     public static bool CopiesWritten => ModelFieldCopies.Written;
 
+    // The cards and variants a test that asserted the stored rows before B2b reads: the raw rows while the copies are
+    // written (the same coverage as before the switch), the model's values (EffectiveCatalog) while they are off.
+    public static IQueryable<Product> Cards(AppDbContext db) => CopiesWritten ? db.Products.AsNoTracking() : EffectiveCatalog.Products(db);
+
+    public static IQueryable<ProductVariant> VariantRows(AppDbContext db) => CopiesWritten ? db.ProductVariants.AsNoTracking() : EffectiveCatalog.Variants(db);
+
     private static int printed;
 
-    // Throws when the run asked for a position and the process holds the other (the fixture calls it at every start).
-    public static void Verify()
+    // Throws when the run asked for a position and the process holds the other (the fixture calls it at every start). The
+    // position line goes to the test output as an xUnit diagnostic message (xunit.runner.json turns them on), to the
+    // console and to %TEMP%\marketplacehub-model-field-copies.log.
+    public static void Verify(IMessageSink? sink = null)
     {
         var asked = bool.TryParse(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_MIRROR_MODEL_FIELDS"), out var value) ? value : (bool?)null;
         if (Interlocked.Exchange(ref printed, 1) == 0)
         {
             var line = $"[model-field-copies] Catalog:MirrorModelFields = {ModelFieldCopies.Written} (asked: {asked?.ToString() ?? "default"})";
+            sink?.OnMessage(new DiagnosticMessage(line));
             Console.WriteLine(line);
             File.AppendAllText(Path.Combine(Path.GetTempPath(), "marketplacehub-model-field-copies.log"), $"{DateTimeOffset.UtcNow:O} {line}{Environment.NewLine}");
         }
