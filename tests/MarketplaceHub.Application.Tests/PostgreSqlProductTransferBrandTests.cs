@@ -60,7 +60,7 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
     }
 
     private static Task<Dictionary<Guid, Product>> CardsAsync(AppDbContext db, Seed seed) =>
-        db.Products.AsNoTracking().Where(x => x.TenantId == seed.TenantId).ToDictionaryAsync(x => x.Id);
+        (ModelFieldCopiesTestPosition.CopiesWritten ? db.Products.AsNoTracking() : EffectiveCatalog.Products(db)).Where(x => x.TenantId == seed.TenantId).ToDictionaryAsync(x => x.Id);
 
     private static Task<Guid> BrandAsync(AppDbContext db, Seed seed, string normalizedName) =>
         db.Brands.AsNoTracking().Where(x => x.TenantId == seed.TenantId && x.NormalizedName == normalizedName).Select(x => x.Id).SingleAsync();
@@ -165,7 +165,7 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         // The other colour's VAT and every other size's desi, applied from the model.
         Assert.Contains(history, x => x.ProductId == seed.A2.Id && x.VariantId == null && x.Field == ProductChangeFields.VatRate && x.Note == ProductTransferService.ModelAppliedNote);
         Assert.All(otherSizes, id => Assert.Contains(history, x => x.VariantId == id && x.Field == ProductChangeFields.Desi && x.NewValue == ThreeDesiShown && x.Note == ProductTransferService.ModelAppliedNote));
-        Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == seed.A1.Id || x.ProductId == seed.A2.Id).ToListAsync(), x => Assert.Equal(3m, x.Desi));
+        Assert.All(await EffectiveCatalog.Variants(db).Where(x => x.ProductId == seed.A1.Id || x.ProductId == seed.A2.Id).ToListAsync(), x => Assert.Equal(3m, x.Desi));
     }
 
     private static readonly string? ThreeDesiShown = ProductFieldChangeRecorder.Display(ProductChangeFields.Desi, 3m);

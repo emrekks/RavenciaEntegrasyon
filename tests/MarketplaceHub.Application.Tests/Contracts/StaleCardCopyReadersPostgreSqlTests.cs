@@ -178,7 +178,8 @@ public sealed class StaleCardCopyReadersPostgreSqlTests(PostgreSqlTenantIsolatio
         await using var db = fixture.CreateContext();
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "VatInclusion" = 'EXCLUDED' WHERE "TenantId" = {seeded.Tenant.Id}""");
         var card = await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[0].Id);
-        Assert.Equal("INCLUDED", card.VatInclusion);
+        // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the seeded copy is empty; the stale copy is the point only while copies are kept.
+        if (ModelFieldCopiesTestPosition.CopiesWritten) Assert.Equal("INCLUDED", card.VatInclusion);
 
         var applied = await new ProductTransferService(db, fixture.TimeProvider).ApplyAsync(seeded.Tenant.Id, Guid.CreateVersion7(),
             new ApplyProductTransferCommand([], [new ProductTransferProductChange(card.Id, card.Version, null, 20m)]), $"stale-vat-{Guid.NewGuid():N}", CancellationToken.None);
@@ -207,7 +208,11 @@ public sealed class StaleCardCopyReadersPostgreSqlTests(PostgreSqlTenantIsolatio
         db.ChangeTracker.Clear();
         var cardIds = seeded.Cards.Select(x => x.Id).ToArray();
         var haki = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && !cardIds.Contains(x.Id));
-        Assert.Equal(((int?)24, (int?)2, (decimal?)10m, "INCLUDED"), (haki.WarrantyMonths, haki.DeliveryDays, haki.VatRate, haki.VatInclusion));
+        // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the new card's copy columns are not written (NULL); every reader reads the model's.
+        if (ModelFieldCopiesTestPosition.CopiesWritten) Assert.Equal(((int?)24, (int?)2, (decimal?)10m, "INCLUDED"), (haki.WarrantyMonths, haki.DeliveryDays, haki.VatRate, haki.VatInclusion));
+        else Assert.Equal(((int?)null, (int?)null, (decimal?)null, (string?)null), (haki.WarrantyMonths, haki.DeliveryDays, haki.VatRate, haki.VatInclusion));
+        var read = await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == haki.Id);
+        Assert.Equal(((int?)24, (int?)2, (decimal?)10m, "INCLUDED"), (read.WarrantyMonths, read.DeliveryDays, read.VatRate, read.VatInclusion));
         var after = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id);
         Assert.Equal(((int?)24, (int?)2, (decimal?)10m, "INCLUDED"), (after.WarrantyMonths, after.DeliveryDays, after.VatRate, after.VatInclusion));
         Assert.Equal(model.Id, haki.FamilyId);
@@ -226,13 +231,14 @@ public sealed class StaleCardCopyReadersPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal(0, await EffectiveCatalog.Products(db).CountAsync(x => x.TenantId == seeded.Tenant.Id && x.WarrantyMonths == null));
         await ProductWarranty.RunPassAsync(db, firstPassAfterStart: true, CancellationToken.None);
         Assert.Equal((int?)24, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id)).WarrantyMonths);
-        Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal((int?)0, x.WarrantyMonths));
+        // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the repair is retired and writes nothing.
+        Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(ModelFieldCopiesTestPosition.CopiesWritten ? 0 : (int?)null, x.WarrantyMonths));
 
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "WarrantyMonths" = NULL WHERE "TenantId" = {seeded.Tenant.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "WarrantyMonths" = 12 WHERE "TenantId" = {seeded.Tenant.Id}""");
         Assert.Equal(3, await EffectiveCatalog.Products(db).CountAsync(x => x.TenantId == seeded.Tenant.Id && x.WarrantyMonths == null));
         await ProductWarranty.RunPassAsync(db, firstPassAfterStart: true, CancellationToken.None);
-        Assert.Equal((int?)0, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id)).WarrantyMonths);
+        Assert.Equal(ModelFieldCopiesTestPosition.CopiesWritten ? 0 : (int?)null, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id)).WarrantyMonths);
     }
 
     // Gap 4 (saved fields): a model the owner saved after every card's last change still counts as saved when the cards'

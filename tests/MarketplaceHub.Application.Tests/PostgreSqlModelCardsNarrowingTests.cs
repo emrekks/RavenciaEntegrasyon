@@ -51,7 +51,7 @@ public sealed class PostgreSqlModelCardsNarrowingTests(PostgreSqlTenantIsolation
     }
 
     private static Task<Dictionary<Guid, Product>> CardsAsync(AppDbContext db, Seed seed) =>
-        db.Products.AsNoTracking().Where(x => x.TenantId == seed.TenantId).ToDictionaryAsync(x => x.Id);
+        (ModelFieldCopiesTestPosition.CopiesWritten ? db.Products.AsNoTracking() : EffectiveCatalog.Products(db)).Where(x => x.TenantId == seed.TenantId).ToDictionaryAsync(x => x.Id);
 
     [PostgreSqlFact]
     public async Task TheProductsFile_WritesTheVatToTheSameColourCards()

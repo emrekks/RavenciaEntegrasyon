@@ -16,8 +16,9 @@ public sealed partial class PostgreSqlTenantIsolationTests
 
     private static async Task<BulkFieldCardState> BulkFieldStateAsync(AppDbContext db, Guid productId)
     {
-        var product = await db.Products.AsNoTracking().SingleAsync(x => x.Id == productId);
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == productId).OrderBy(x => x.SortOrder).ToListAsync();
+        // KATALOG-14 D5 step B2b: the card's columns while the copies are kept, else the values every reader sees.
+        var product = await (ModelFieldCopiesTestPosition.CopiesWritten ? db.Products.AsNoTracking() : EffectiveCatalog.Products(db)).SingleAsync(x => x.Id == productId);
+        var variants = await (ModelFieldCopiesTestPosition.CopiesWritten ? db.ProductVariants.AsNoTracking() : EffectiveCatalog.Variants(db)).Where(x => x.ProductId == productId).OrderBy(x => x.SortOrder).ToListAsync();
         var variantIds = variants.Select(x => x.Id).ToArray();
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => variantIds.Contains(x.VariantId)).OrderBy(x => x.Id).Select(x => x.SafetyStock).ToListAsync();
         return new(product.VatRate, product.VatInclusion, product.WarrantyMonths, product.DeliveryDays, product.Description, product.BrandId, product.CategoryId, product.Status,
@@ -114,7 +115,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         Assert.Equal(0, warranty.UnchangedCount);
         Assert.Equal(4, warranty.VariantCount);
         Assert.Empty(warranty.Failures);
-        Assert.All(new[] { black.Id, red.Id }, id => Assert.Equal(24, db.Products.AsNoTracking().Single(x => x.Id == id).WarrantyMonths));
+        Assert.All(new[] { black.Id, red.Id }, id => Assert.Equal(24, EffectiveCatalog.Products(db).Single(x => x.Id == id).WarrantyMonths));
         var link = await db.MarketplaceProductLinks.AsNoTracking().SingleAsync(x => x.Id == redLink.Id);
         Assert.Equal("LOCAL_CHANGES_PENDING", link.SyncStatus);
         Assert.Contains("product", link.DirtyFieldsJson);
@@ -178,7 +179,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         Assert.Equal(1, desi.Value!.UpdatedCount);
         Assert.Equal(1, desi.Value.VariantCount);
         db.ChangeTracker.Clear();
-        var stored = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == variant.Id);
+        var stored = await EffectiveCatalog.Variants(db).SingleAsync(x => x.Id == variant.Id);
         Assert.Equal(2.5m, stored.Desi);
         Assert.Equal(3, stored.Version);
         var storedCard = await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id);
@@ -228,7 +229,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         Assert.Equal("BULK_PRODUCT_NOT_FOUND", (await Error([card.Id, foreign.Id], "warrantyMonths", "12"))?.Code);
         Assert.Equal("BULK_PRODUCT_LIMIT", (await Error([], "warrantyMonths", "12"))?.Code);
         db.ChangeTracker.Clear();
-        Assert.Equal(6, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).WarrantyMonths);
-        Assert.Equal(6, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == foreign.Id)).WarrantyMonths);
+        Assert.Equal(6, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id)).WarrantyMonths);
+        Assert.Equal(6, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == foreign.Id)).WarrantyMonths);
     }
 }

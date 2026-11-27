@@ -254,6 +254,9 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         AddSeed(db, seed);
+        // KATALOG-14 D5 step B2b: the state before the backfill migration (which reads the cards' copies) is one the copies
+        // were kept in, whatever the run's position.
+        using var copies = ModelFieldCopies.Use(true);
         var a1 = AddCard(db, seed, seed.Ravencia, "MZ056", "Gri", "Kadın Gri Bluz", 0);
         var a2 = AddCard(db, seed, seed.Ravencia, "mz056", "Lacivert", "Kadın Lacivert Bluz", 1);
         var a3 = AddCard(db, seed, seed.Ravencia, "MZ056", "Zümrüt", "Kadın Lacivert Bluz", 2);

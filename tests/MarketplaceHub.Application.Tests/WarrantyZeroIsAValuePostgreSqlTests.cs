@@ -49,7 +49,8 @@ public sealed class WarrantyZeroIsAValuePostgreSqlTests(PostgreSqlTenantIsolatio
     private async Task<int?> WarrantyAsync(Guid productId)
     {
         await using var db = fixture.CreateContext();
-        return (await db.Products.AsNoTracking().SingleAsync(x => x.Id == productId)).WarrantyMonths;
+        // KATALOG-14 D5 step B2b: the card's column while the copies are kept, else the value every reader sees (the model's).
+        return (await (ModelFieldCopiesTestPosition.CopiesWritten ? db.Products.AsNoTracking() : EffectiveCatalog.Products(db)).SingleAsync(x => x.Id == productId)).WarrantyMonths;
     }
 
     [PostgreSqlFact]
@@ -225,6 +226,16 @@ public sealed class WarrantyZeroIsAValuePostgreSqlTests(PostgreSqlTenantIsolatio
         }
         Assert.Equal(((int?)null, (int?)null, (int?)null), (await WarrantyAsync(active.CardId), await WarrantyAsync(archived.CardId), await WarrantyAsync(draft.CardId)));
 
+        // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the repair is retired: the first pass writes
+        // nothing either and only counts by the model. The repair below is the switch-on behaviour.
+        if (!ModelFieldCopiesTestPosition.CopiesWritten)
+        {
+            await using var off = fixture.CreateContext();
+            var none = await ProductWarranty.RunPassAsync(off, firstPassAfterStart: true, CancellationToken.None);
+            Assert.Equal((0, 0), (none.CardsWritten, none.ModelsWritten));
+            Assert.True(none.EmptyCardsNotDraft >= 2, $"{none.EmptyCardsNotDraft} cards");
+            return;
+        }
         // The first pass after a start writes 0; a second first pass (a restart) finds nothing left.
         await using (var db = fixture.CreateContext())
         {
@@ -270,12 +281,14 @@ public sealed class WarrantyZeroIsAValuePostgreSqlTests(PostgreSqlTenantIsolatio
             Assert.True(saved.Succeeded, saved.Error?.Message);
         }
 
-        Assert.Equal(((int?)24, (int?)null, (int?)null), (await WarrantyAsync(siyah.Id), await WarrantyAsync(kirmizi.Id), await WarrantyAsync(mavi.Id)));
+        // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the drafts' emptied warranty is not kept on
+        // their copies (the model keeps 24), so every colour reads 24; with them on, the drafts' copies hold it empty (unread).
+        Assert.Equal(((int?)24, ModelFieldCopiesTestPosition.CopiesWritten ? null : (int?)24, ModelFieldCopiesTestPosition.CopiesWritten ? null : (int?)24), (await WarrantyAsync(siyah.Id), await WarrantyAsync(kirmizi.Id), await WarrantyAsync(mavi.Id)));
         await using var check = fixture.CreateContext();
         var modelId = (await check.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId!.Value;
         Assert.Equal(24, (await check.ProductModels.AsNoTracking().SingleAsync(x => x.Id == modelId)).WarrantyMonths);
         // And the daily pass has nothing to say: no card on sale was left empty.
-        Assert.Equal(0, await check.Products.CountAsync(x => x.TenantId == seed.Tenant.Id && x.WarrantyMonths == null && x.Status != ProductStatus.Draft));
+        Assert.Equal(0, await EffectiveCatalog.Products(check).CountAsync(x => x.TenantId == seed.Tenant.Id && x.WarrantyMonths == null && x.Status != ProductStatus.Draft));
     }
 
 
