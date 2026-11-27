@@ -148,38 +148,50 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
     // Queue phase 2 (Worker:LaneModel=dispatcher): one dispatcher over the work-type lanes (DispatcherLanes) instead of the
     // lanes' own and borrowing loops. Each lease passes the lane's filter, the bulkheads (isolation caps, as with flexible
-    // lanes), the quota hold, the connection fairness and, outside kullanici and acil, the per-store cap.
+    // lanes), the quota hold, the connection fairness, the per-store cap on the capped lanes and, for the status scans, the
+    // deferral behind the store's queued order read.
     private Task StartDispatcher(CancellationToken stoppingToken, out int totalSlots)
     {
         var settings = MarketplaceHub.Infrastructure.Jobs.DispatcherSettings.From(configuration);
         var lanes = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.All(hotPriorityCeiling, settings);
         var connectionCap = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.ConnectionCap(settings, hotPriorityCeiling);
+        var statusDeferral = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.DeferralFor(MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.StatusScans, settings);
         var created = new LaneDispatcher(LaneDispatcher.LanesFrom(lanes, settings), TimeProvider.System,
             async (lane, outsideShare, token) =>
             {
-                var job = await LeaseNextAsync(lane.MaximumPriority, lane.MinimumPriority, token, includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes],
-                    bulkhead: bulkheads.For(lane.Name, hotPriorityCeiling), attemptStart: AttemptStart(lane.Name, outsideShare),
-                    connectionCap: settings.IsCapped(lane.Name) ? connectionCap : null);
+                // A lane with two filters (toplu) tries them in turn.
+                LeasedJob? job = null;
+                foreach (var filter in lane.Filters)
+                {
+                    job = await LeaseNextAsync(filter.MaximumPriority, filter.MinimumPriority, token, includedJobTypes: [.. filter.IncludedJobTypes], excludedJobTypes: [.. filter.ExcludedJobTypes],
+                        bulkhead: bulkheads.For(lane.Definition.Name, hotPriorityCeiling), attemptStart: AttemptStart(lane.Definition.Name, outsideShare),
+                        connectionCap: settings.IsCapped(lane.Definition.Name) ? connectionCap : null,
+                        deferral: MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.DeferralFor(lane.Definition.Name, settings));
+                    if (job is not null) break;
+                }
                 TouchHealthFile();
                 return job;
             },
             async token =>
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var rows = await RunnableJobKindsAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), DateTimeOffset.UtcNow, token);
+                var rows = await QueueHealthService.RunnableJobKindsAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), DateTimeOffset.UtcNow, token,
+                    connectionCap, MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.DeferredRules(settings, hotPriorityCeiling), statusDeferral, bulkheads.For(MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.OrderReads, hotPriorityCeiling));
                 TouchHealthFile();
-                return rows;
+                return [.. rows.Select(row => new LaneDispatcher.CensusRow(row.JobType, row.Priority, row.ConnectionId, row.HeldBy))];
             },
             async (job, lane) =>
             {
                 RecordQueueWait(job, lane);
                 await ExecuteLeasedJobAsync(job, stoppingToken);
             },
-            (what, exception) => logger.LogError(exception, "Dispatcher {What} failed", what),
-            settings.SafetyTick);
+            (what, exception) => DispatcherFailed(what, exception),
+            new LaneDispatcher.Options(settings.SafetyTick, settings.LeaseTimeout, MarketplaceHub.Infrastructure.Jobs.DispatcherSettings.ShortTickLanes, MarketplaceHub.Infrastructure.Jobs.DispatcherSettings.ShortSafetyTick));
         dispatcher = created;
         waitLedger.LanesFor = (jobType, priority) => [MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.LaneFor(jobType, priority, hotPriorityCeiling)];
-        waitLedger.SlotSpells = (laneNames, from, to) => [.. created.NoRoomSpells(laneNames, from, to).Select(spell => new MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.Span(spell.From, spell.To))];
+        // Under the dispatcher every part of a wait that is not the lock group, a quota backoff or a quota hold is the dispatcher's
+        // own (no free slot, the lease line, the store cap, a lane waiting for its blocker): WaitSlotMs, never left without a cause.
+        waitLedger.SlotSpells = (_, from, to) => [new MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.Span(from, to)];
         waitLedger.QuotaHold = quotaAwareLeasing.Enabled
             ? new MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.QuotaHoldShape(quotaAwareLeasing.MaximumHold, Math.Max(JobPriorityPolicy.BulkUserAction, hotPriorityCeiling))
             : null;
@@ -190,9 +202,18 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         return created.RunAsync(stoppingToken);
     }
 
-    // Queue phase 2: the dispatcher's census (QueueHealthService.RunnableJobKindsAsync).
-    internal static Task<IReadOnlyCollection<(string JobType, int Priority)>> RunnableJobKindsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken) =>
-        QueueHealthService.RunnableJobKindsAsync(db, now, cancellationToken);
+    // A dispatcher failure: every one logged as an error, a repeat of the same kind within a minute only counted (the log stays
+    // readable when the database is down and every lane backs off).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> dispatcherFailureLogged = new(StringComparer.Ordinal);
+
+    private void DispatcherFailed(string what, Exception exception)
+    {
+        var kind = what.Split(' ')[0];
+        var now = DateTimeOffset.UtcNow;
+        if (dispatcherFailureLogged.TryGetValue(kind, out var last) && now - last < TimeSpan.FromMinutes(1)) return;
+        dispatcherFailureLogged[kind] = now;
+        logger.LogError(exception, "Dispatcher {What} failed (same kind not logged again for a minute)", what);
+    }
 
     // Queue phase 0: the ledger learns the lanes a job can go to, the pool's full spells (none with legacy lanes: the slot
     // figure stays unknown) and how the quota hold is set up.
@@ -735,7 +756,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null,
-        JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null)
+        JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null, JobDeferral? deferral = null)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
@@ -745,7 +766,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var hold = singleJobId.HasValue ? null : QuotaHoldNow(now);
         var fairness = singleJobId.HasValue ? null : FairnessNow();
         var job = await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes, hold,
-            fairness, singleJobId.HasValue ? null : bulkhead, attemptStart ?? AttemptStart(null, null), singleJobId.HasValue ? null : connectionCap);
+            fairness, singleJobId.HasValue ? null : bulkhead, attemptStart ?? AttemptStart(null, null), singleJobId.HasValue ? null : connectionCap, singleJobId.HasValue ? null : deferral);
         if (job?.ConnectionId is { } connectionId) MarketplaceHub.Infrastructure.Jobs.ConnectionLeaseClock.Shared.Record(connectionId, now);
         // Queue phase 0: while it runs, its connection's other jobs of its lock group wait for it.
         if (job is not null) waitLedger.RunStarted(job.Id, job.ConnectionId, job.LockGroup, DateTimeOffset.UtcNow);
@@ -1322,9 +1343,15 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         {
             var lastContact = DateTimeOffset.FromUnixTimeMilliseconds(Interlocked.Read(ref lastDatabaseContactUnixMilliseconds));
             var age = DateTimeOffset.UtcNow - lastContact;
-            if (age <= healthStaleAfter) continue;
+            // Queue phase 2: the dispatcher turns at least every safety tick; a loop that stopped turning (the scheduler may still
+            // touch the health file) stops the worker the same way.
+            var dispatcherAge = dispatcher is { } running ? DateTimeOffset.UtcNow - running.LastTurnAt : TimeSpan.Zero;
+            if (age <= healthStaleAfter && dispatcherAge <= healthStaleAfter) continue;
 
-            logger.LogCritical("Worker database heartbeat is stale for {AgeSeconds} seconds; stopping so the container can restart", Math.Round(age.TotalSeconds));
+            if (dispatcherAge > healthStaleAfter)
+                logger.LogCritical("The dispatcher has not turned for {AgeSeconds} seconds; stopping so the container can restart", Math.Round(dispatcherAge.TotalSeconds));
+            else
+                logger.LogCritical("Worker database heartbeat is stale for {AgeSeconds} seconds; stopping so the container can restart", Math.Round(age.TotalSeconds));
             // Throwing here would not stop anything: ExecuteAsync awaits Task.WhenAll, which keeps
             // waiting for the other endless loops. Stop the host instead so the container restarts.
             Environment.ExitCode = 1;

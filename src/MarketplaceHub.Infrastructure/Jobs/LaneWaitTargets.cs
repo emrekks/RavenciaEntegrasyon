@@ -22,13 +22,16 @@ namespace MarketplaceHub.Infrastructure.Jobs;
 // opens one for 11 minutes, and a marketplace quota full for 30 minutes opens one per lane it holds.
 // Queue phase 2 (27 Nov 2026), the dispatcher's lanes (DispatcherLanes): the plan's targets where it names the work (a job
 // started from the panel within 5 s, a delivered webhook in the panel within 5 s), the earlier lanes' targets for the same work
-// elsewhere: kullanici 5 s, acil 5 s, siparis-okuma 60 s (the earlier order lanes'; the plan's 3 minutes for a new order without
-// a webhook include the 3-minute poll), durum-taramasi 300 s, iade 300 s, katalog 60 s, arka-plan 600 s, ilk-cekim 120 s.
+// elsewhere: kullanici 5 s, webhook 5 s, yazma 60 s and acil 60 s (the earlier hot lane's), siparis-okuma 60 s (the earlier
+// order lanes'; the plan's 3 minutes for a new order without a webhook include the 3-minute poll), durum-taramasi 300 s, iade
+// 300 s, katalog 60 s, toplu 600 s (bulk work queues on purpose), arka-plan 600 s, ilk-cekim 120 s.
 public static class LaneWaitTargets
 {
     public static TimeSpan DefaultFor(string lane) => TimeSpan.FromSeconds(lane switch
     {
-        DispatcherLanes.User or DispatcherLanes.Urgent => 5,
+        DispatcherLanes.User or DispatcherLanes.Webhooks => 5,
+        DispatcherLanes.Writes or DispatcherLanes.Urgent => 60,
+        DispatcherLanes.Bulk => 600,
         DispatcherLanes.OrderReads or DispatcherLanes.Catalog => 60,
         DispatcherLanes.StatusScans or DispatcherLanes.Returns => 300,
         DispatcherLanes.Background => 600,

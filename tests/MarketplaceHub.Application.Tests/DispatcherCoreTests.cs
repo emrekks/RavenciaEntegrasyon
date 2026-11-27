@@ -1,90 +1,102 @@
+using MarketplaceHub.Infrastructure.Jobs;
 using MarketplaceHub.Worker;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace MarketplaceHub.Application.Tests;
 
-// Queue phase 2 (27 Nov 2026): the dispatcher's decision (DispatcherCore.Decide) and every interleaving of a small dispatcher
-// with a model of the lease query (the source of truth for which job: lock groups and the per-store cap).
+// Queue phase 2 (27 Nov 2026): the dispatcher's lanes, its decision (DispatcherCore.Decide) and every interleaving of a small
+// dispatcher with a model of the lease query and the census (the source of truth for which job: lock groups and the store cap).
 public sealed class DispatcherCoreTests(ITestOutputHelper output)
 {
     private static readonly DateTimeOffset Start = new(2026, 11, 27, 9, 0, 0, TimeSpan.Zero);
 
+    // The default lanes, in lane order: kullanici, webhook, yazma, acil, siparis-okuma, durum-taramasi, iade, toplu, katalog,
+    // arka-plan, ilk-cekim.
     private static DispatcherCore.LaneConfig[] DefaultLanes() =>
     [
-        new("kullanici", 2, 0), new("acil", 1, 0), new("siparis-okuma", 3, 0), new("durum-taramasi", 3, 0),
-        new("iade", 0, 3), new("katalog", 0, 3), new("arka-plan", 0, 2), new("ilk-cekim", 0, 3)
+        new("kullanici", 1, 1), new("webhook", 1, 0), new("yazma", 1, 1), new("acil", 0, 0), new("siparis-okuma", 3, 0), new("durum-taramasi", 2, 0),
+        new("iade", 0, 2), new("toplu", 0, 2, Bulk: true), new("katalog", 0, 2, Bulk: true), new("arka-plan", 0, 2, Bulk: true), new("ilk-cekim", 0, 2, Bulk: true)
     ];
 
     [Fact]
-    public void TheDefaultLanesAddUpToTwentySlotsWithElevenShared()
+    public void TheDefaultLanesAddUpToTwentySlotsWithTwelveShared()
     {
-        var settings = Infrastructure.Jobs.DispatcherSettings.Default;
+        var settings = DispatcherSettings.Default;
         Assert.Equal(DefaultLanes().Select(lane => (lane.Name, lane.Reserved, lane.Share)),
-            Infrastructure.Jobs.DispatcherLanes.Names.Select(lane => (lane, settings.ReservedOf(lane), settings.ShareOf(lane))));
-        var core = new DispatcherCore(DefaultLanes(), Start);
+            DispatcherLanes.Names.Select(lane => (lane, settings.ReservedOf(lane), settings.ShareOf(lane))));
+        var core = new DispatcherCore(DefaultLanes());
         Assert.Equal(20, core.Total);
         Assert.Equal(20, settings.Total);
-        Assert.Equal(11, core.SharedSlots);
+        Assert.Equal(12, core.SharedSlots);
     }
 
-    // Every job type at every priority belongs to exactly one dispatcher lane, the one LaneFor names, and the lease query's
-    // cap rule (JobConnectionCap.Caps) holds exactly the jobs of the capped lanes.
+    // Every job type at every priority belongs to exactly one dispatcher lane, the one LaneFor names, and the lease query's cap
+    // rule (JobConnectionCap.Caps) holds exactly the jobs of the capped lanes. Webhooks, writes and file imports land where the
+    // review asked: their own lanes, never acil.
     [Fact]
     public void EveryJobHasExactlyOneLaneAndTheCapFollowsTheLanes()
     {
-        var lanes = Infrastructure.Jobs.DispatcherLanes.All();
-        var settings = Infrastructure.Jobs.DispatcherSettings.Default;
-        var cap = Infrastructure.Jobs.DispatcherLanes.ConnectionCap(settings);
-        string[] types = [.. MarketplaceJobTypes.ProcessorJobTypes, InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceReconcile, PanelJobTypes.FactoryReset, "UNKNOWN_TYPE"];
+        var lanes = DispatcherLanes.All();
+        var settings = DispatcherSettings.Default;
+        var cap = DispatcherLanes.ConnectionCap(settings);
+        string[] types = [.. MarketplaceJobTypes.ProcessorJobTypes, InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceReconcile, InvoicingJobTypes.InvoiceDocumentFetch,
+            InvoicingJobTypes.MarketplaceDelivery, PanelJobTypes.FactoryReset, "IMPORT_PREVIEW", "IMPORT_APPLY", "UNKNOWN_TYPE"];
         foreach (var type in types)
             for (var priority = -4; priority <= 7; priority++)
             {
-                var taking = lanes.Where(lane => lane.Takes(type, priority)).Select(lane => lane.Name).ToList();
+                var taking = lanes.Where(lane => DispatcherLanes.Takes(lane, type, priority)).Select(lane => lane.Name).ToList();
                 Assert.True(taking.Count == 1, $"{type}:{priority} -> {string.Join(",", taking)}");
-                var name = Infrastructure.Jobs.DispatcherLanes.LaneFor(type, priority);
+                var name = DispatcherLanes.LaneFor(type, priority);
                 Assert.Equal(taking[0], name);
                 Assert.Equal(settings.IsCapped(name), cap.Caps(type, priority));
             }
         Assert.Equal(["katalog", "arka-plan", "ilk-cekim"], settings.CappedLanes);
+        Assert.Equal(DispatcherLanes.Webhooks, DispatcherLanes.LaneFor(MarketplaceJobTypes.WebhookIngest, 0));
+        Assert.Equal(DispatcherLanes.Writes, DispatcherLanes.LaneFor(MarketplaceJobTypes.PriceInventorySync, 1));
+        Assert.Equal(DispatcherLanes.Writes, DispatcherLanes.LaneFor(MarketplaceJobTypes.ProductUpdate, 2));
+        Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor("IMPORT_APPLY", 0));
+        Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor(InvoicingJobTypes.InvoiceSubmit, JobPriorityPolicy.BulkUserAction));
+        Assert.Equal(DispatcherLanes.User, DispatcherLanes.LaneFor(InvoicingJobTypes.InvoiceSubmit, JobPriorityPolicy.UserAction));
     }
 
     // The worker runs the model its settings name and the api shows that model's lanes: a switch changes both files (the
-    // production compose passes no override). This release ships the flexible lanes, named explicitly.
+    // production compose passes no override). This release ships the flexible lanes, named explicitly. The files are copied
+    // next to the test (ShippedSettings), so the test does not depend on where the build puts its output.
     [Fact]
     public void TheWorkerAndTheApiShipTheSameLaneModel()
     {
-        static string? Model(string project)
+        static string? Model(string file)
         {
-            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(TestRepository.Root(), "src", project, "appsettings.json")));
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "ShippedSettings", file)));
             return document.RootElement.GetProperty("Worker").GetProperty("LaneModel").GetString();
         }
-        Assert.Equal("flexible", Model("MarketplaceHub.Worker"));
-        Assert.Equal(Model("MarketplaceHub.Worker"), Model("MarketplaceHub.Api"));
+        Assert.Equal("flexible", Model("worker.appsettings.json"));
+        Assert.Equal(Model("worker.appsettings.json"), Model("api.appsettings.json"));
     }
 
     [Fact]
     public void ALaneUsesItsReservationFirstAndAnotherLaneNeverTakesIt()
     {
         var lanes = DefaultLanes();
-        // Catalogue and background flood the shared slots: eleven jobs of katalog and arka-plan run.
-        var running = new int[8];
-        running[5] = 7;
-        running[6] = 4;
-        var all = Enumerable.Repeat(true, 8).ToArray();
+        // Catalogue and background flood the shared slots: twelve jobs of katalog and arka-plan run.
+        var running = new int[11];
+        running[8] = 8;
+        running[9] = 4;
+        var all = Enumerable.Repeat(true, 11).ToArray();
         // No shared slot is free: only lanes with a free reservation may start, in lane order.
         Assert.Equal(0, DispatcherCore.Decide(lanes, running, all, leaseInFlight: false));
-        var ordersOnly = new bool[8];
-        ordersOnly[2] = true;
-        Assert.Equal(2, DispatcherCore.Decide(lanes, running, ordersOnly, false));
-        var catalogOnly = new bool[8];
-        catalogOnly[5] = true;
+        var ordersOnly = new bool[11];
+        ordersOnly[4] = true;
+        Assert.Equal(4, DispatcherCore.Decide(lanes, running, ordersOnly, false));
+        var catalogOnly = new bool[11];
+        catalogOnly[8] = true;
         Assert.Equal(-1, DispatcherCore.Decide(lanes, running, catalogOnly, false));
         // The minimum of siparis-okuma (3) is never lent: with its three jobs running it takes a shared slot only when one is free.
-        running[2] = 3;
+        running[4] = 3;
         Assert.Equal(-1, DispatcherCore.Decide(lanes, running, ordersOnly, false));
-        running[6] = 3;
-        Assert.Equal(2, DispatcherCore.Decide(lanes, running, ordersOnly, false));
+        running[9] = 3;
+        Assert.Equal(4, DispatcherCore.Decide(lanes, running, ordersOnly, false));
         // One lease at a time.
         Assert.Equal(-1, DispatcherCore.Decide(lanes, running, all, leaseInFlight: true));
     }
@@ -93,97 +105,127 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
     public void AFreeSharedSlotGoesToALaneBelowItsShareBeforeAMoreUrgentLaneBeyondIt()
     {
         var lanes = DefaultLanes();
-        var running = new int[8];
-        running[1] = 1 + 4; // acil: its 1 reserved and 4 shared
-        running[5] = 3;     // katalog: its share of 3
-        var wants = new bool[8];
-        wants[1] = wants[4] = wants[5] = true;
-        // iade (share 3, none running) is below its share: it goes before acil and katalog, which are beyond theirs.
-        Assert.Equal(4, DispatcherCore.Decide(lanes, running, wants, false));
-        wants[4] = false;
-        // Beyond their own slots both: the lane running fewer jobs beyond them (katalog 0, acil 4) goes first.
-        Assert.Equal(5, DispatcherCore.Decide(lanes, running, wants, false));
+        var running = new int[11];
+        running[1] = 1 + 4; // webhook: its 1 reserved and 4 shared
+        running[8] = 2;     // katalog: its share of 2
+        var wants = new bool[11];
+        wants[1] = wants[6] = wants[8] = true;
+        // iade (share 2, none running) is below its share: it goes before webhook and katalog, which are beyond theirs.
+        Assert.Equal(6, DispatcherCore.Decide(lanes, running, wants, false));
+        wants[6] = false;
+        // Beyond their own slots both: a lane of short work (webhook, 4 beyond) goes before a bulk lane (katalog, 0 beyond).
+        Assert.Equal(1, DispatcherCore.Decide(lanes, running, wants, false));
+        // Two lanes of short work beyond their slots: the one running fewer jobs beyond them (yazma 1, webhook 4) goes first.
+        wants[2] = true;
+        running[2] = 1 + 1 + 1;
+        Assert.Equal(2, DispatcherCore.Decide(lanes, running, wants, false));
+        // Equally far beyond: the earlier lane (webhook).
         running[1] = 1 + 1;
-        running[5] = 3 + 1;
-        // Equally far beyond: the earlier lane (acil).
         Assert.Equal(1, DispatcherCore.Decide(lanes, running, wants, false));
     }
 
     [Fact]
     public void AFailingLeaseBacksItsLaneOffAndOtherLanesGoOn()
     {
-        var core = new DispatcherCore(DefaultLanes(), Start);
-        var (_, _) = core.BeginLease(2);
-        core.LeaseFailed(2, Start);
-        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(2));
+        var core = new DispatcherCore(DefaultLanes());
+        core.BeginLease(4);
+        core.LeaseFailed(4, Start);
+        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(4));
         Assert.Equal(Start + TimeSpan.FromSeconds(1), core.NextRetry(Start));
-        // Lanes 0 and 1 are leased first anyway (lane order); after they found nothing lane 2 still waits for its retry.
-        for (var lane = 0; lane < 8; lane++)
-            if (lane != 2)
+        for (var lane = 0; lane < 11; lane++)
+            if (lane != 4)
             {
                 var (epoch, _) = core.BeginLease(lane);
-                core.LeaseFoundNothing(lane, epoch);
+                core.LeaseFoundNothing(lane, epoch, Start);
             }
         Assert.Equal(-1, core.Next(Start));
-        Assert.Equal(2, core.Next(Start + TimeSpan.FromSeconds(1)));
-        core.BeginLease(2);
-        core.LeaseFailed(2, Start + TimeSpan.FromSeconds(1));
+        Assert.Equal(4, core.Next(Start + TimeSpan.FromSeconds(1)));
+        core.BeginLease(4);
+        core.LeaseFailed(4, Start + TimeSpan.FromSeconds(1));
         Assert.Equal(Start + TimeSpan.FromSeconds(3), core.NextRetry(Start + TimeSpan.FromSeconds(1)));
     }
 
-    [Fact]
-    public void ASignalDuringALeaseIsNotUndoneByItsEmptyAnswer()
+    private static DispatcherCore.LaneCensus[] Census(int lanes, params (int Lane, DispatcherCore.LaneCensus Census)[] rows)
     {
-        var core = new DispatcherCore(DefaultLanes(), Start);
-        var (epoch, _) = core.BeginLease(4);
-        core.Notify(4);
-        core.LeaseFoundNothing(4, epoch);
-        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(4));
-        // A census that started before a signal does not mark the lane idle either.
-        var (again, _) = core.BeginLease(4);
-        core.LeaseFoundNothing(4, again);
-        Assert.Equal(DispatcherCore.LaneHint.Unclassified, core.Hint(4));
-        var epochs = core.Epochs();
-        core.Notify(4);
-        core.ApplyCensus(new bool[8], epochs, safetyTick: false);
-        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(4));
+        var result = Enumerable.Repeat(DispatcherCore.LaneCensus.Empty, lanes).ToArray();
+        foreach (var (lane, census) in rows) result[lane] = census;
+        return result;
     }
 
     [Fact]
-    public void AJobsEndRetriesTheBlockedLanesOnce()
+    public void ASignalDuringALeaseOrCensusIsNotUndoneByItsOlderAnswer()
     {
-        var core = new DispatcherCore(DefaultLanes(), Start);
-        for (var lane = 0; lane < 8; lane++)
+        var core = new DispatcherCore(DefaultLanes());
+        var (epoch, _) = core.BeginLease(6);
+        core.Notify(6);
+        core.LeaseFoundNothing(6, epoch, Start);
+        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(6));
+        var (again, _) = core.BeginLease(6);
+        core.LeaseFoundNothing(6, again, Start);
+        Assert.Equal(DispatcherCore.LaneHint.Unclassified, core.Hint(6));
+        var start = core.CensusStart();
+        core.Notify(6);
+        core.ApplyCensus(Census(11), start, safetyTick: false, Start);
+        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(6));
+    }
+
+    // C1 of the review: a lane held by one store waits for that store's job end; other stores' job ends cost nothing.
+    [Fact]
+    public void ALaneHeldByAStoreWaitsForThatStoresJobEndOnly()
+    {
+        var storeA = Guid.NewGuid();
+        var storeB = Guid.NewGuid();
+        var core = new DispatcherCore(DefaultLanes());
+        for (var lane = 0; lane < 11; lane++)
         {
             var (epoch, _) = core.BeginLease(lane);
-            if (lane == 2) core.Leased(lane, Start);
-            else core.LeaseFoundNothing(lane, epoch);
+            if (lane == 4) core.Leased(lane);
+            else core.LeaseFoundNothing(lane, epoch, Start);
         }
-        // siparis-okuma stays Ready after its lease found a job; its next lease finds nothing.
-        var (orders, _) = core.BeginLease(2);
-        core.LeaseFoundNothing(2, orders);
-        var withRows = new bool[8];
-        withRows[4] = true; // iade has jobs the lease did not take (its lock group is busy)
-        core.ApplyCensus(withRows, core.Epochs(), safetyTick: false);
-        Assert.Equal(DispatcherCore.LaneHint.Blocked, core.Hint(4));
-        Assert.Equal(DispatcherCore.LaneHint.Idle, core.Hint(5));
+        // iade: its only job waits for store A (A's returns lock group busy); katalog: a free job the lease did not take.
+        core.ApplyCensus(Census(11, (6, new DispatcherCore.LaneCensus(false, [storeA])), (8, new DispatcherCore.LaneCensus(true, []))), core.CensusStart(), false, Start);
+        Assert.Equal(DispatcherCore.LaneHint.BlockedOn, core.Hint(6));
+        Assert.Equal(DispatcherCore.LaneHint.Blocked, core.Hint(8));
+        Assert.Equal(DispatcherCore.LaneHint.Idle, core.Hint(9));
+        // A job of store B ends: iade stays held; katalog is retried, but not before a second after its empty lease.
+        core.Ended(4, storeB, Start);
+        Assert.Equal(DispatcherCore.LaneHint.BlockedOn, core.Hint(6));
+        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(8));
         Assert.Equal(-1, core.Next(Start));
-        core.Ended(2, Start);
-        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(4));
-        Assert.Equal(DispatcherCore.LaneHint.Idle, core.Hint(5));
-        Assert.Equal(4, core.Next(Start));
+        Assert.Equal(8, core.Next(Start + DispatcherCore.RetrySpacing));
+        // A store A job ends (any lane): iade tries again.
+        core.BeginLease(4);
+        core.Leased(4);
+        core.Ended(4, storeA, Start);
+        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(6));
+    }
+
+    // A store whose job ended while the census ran is not taken as still holding the lane.
+    [Fact]
+    public void ACensusDoesNotHoldALaneOnAStoreThatEndedDuringIt()
+    {
+        var storeA = Guid.NewGuid();
+        var core = new DispatcherCore(DefaultLanes());
+        core.BeginLease(4);
+        core.Leased(4);
+        var (epoch, _) = core.BeginLease(6);
+        core.LeaseFoundNothing(6, epoch, Start);
+        var start = core.CensusStart();
+        core.Ended(4, storeA, Start + TimeSpan.FromSeconds(2));
+        core.ApplyCensus(Census(11, (6, new DispatcherCore.LaneCensus(false, [storeA]))), start, false, Start + TimeSpan.FromSeconds(2));
+        Assert.Equal(DispatcherCore.LaneHint.Ready, core.Hint(6));
     }
 
     // ---- Every interleaving of a small dispatcher ----
     //
     // Lanes: U (user: 1 reserved, exempt from the cap), O (orders: 1 reserved), C (catalog: share 1), G (background: share 1):
-    // 4 slots, 2 shared. Jobs belong to a lane and one of two stores; a store's jobs of one lane share a lock group; the
-    // per-store cap is 1 outside U. The lease model takes the first queued job of the lane that is neither locked nor capped
-    // (what the lease query does), at the moment the lease starts or ends (both explored); the census sees every queued job
-    // of a lane (also at the start or the end of the query). Events, in any order and between any lease's start and end:
-    // a job arrives with its notification or without one (a lost signal), a running job ends (success or failure) or ends and
-    // goes back to the queue without a signal (a retry), a "freed" notification, a lease that fails, the safety tick, time
-    // passing a backoff. Checked in every reachable state:
+    // 4 slots, 2 shared. Jobs belong to a lane and one of two stores; a store's jobs of one lane share a lock group; the per-store
+    // cap is 1 outside U. The lease model takes the first queued job of the lane that is neither locked nor capped (what the
+    // lease query does), at the moment the lease starts or ends (both explored); the census reports per lane whether a job could
+    // be leased and which stores hold the others (also read at the start or the end of the query). Events, in any order and
+    // between any lease's start and end: a job arrives with its notification or without one (a lost signal), a running job ends
+    // (success or failure) or ends and goes back to the queue without a signal (a retry), a "freed" notification, a lease that
+    // fails, the safety tick, time passing a backoff. Checked in every reachable state:
     //   - never more running than the slots; the shared slots never overused; every lane's reservation free for it;
     //   - the per-store cap never exceeded;
     //   - the dispatcher alone reaches a wait within a bounded number of steps (no busy loop: leases per event bounded);
@@ -191,6 +233,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
     //   - every queued job runs in the end with no signal at all (jobs ending and the safety tick only).
     private const int Cap = 1;
     private static readonly DispatcherCore.LaneConfig[] SmallLanes = [new("U", 1, 0), new("O", 1, 0), new("C", 0, 1), new("G", 0, 1)];
+    private static readonly Dictionary<char, Guid> Stores = new() { ['a'] = new Guid("00000000-0000-0000-0000-00000000000a"), ['b'] = new Guid("00000000-0000-0000-0000-00000000000b") };
     private static bool Exempt(int lane) => lane == 0;
 
     private sealed record Job(int Lane, char Store, int Id);
@@ -207,14 +250,12 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         public int FreedLeft = 1;
         public int TimeSteps;
         public bool SafetyDue;
-        // The lease in flight: lane, epoch, whether the model already took its result (at its start), and that result.
         public int LeaseLane = -1;
         public long LeaseEpoch;
         public bool LeaseTaken;
         public Job? LeaseResult;
-        // The census in flight: epochs at its start, its rows (null: read at its end), safety.
-        public long[]? CensusEpochs;
-        public bool[]? CensusRows;
+        public (long[] Epochs, long EndedSequence)? CensusStarted;
+        public DispatcherCore.LaneCensus[]? CensusRows;
         public bool CensusSafety;
 
         public DateTimeOffset Now => Start + TimeSpan.FromSeconds(20 * TimeSteps);
@@ -235,31 +276,33 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
             LeaseEpoch = LeaseEpoch,
             LeaseTaken = LeaseTaken,
             LeaseResult = LeaseResult,
-            CensusEpochs = CensusEpochs is null ? null : [.. CensusEpochs],
+            CensusStarted = CensusStarted is { } started ? ([.. started.Epochs], started.EndedSequence) : null,
             CensusRows = CensusRows is null ? null : [.. CensusRows],
             CensusSafety = CensusSafety
         };
 
         public string Key()
         {
-            var lanes = string.Join(",", Enumerable.Range(0, SmallLanes.Length).Select(lane => $"{Core.Running(lane)}{Core.Hint(lane).ToString()[0]}{(Core.BackingOff(lane, Now) ? "b" : "")}"));
+            string Stores(IEnumerable<Guid> stores) => string.Concat(stores.Select(store => store == DispatcherCoreTests.Stores['a'] ? "a" : "b").Order(StringComparer.Ordinal));
+            var lanes = string.Join(",", Enumerable.Range(0, SmallLanes.Length).Select(lane => $"{Core.Running(lane)}{Core.Hint(lane)}{Stores(Core.BlockedOnStores(lane))}{(Core.BackingOff(lane, Now) ? "b" : "")}"));
             var queued = string.Join(",", Queued.Select(job => $"{job.Lane}{job.Store}"));
             var running = string.Join(",", Running.Select(job => $"{job.Lane}{job.Store}").Order(StringComparer.Ordinal));
             var lease = LeaseLane < 0 ? "-" : $"{LeaseLane}{(Core.Epoch(LeaseLane) == LeaseEpoch ? "=" : "!")}{(LeaseTaken ? LeaseResult is null ? "n" : $"{LeaseResult.Lane}{LeaseResult.Store}" : "?")}";
-            var census = CensusEpochs is null ? "-" : string.Join("", Enumerable.Range(0, SmallLanes.Length).Select(lane => Core.Epoch(lane) == CensusEpochs[lane] ? "=" : "!"))
-                + (CensusRows is null ? "?" : string.Join("", CensusRows.Select(row => row ? "1" : "0"))) + (CensusSafety ? "s" : "");
+            var census = CensusStarted is not { } started ? "-" : string.Join("", Enumerable.Range(0, SmallLanes.Length).Select(lane => Core.Epoch(lane) == started.Epochs[lane] ? "=" : "!"))
+                + (CensusRows is null ? "?" : string.Join("", CensusRows.Select(row => $"{(row.HasFree ? "f" : "")}{Stores(row.BlockedOn)};"))) + (CensusSafety ? "s" : "");
             return $"{lanes}|{queued}|{running}|{lease}|{census}|{ArrivalsLeft}{RequeuesLeft}{FailuresLeft}{FreedLeft}{(SafetyDue ? "S" : "")}";
         }
     }
+
+    private static bool Locked(State state, Job job) => state.Running.Any(running => running.Store == job.Store && running.Lane == job.Lane);
+    private static bool CappedNow(State state, Job job) => !Exempt(job.Lane) && state.Running.Count(running => running.Store == job.Store && !Exempt(running.Lane)) >= Cap;
 
     // The lease query's answer for the lane now (and the job moves to running, as a committed lease does).
     private static Job? LeaseModel(State state, int lane)
     {
         foreach (var job in state.Queued)
         {
-            if (job.Lane != lane) continue;
-            if (state.Running.Any(running => running.Store == job.Store && running.Lane == job.Lane)) continue;
-            if (!Exempt(lane) && state.Running.Count(running => running.Store == job.Store && !Exempt(running.Lane)) >= Cap) continue;
+            if (job.Lane != lane || Locked(state, job) || CappedNow(state, job)) continue;
             state.Queued.Remove(job);
             state.Running.Add(job);
             return job;
@@ -267,15 +310,19 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         return null;
     }
 
-    private static bool[] CensusModel(State state) => [.. Enumerable.Range(0, SmallLanes.Length).Select(lane => state.Queued.Any(job => job.Lane == lane))];
+    private static DispatcherCore.LaneCensus[] CensusModel(State state) =>
+        [.. Enumerable.Range(0, SmallLanes.Length).Select(lane =>
+        {
+            var jobs = state.Queued.Where(job => job.Lane == lane).ToList();
+            return new DispatcherCore.LaneCensus(jobs.Any(job => !Locked(state, job) && !CappedNow(state, job)),
+                [.. jobs.Where(job => Locked(state, job) || CappedNow(state, job)).Select(job => Stores[job.Store]).Distinct()]);
+        })];
 
     private static IEnumerable<(string Name, State Next)> Successors(State state)
     {
-        // External events.
         if (state.ArrivalsLeft > 0)
             for (var lane = 0; lane < SmallLanes.Length; lane++)
                 foreach (var store in "ab")
-                {
                     foreach (var signalled in new[] { true, false })
                     {
                         var next = state.Copy();
@@ -284,13 +331,11 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
                         if (signalled) next.Core.Notify(lane);
                         yield return ($"arrive({lane}{store}{(signalled ? "" : ",lost")})", next);
                     }
-                }
-        // A running job ends; only jobs the core counts (not one a lease took that has not answered yet).
         foreach (var job in state.Running.Where(job => !(state.LeaseTaken && state.LeaseResult == job)))
         {
             var next = state.Copy();
             next.Running.Remove(job);
-            next.Core.Ended(job.Lane, next.Now);
+            next.Core.Ended(job.Lane, Stores[job.Store], next.Now);
             yield return ($"end({job.Lane}{job.Store})", next);
             if (state.RequeuesLeft > 0)
             {
@@ -298,7 +343,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
                 retry.RequeuesLeft--;
                 retry.Running.Remove(job);
                 retry.Queued.Add(job);
-                retry.Core.Ended(job.Lane, retry.Now);
+                retry.Core.Ended(job.Lane, Stores[job.Store], retry.Now);
                 yield return ($"fail-and-requeue({job.Lane}{job.Store})", retry);
             }
         }
@@ -306,7 +351,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         {
             var next = state.Copy();
             next.FreedLeft--;
-            next.Core.Unblock();
+            next.Core.RetryBlocked(next.Now);
             yield return ("freed", next);
         }
         if (!state.SafetyDue)
@@ -321,7 +366,6 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
             next.TimeSteps++;
             yield return ("time", next);
         }
-        // The dispatcher.
         foreach (var step in DispatcherSteps(state)) yield return step;
     }
 
@@ -331,8 +375,8 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         {
             var next = state.Copy();
             var job = next.LeaseTaken ? next.LeaseResult : LeaseModel(next, next.LeaseLane);
-            if (job is null) next.Core.LeaseFoundNothing(next.LeaseLane, next.LeaseEpoch);
-            else next.Core.Leased(next.LeaseLane, next.Now);
+            if (job is null) next.Core.LeaseFoundNothing(next.LeaseLane, next.LeaseEpoch, next.Now);
+            else next.Core.Leased(next.LeaseLane);
             next.LeaseLane = -1;
             next.LeaseTaken = false;
             next.LeaseResult = null;
@@ -347,12 +391,12 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
             }
             yield break;
         }
-        if (state.CensusEpochs is not null)
+        if (state.CensusStarted is { } started)
         {
             var next = state.Copy();
-            next.Core.ApplyCensus(next.CensusRows ?? CensusModel(next), next.CensusEpochs!, next.CensusSafety);
+            next.Core.ApplyCensus(next.CensusRows ?? CensusModel(next), started, next.CensusSafety, next.Now);
             if (next.CensusSafety) next.SafetyDue = false;
-            next.CensusEpochs = null;
+            next.CensusStarted = null;
             next.CensusRows = null;
             next.CensusSafety = false;
             yield return ("census-end", next);
@@ -360,7 +404,6 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         }
         var (kind, lane) = state.Core.Plan(state.Now, state.SafetyDue, censusAllowed: true);
         if (kind == DispatcherCore.StepKind.Lease)
-        {
             foreach (var atStart in new[] { true, false })
             {
                 var next = state.Copy();
@@ -373,36 +416,30 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
                 }
                 yield return ($"lease-start({lane}{(atStart ? ",now" : "")})", next);
             }
-        }
         else if (kind == DispatcherCore.StepKind.Census)
-        {
             foreach (var atStart in new[] { true, false })
             {
                 var next = state.Copy();
-                next.CensusEpochs = next.Core.Epochs();
+                next.CensusStarted = next.Core.CensusStart();
                 next.CensusRows = atStart ? CensusModel(next) : null;
                 next.CensusSafety = state.SafetyDue;
                 yield return ($"census-start{(atStart ? "(now)" : "")}", next);
             }
-        }
     }
 
     private static void CheckInvariants(State state, string where)
     {
         var core = state.Core;
         Assert.True(core.Violation() is null, $"{core.Violation()}: {where}");
-        Assert.True(core.RunningTotal <= core.Total, where);
         var reservedIdle = Enumerable.Range(0, SmallLanes.Length).Sum(lane => Math.Max(0, SmallLanes[lane].Reserved - core.Running(lane)));
         Assert.True(core.Total - core.RunningTotal >= reservedIdle, $"a reservation was lent: {where}");
         foreach (var store in "ab")
             Assert.True(state.Running.Count(job => job.Store == store && !Exempt(job.Lane)) <= Cap, $"store {store} over the cap: {where}");
-        // The core counts what the model runs (a lease that took a job but has not answered is not counted yet).
         for (var lane = 0; lane < SmallLanes.Length; lane++)
         {
             var modelled = state.Running.Count(job => job.Lane == lane) - (state.LeaseTaken && state.LeaseResult?.Lane == lane ? 1 : 0);
             Assert.True(modelled == core.Running(lane), $"lane {lane}: core counts {core.Running(lane)}, model runs {modelled}: {where}");
         }
-        // The decision picks a lane of the lowest tier among those that may lease.
         if (state.LeaseLane < 0 && core.Next(state.Now) is var chosen and >= 0)
         {
             int Tier(int lane) => core.Running(lane) < SmallLanes[lane].Reserved ? 0 : core.Running(lane) - SmallLanes[lane].Reserved < SmallLanes[lane].Share ? 1 : 2;
@@ -412,8 +449,6 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         }
     }
 
-    // The dispatcher alone (no other event) reaches a wait: each of its steps either leases, reads the census or waits, and a
-    // bounded number of them may follow each other.
     private static void CheckNoBusyLoop(State state, string where)
     {
         var probe = state.Copy();
@@ -427,7 +462,6 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         }
     }
 
-    // With no signal at all, the queue drains: jobs end, the safety tick reads the census, backoffs pass.
     private static void CheckEveryJobRuns(State state, string where)
     {
         var probe = state.Copy();
@@ -435,7 +469,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         probe.FreedLeft = 0;
         probe.RequeuesLeft = 0;
         probe.FailuresLeft = 0;
-        for (var round = 0; round < 200; round++)
+        for (var round = 0; round < 300; round++)
         {
             var step = DispatcherSteps(probe).FirstOrDefault();
             if (step.Next is not null)
@@ -447,7 +481,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
             {
                 var job = probe.Running[0];
                 probe.Running.RemoveAt(0);
-                probe.Core.Ended(job.Lane, probe.Now);
+                probe.Core.Ended(job.Lane, Stores[job.Store], probe.Now);
                 continue;
             }
             if (probe.Queued.Count == 0) return;
@@ -460,7 +494,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
     [Fact]
     public void EveryInterleavingKeepsTheSlotsTheReservationsAndTheCapAndRunsEveryJob()
     {
-        var start = new State { Core = new DispatcherCore(SmallLanes, Start) };
+        var start = new State { Core = new DispatcherCore(SmallLanes) };
         var seen = new HashSet<string> { start.Key() };
         var queue = new Queue<(State State, string Path)>();
         queue.Enqueue((start, ""));
