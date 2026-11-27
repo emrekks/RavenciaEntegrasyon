@@ -60,6 +60,21 @@ internal sealed class JobRunContext
     public string? ReadReturnFailReason;
     // ISLEYICI-9 stage 3a: the records this run read (Çekilen Kayıtlar), flushed to the job by the processor.
     public readonly MarketplaceHub.Application.JobReadRecorder ReadRecorder = new();
+    // The bell's new-order notifications (NewOrderNoticePolicy): whether this run raises them (off outside a job run, for
+    // the activation's first import and for full reads), its own id, and the orders it created by store. NewOrderNotice
+    // writes them once at the end of the run.
+    public bool NewOrderNotices;
+    public Guid NewOrderNoticeRunId = Guid.CreateVersion7();
+    public readonly Dictionary<Guid, HashSet<Guid>> NewOrderIdsByConnection = [];
+    // Whether each store's order read had completed once before this run noted its first order (stored cursor state).
+    public readonly Dictionary<Guid, bool> NewOrderNoticeCaughtUp = [];
+
+    public void NoteNewOrder(Guid connectionId, Guid orderId)
+    {
+        if (!NewOrderNotices) return;
+        if (!NewOrderIdsByConnection.TryGetValue(connectionId, out var ids)) NewOrderIdsByConnection[connectionId] = ids = [];
+        ids.Add(orderId);
+    }
 
     // ISLEYICI-9 stage 3a: the run's request and record counts, kept here so a service working for the run (order,
     // return or catalog ingestion) counts into the same run as the processor.

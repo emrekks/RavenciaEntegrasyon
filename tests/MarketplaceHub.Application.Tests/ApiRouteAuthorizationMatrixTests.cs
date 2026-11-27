@@ -236,6 +236,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/price-stock-monitor/emergency-stop Elevated",
         "GET    /api/v1/notifications/ SignedIn",
         "POST   /api/v1/notifications/ Working",
+        "GET    /api/v1/notifications/new-orders SignedIn",
         "POST   /api/v1/notifications/dismiss Working",
         "POST   /api/v1/notifications/read Working",
         "GET    /api/v1/notifications/summary SignedIn",

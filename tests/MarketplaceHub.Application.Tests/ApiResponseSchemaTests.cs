@@ -192,6 +192,7 @@ public sealed partial class ApiResponseSchemaTests(ApiEndToEndFixture fixture) :
 
             await run.ProbeAsync("NotificationEndpoints", "GET", "/api/v1/notifications");
             await run.ProbeAsync("NotificationEndpoints", "GET", "/api/v1/notifications/summary");
+            await run.ProbeAsync("NotificationEndpoints", "GET", "/api/v1/notifications/new-orders");
             await run.ProbeAsync("NotificationEndpoints", "POST", "/api/v1/notifications/read", body: new { ids = new[] { Guid.NewGuid() } }, same: typeof(NotificationsUpdatedView));
 
             await run.ProbeAsync("PriceStockSendLogEndpoints", "GET", "/api/v1/price-stock-send-log");

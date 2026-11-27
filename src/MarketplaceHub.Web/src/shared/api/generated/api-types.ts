@@ -6541,6 +6541,17 @@ export interface ApiOperations {
     errorStatus: 400 | 401 | 429 | 500
     paging: "cursor"
   }
+  getNotificationsNewOrders: {
+    method: "GET"
+    path: "/api/v1/notifications/new-orders"
+    pathParams: Record<string, never>
+    query: Record<string, never>
+    headers: Record<string, never>
+    body: never
+    status: 200
+    response: PanelNotificationView[]
+    errorStatus: 400 | 401 | 429 | 500
+  }
   getNotificationsSummary: {
     method: "GET"
     path: "/api/v1/notifications/summary"

@@ -111,6 +111,18 @@ public sealed class PanelNotificationService(AppDbContext db, TimeProvider timeP
         return Selected(tenantId, userId, selection)?.Where(x => x.DismissedAt == null).ExecuteUpdateAsync(set => set.SetProperty(x => x.DismissedAt, now), cancellationToken) ?? Task.FromResult(0);
     }
 
+    public async Task<IReadOnlyList<PanelNotificationView>> NewOrdersAsync(Guid tenantId, Guid userId, CancellationToken cancellationToken)
+    {
+        // Shared rows only: a browser can never write a "new-orders:" key (PanelNotificationPolicy.IsServerKey).
+        var pattern = $"{CatalogService.EscapeLike(NewOrderNoticePolicy.KeyPrefix)}%";
+        var rows = await Visible(tenantId, userId).AsNoTracking()
+            .Where(x => x.UserId == null && EF.Functions.Like(x.ClientKey, pattern, LikeEscape))
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Take(NewOrderNoticePolicy.ListLimit)
+            .ToListAsync(cancellationToken);
+        return rows.Select(View).ToList();
+    }
+
     private IQueryable<PanelNotification> Visible(Guid tenantId, Guid userId)
     {
         var oldest = timeProvider.GetUtcNow().ToUniversalTime() - PanelNotificationPolicy.Retention;

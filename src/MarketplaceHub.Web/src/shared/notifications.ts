@@ -375,11 +375,16 @@ export function readNotificationHistory(): AppNotification[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
+    // One entry per id: two tabs that merged at the same moment (localStorage is not atomic) may both have written one;
+    // the first (newest) is kept.
+    const ids = new Set<string>()
     const entries = parsed.flatMap(item => {
       if (!item || typeof item !== 'object') return []
       const value = item as Record<string, unknown>
       if (typeof value.id !== 'string' || typeof value.message !== 'string' || typeof value.createdAt !== 'string'
         || (value.kind !== 'success' && value.kind !== 'error' && value.kind !== 'info' && value.kind !== 'warning')) return []
+      if (ids.has(value.id)) return []
+      ids.add(value.id)
       const title = text(value.title, 80)
       const kind = normalizeNotificationKind(value.message, value.kind as AppNotification['kind'])
       // History saved before the recording policy existed may hold routine messages; drop them on read. A notification
@@ -625,6 +630,118 @@ function attentionSignature(notification: AppNotification) {
   return JSON.stringify([notification.title, notification.message, notification.href,
     (notification.details ?? []).map(detail => [detail.label, detail.value]),
     subjectsOf(notification).map(subject => [subject.label, subject.href ?? ''])])
+}
+
+// "Yeni Sipariş" (owner, 27 Nov 2026): the server records one shared notification per store for each order read that
+// stored new orders (NewOrderNoticePolicy, GET /notifications/new-orders, newest 20 of the week). Each browser pulls them
+// into its bell by their server key: added once (also orders that arrived while no tab was open), never twice across
+// tabs, devices or reloads, read where the server already has them read, and not raised again once cleared: here (the
+// seen list) or in any bell of the tenant (the server row's dismissedAt, which also holds after a sign-out wiped the seen
+// list, and on a new device). Marking one read goes to the server like any bell entry (the sink sends its key), so every
+// device sees it read.
+export type NewOrderNoticeRow = {
+  clientKey: string
+  title: string
+  message: string
+  href?: string | null
+  actionLabel?: string | null
+  platformCode?: string | null
+  storeName?: string | null
+  payload?: string | null
+  createdAt: string
+  updatedAt: string
+  readAt?: string | null
+  dismissedAt?: string | null
+}
+
+export const newOrderNoticePrefix = 'new-orders:'
+const newOrderSeenStorageKey = 'ravencia.new-order-notices'
+
+function readNewOrderSeen(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(scopedStorageKey(newOrderSeenStorageKey)) ?? '{}') as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  } catch {
+    return {}
+  }
+}
+
+function writeNewOrderSeen(seen: Record<string, string>) {
+  try { localStorage.setItem(scopedStorageKey(newOrderSeenStorageKey), JSON.stringify(seen)) } catch { /* a full store only means a cleared notice may come back */ }
+}
+
+function newOrderCard(payload: string | null | undefined): Record<string, unknown> {
+  if (!payload) return {}
+  try {
+    const value = JSON.parse(payload) as unknown
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
+
+function newOrderNotification(row: NewOrderNoticeRow, previous?: AppNotification): AppNotification {
+  const card = newOrderCard(row.payload)
+  const href = typeof row.href === 'string' && row.href.startsWith('/') && !row.href.startsWith('//') ? row.href.slice(0, 300) : '/orders?status=NEW'
+  // Read on the server (another device) is read here; a notice that grew since this browser read it is new again.
+  const read = row.readAt ? true : previous ? previous.read && previous.message === row.message : false
+  return {
+    id: row.clientKey.slice(0, 120),
+    message: row.message,
+    kind: 'info',
+    createdAt: row.createdAt,
+    read,
+    href,
+    actionLabel: text(row.actionLabel, 80) ?? 'Siparişlere Git',
+    title: text(row.title, 80) ?? 'Yeni Sipariş',
+    operation: 'Sipariş okuma',
+    platformCode: text(row.platformCode, 40)?.toUpperCase(),
+    connectionId: text(card.connectionId, 80),
+    storeName: text(row.storeName, 120),
+    subject: readSubject(card.subject),
+    items: readSubjects(card.items),
+    groupKey: row.clientKey.slice(0, 200),
+    recorded: true,
+    source: 'Otomatik'
+  }
+}
+
+const newOrderSignature = (notification: AppNotification) => JSON.stringify([notification.message, notification.href, notification.read, notification.storeName, subjectsOf(notification).map(subject => subject.label)])
+
+/** Brings the server's new-order notifications into the history; returns whether the history changed. */
+export function syncNewOrderNotices(rows: NewOrderNoticeRow[]) {
+  const history = readNotificationHistory()
+  const seen = readNewOrderSeen()
+  const nextSeen: Record<string, string> = {}
+  let next = history
+  let changed = false
+  const listed = rows.filter(row => typeof row.clientKey === 'string' && row.clientKey.startsWith(newOrderNoticePrefix) && typeof row.message === 'string' && typeof row.createdAt === 'string')
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+  for (const row of listed) {
+    nextSeen[row.clientKey] = row.updatedAt
+    const index = next.findIndex(notification => notification.id === row.clientKey)
+    if (index >= 0) {
+      const updated = newOrderNotification(row, next[index])
+      if (newOrderSignature(updated) !== newOrderSignature(next[index])) {
+        next = next.map((notification, position) => position === index ? { ...updated, createdAt: notification.createdAt } : notification)
+        changed = true
+      }
+    } else if (!(row.clientKey in seen) && !row.dismissedAt) {
+      // New to this browser: placed by when it was raised among the entries (newest first).
+      const notification = newOrderNotification(row)
+      const created = Date.parse(notification.createdAt)
+      const position = next.findIndex(existing => Date.parse(existing.createdAt) < created)
+      next = position < 0 ? [...next, notification] : [...next.slice(0, position), notification, ...next.slice(position)]
+      changed = true
+    }
+    // Seen and no longer in the history: the person cleared it; it is not raised again.
+  }
+  if (JSON.stringify(seen) !== JSON.stringify(nextSeen)) writeNewOrderSeen(nextSeen)
+  if (!changed) return false
+  if (!writeHistory(next.slice(0, historyLimit))) return false
+  window.dispatchEvent(new CustomEvent(notificationChangeEvent))
+  return true
 }
 
 /** Brings the history in line with the server's open notices; returns whether the history changed. */

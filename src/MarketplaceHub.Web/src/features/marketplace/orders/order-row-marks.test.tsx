@@ -5,7 +5,9 @@ import { BuyerTypeTag, buyerTypeLabel, OrderRowMarkIcons, unreadableLinesLabel, 
 afterEach(cleanup)
 
 const none: OrderRowMarks = { microExport: false, microExportCountryCode: null, deliveryPoint: false, deliveryPointType: null, fastDeliveryType: null }
-const tips = (host: HTMLElement) => Array.from(host.querySelectorAll('.rr-omark')).map(mark => [mark.getAttribute('data-tip'), mark.getAttribute('aria-label')])
+// A mark's tip: its data-tip, or (the micro-export and Belirsiz marks) the text of the card it describes itself by.
+const tipText = (mark: Element) => mark.getAttribute('data-tip') ?? document.getElementById(mark.getAttribute('aria-describedby') ?? '')?.textContent ?? null
+const tips = (host: HTMLElement) => Array.from(host.querySelectorAll('.rr-omark')).map(mark => [tipText(mark), mark.getAttribute('aria-label')])
 
 describe('order row marks', () => {
   it('shows the flag, the fast delivery and (last, the orange one) the delivery point icons, each with its explanation', () => {
@@ -25,6 +27,12 @@ describe('order row marks', () => {
     const { host } = render(<OrderRowMarkIcons marks={{ ...none, microExportUnknownReason: 'Trendyol paketinde mikro ihracat alanı (micro) yok' }} />)
     expect(tips(host)).toEqual([['Belirsiz · Trendyol paketinde mikro ihracat alanı (micro) yok', 'Belirsiz · Trendyol paketinde mikro ihracat alanı (micro) yok']])
     expect(host.querySelector('.rr-omark-unknown .rr-omark-word')?.textContent).toBe('Belirsiz')
+    // Its card is drawn on the page body (no table cell or scroll box can cut it) and opens on focus.
+    const mark = host.querySelector<HTMLButtonElement>('.rr-omark-unknown')!
+    const card = document.getElementById(mark.getAttribute('aria-describedby')!)!
+    expect(host.contains(card)).toBe(false)
+    expect(card.getAttribute('role')).toBe('tooltip')
+    expect(card.className).toContain('rr-omark-tip')
     // A micro-export order never shows it.
     const micro = render(<OrderRowMarkIcons marks={{ ...none, microExport: true, microExportUnknownReason: 'x' }} />)
     expect(micro.host.querySelector('.rr-omark-unknown')).toBeNull()

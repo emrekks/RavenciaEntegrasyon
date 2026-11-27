@@ -21,7 +21,7 @@ vi.mock('@microsoft/signalr', () => {
 
 import { HttpError } from '@microsoft/signalr'
 import { setUnauthorizedHandler } from '../../shared/api/client'
-import { realtimeRetryDelayMs, useOperationsRealtime } from './useOperationsRealtime'
+import { newOrderNoticeDelayMs, realtimeRetryDelayMs, useOperationsRealtime } from './useOperationsRealtime'
 import { realtimeReconnectQueryKeys } from '../realtime-query-keys'
 
 function Probe({ enabled }: { enabled: boolean }) { useOperationsRealtime(enabled); return null }
@@ -54,6 +54,25 @@ describe('operations realtime connection', () => {
     expect(hub.connections[0].start).toHaveBeenCalledTimes(1)
     expect(unauthorized).toHaveBeenCalledTimes(1)
     release()
+  })
+
+  it('looks for the bell’s new-order notice again a moment after an order change', async () => {
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(view(true, client))
+    await flush()
+    const connection = hub.connections[0] as unknown as { on: ReturnType<typeof vi.fn> }
+    const handler = connection.on.mock.calls.find(([name]) => name === 'operationsChanged')![1] as (message: unknown) => void
+    const noticeRefreshes = () => invalidate.mock.calls.filter(([filters]) => (filters?.queryKey as unknown[] | undefined)?.[0] === 'new-order-notices').length
+    handler({ resources: ['orders'], events: [{ eventId: 'o1', resource: 'orders', aggregateType: 'Order', aggregateId: 'o1' }] })
+    await vi.advanceTimersByTimeAsync(300)
+    const atOnce = noticeRefreshes()
+    await vi.advanceTimersByTimeAsync(newOrderNoticeDelayMs)
+    expect(noticeRefreshes()).toBe(atOnce + 1)
+    // A product change does not look for it.
+    handler({ resources: ['products'], events: [{ eventId: 'p1', resource: 'products' }] })
+    await vi.advanceTimersByTimeAsync(newOrderNoticeDelayMs + 6000)
+    expect(noticeRefreshes()).toBe(atOnce + 1)
   })
 
   it('loads the SignalR client after rendering and throttles routine job refreshes', async () => {

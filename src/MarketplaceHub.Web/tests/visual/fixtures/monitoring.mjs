@@ -71,6 +71,17 @@ const notifications = [
   notification('n4', 'INFO', 'ORDER', 'Yeni Siparişler', 'Son bir saatte 4 yeni sipariş geldi.', 240, { readAt: ist('2026-10-20 06:00'), count: 4, href: '/orders' }),
 ]
 
+// The bell's "Yeni Sipariş" notices (GET /notifications/new-orders, NewOrderNoticePolicy): invented stores and numbers.
+const newOrderSubject = number => ({ kind: 'order', id: `o-${number}`, label: number, href: `/orders?search=${number}` })
+const newOrderNotice = (id, connection, platformCode, storeName, message, minutes, href, actionLabel, card) => ({
+  ...notification(id, 'INFO', 'ORDER', 'Yeni Sipariş', message, minutes, { clientKey: `new-orders:${connection}:${id}`, platformCode, storeName, href, actionLabel }),
+  payload: JSON.stringify({ connectionId: connection, ...card }),
+})
+const newOrderNotices = [
+  newOrderNotice('no1', 'c-ty', 'TRENDYOL', 'Ravencia Moda Trendyol', 'Trendyol: 3 yeni paket', 4, '/orders?status=NEW', 'Siparişlere Git', { items: ['10400000011', '10400000012', '10400000013'].map(newOrderSubject) }),
+  newOrderNotice('no2', 'c-pz', 'PAZARAMA', 'Ravencia Moda Pazarama', 'Pazarama: 1 yeni paket, sipariş PZR-200001', 26, '/orders?search=PZR-200001', 'Siparişe Git', { subject: newOrderSubject('PZR-200001') }),
+]
+
 const activity = (id, minutes, kind, type, extra) => ({
   id, occurredAt: minutesBefore(minutes), kind, type, productId: 'p1', productTitle: 'Kadın Kemerli Trençkot', imageUrl: null, variantId: 'v1', sku: 'RVK-TRC-0377-BEJ-38',
   barcode: '8684471203771', modelCode: 'RVK-TRC-0377', optionText: 'Renk: Bej | Beden: 38', source: 'ORDER', note: null, connectionId: 'c-ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Moda Trendyol', ...extra,
@@ -119,6 +130,7 @@ export const monitoring = [
   ['GET /settings/resend-reminder', { count: 0, version: 1 }],
   ['GET /manual-resends', { items: [] }],
   ['GET /orders/facets', orderFacets],
+  ['GET /notifications/new-orders', newOrderNotices],
   ['GET /notifications/summary', { total: notifications.length, unread: notifications.filter(item => !item.readAt).length, errors: 1 }],
   ['GET /notifications', { items: notifications, nextCursor: null, hasMore: false, totalCount: notifications.length, supportedFilters: null }],
   ['GET /product-activity/counts', activityCounts],
