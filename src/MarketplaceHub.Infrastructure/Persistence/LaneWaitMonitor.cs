@@ -31,7 +31,7 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
     public async Task<IReadOnlyList<LaneWait>> SnapshotAsync(Guid? tenantId, TimeSpan window, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var lanes = WorkerLanes.All(hotPriorityCeiling);
+        var lanes = WorkerLaneModel.Lanes(configuration, hotPriorityCeiling);
         var lane = QueueHealthService.LaneCaseSql(lanes, out var laneParameters);
         var parameters = new List<object>
         {
@@ -61,7 +61,7 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
         var oldest = new Dictionary<(Guid, string), double>();
         foreach (var row in waiting)
         {
-            var laneName = WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling);
+            var laneName = WorkerLaneModel.LaneFor(configuration, row.JobType, row.Priority, hotPriorityCeiling);
             if (!LaneWaitTargets.CountsTowardTarget(laneName, row.Priority)) continue;
             var key = (row.TenantId, laneName);
             var seconds = Math.Max(0, (now - row.RunnableSince).TotalSeconds);
@@ -88,7 +88,7 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
         var openIssues = await OpenIssuesAsync(cancellationToken);
         var open = openIssues.Select(issue => (issue.TenantId, issue.DedupeKey)).ToHashSet();
         // A tenant with an open alert but no work any more is healthy: its lanes are looked at too.
-        var lanes = WorkerLanes.All(hotPriorityCeiling).Select(lane => lane.Name).ToArray();
+        var lanes = WorkerLaneModel.Lanes(configuration, hotPriorityCeiling).Select(lane => lane.Name).ToArray();
         var looked = snapshot.ToList();
         foreach (var tenant in openIssues.Select(issue => issue.TenantId).Distinct().Where(tenant => snapshot.All(row => row.TenantId != tenant)))
             looked.AddRange(lanes.Select(lane => new LaneWait(tenant, lane, LaneWaitTargets.For(configuration, lane), 0, null, null)));
@@ -110,6 +110,16 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
                     changed++;
                     break;
             }
+        }
+        // Queue phase 2: an alert of a lane the current lane model does not have (opened before a switch between the earlier
+        // lanes and the dispatcher's) is never looked at again, so it is resolved now.
+        // With the earlier lanes only the dispatcher's lanes' alerts are such (after a rollback); nothing else changes for them.
+        var dispatcherModel = WorkerLaneModel.IsDispatcher(configuration);
+        foreach (var (tenant, key) in openIssues.Where(issue => !lanes.Any(lane => LaneWaitTargets.IssueKey(lane) == issue.DedupeKey)
+            && (dispatcherModel || DispatcherLanes.Names.Any(lane => LaneWaitTargets.IssueKey(lane) == issue.DedupeKey))))
+        {
+            await recorder.ResolveAsync(tenant, key, now, cancellationToken, IssueResolveStamps.ResolvedAt | IssueResolveStamps.LastSeenAt);
+            changed++;
         }
         // Lanes of tenants that dropped out of the snapshot start their count again when they come back.
         alarm.ForgetStale(now);

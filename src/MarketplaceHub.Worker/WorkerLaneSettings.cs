@@ -80,10 +80,16 @@ internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string
 //                                            1779 -> 2675 / 3875 s) and new orders wait no longer without it (their lanes never lend)
 // Flexible is the default (WorkerLaneModel, owner's go 23 Nov 2026); Worker__LaneModel=legacy goes back (worker and api:
 // the api reads it to show borrowed slots).
+// Queue phase 2 (27 Nov 2026): Worker:LaneModel=dispatcher runs one dispatcher over the work-type lanes instead (LaneDispatcher,
+// DispatcherLanes, settings Worker:Dispatcher:*); Flexible is true for it too (the bulkhead classes keep their isolation caps).
 internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> ProtectedLanes, IReadOnlyDictionary<string, int> BorrowLimits)
 {
     public const string Legacy = "legacy";
     public const string FlexibleModel = "flexible";
+    public const string DispatcherModel = "dispatcher";
+
+    public bool Dispatcher { get; init; }
+
     public const string DefaultProtectedLanes = "user,hot,hepsiburada-orders,pazarama-orders,pttavm-orders,hepsiburada-status,order-status";
 
     public static LaneModelSettings From(IConfiguration configuration) => new(
@@ -93,7 +99,10 @@ internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> Pr
         configuration.GetSection("Worker:FlexibleLanes:BorrowLimits").GetChildren()
             .Select(child => (child.Key, Limit: int.TryParse(child.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) ? limit : -1))
             .Where(item => item.Limit >= 0)
-            .ToDictionary(item => item.Key, item => Math.Min(item.Limit, 100)));
+            .ToDictionary(item => item.Key, item => Math.Min(item.Limit, 100)))
+    {
+        Dispatcher = MarketplaceHub.Infrastructure.Jobs.WorkerLaneModel.IsDispatcher(configuration)
+    };
 
     public static bool IsFlexible(IConfiguration? configuration) => MarketplaceHub.Infrastructure.Jobs.WorkerLaneModel.IsFlexible(configuration);
 }

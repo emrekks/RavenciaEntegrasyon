@@ -26,6 +26,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private JobWakeRouter wakeRouter = new([]);
     // The flexible lane pool (null with the legacy lane model).
     private LaneSlotPool? lanePool;
+    // Queue phase 2: the dispatcher (Worker:LaneModel=dispatcher; null with the other lane models).
+    private LaneDispatcher? dispatcher;
     // Asks the due-time wake to read the next due moment again (a scheduler pass enqueued jobs).
     private readonly JobWakeSignal dueRecheck = new();
     private static readonly TimeSpan DueRecheckDebounce = TimeSpan.FromSeconds(1);
@@ -65,6 +67,16 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // independently (FOR UPDATE SKIP LOCKED); jobs that collide on the same connection
         // lock group are deferred without consuming an attempt.
         var loops = new List<Task>();
+        if (laneModel.Dispatcher)
+        {
+            loops.Add(StartDispatcher(stoppingToken, out var dispatcherSlots));
+            await WarnWhenPoolIsTooSmallAsync(dispatcherSlots, stoppingToken);
+            StartQuotaAwareLeasing();
+            LogFairnessAndBulkheads();
+            AddSupportLoops(loops, stoppingToken);
+            await Task.WhenAll(loops);
+            return;
+        }
         var lanes = MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All(hotPriorityCeiling);
         wakeRouter = new JobWakeRouter(lanes);
         var laneSlots = lanes.ToDictionary(lane => lane.Name, lane => LaneSlots(configuration, lane.Name, lane.DefaultSlots));
@@ -110,6 +122,13 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         await WarnWhenPoolIsTooSmallAsync(totalSlots, stoppingToken);
         StartQuotaAwareLeasing();
         LogFairnessAndBulkheads();
+        AddSupportLoops(loops, stoppingToken);
+        await Task.WhenAll(loops);
+    }
+
+    // The loops every lane model runs beside its lease loops (watchdog, reaper, notifications, due-time wake, scheduler, upkeep).
+    private void AddSupportLoops(List<Task> loops, CancellationToken stoppingToken)
+    {
         loops.Add(RunHealthWatchdogAsync(stoppingToken));
         loops.Add(RunLeaseReaperAsync(stoppingToken));
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
@@ -124,8 +143,55 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled && configuration.GetValue("Worker:ProductModelScan:Enabled", true)) loops.Add(RunProductModelScanAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ReturnCardColumns:Enabled", true)) loops.Add(RunReturnCardColumnsRepairAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunProductWarrantyRepairAsync(stoppingToken));
-        await Task.WhenAll(loops);
     }
+
+    // Queue phase 2 (Worker:LaneModel=dispatcher): one dispatcher over the work-type lanes (DispatcherLanes) instead of the
+    // lanes' own and borrowing loops. Each lease passes the lane's filter, the bulkheads (isolation caps, as with flexible
+    // lanes), the quota hold, the connection fairness and, outside kullanici and acil, the per-store cap.
+    private Task StartDispatcher(CancellationToken stoppingToken, out int totalSlots)
+    {
+        var settings = MarketplaceHub.Infrastructure.Jobs.DispatcherSettings.From(configuration);
+        var lanes = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.All(hotPriorityCeiling, settings);
+        var connectionCap = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.ConnectionCap(settings, hotPriorityCeiling);
+        var created = new LaneDispatcher(LaneDispatcher.LanesFrom(lanes, settings), TimeProvider.System,
+            async (lane, outsideShare, token) =>
+            {
+                var job = await LeaseNextAsync(lane.MaximumPriority, lane.MinimumPriority, token, includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes],
+                    bulkhead: bulkheads.For(lane.Name, hotPriorityCeiling), attemptStart: AttemptStart(lane.Name, outsideShare),
+                    connectionCap: settings.IsCapped(lane.Name) ? connectionCap : null);
+                TouchHealthFile();
+                return job;
+            },
+            async token =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var rows = await RunnableJobKindsAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), DateTimeOffset.UtcNow, token);
+                TouchHealthFile();
+                return rows;
+            },
+            async (job, lane) =>
+            {
+                RecordQueueWait(job, lane);
+                await ExecuteLeasedJobAsync(job, stoppingToken);
+            },
+            (what, exception) => logger.LogError(exception, "Dispatcher {What} failed", what),
+            settings.SafetyTick);
+        dispatcher = created;
+        waitLedger.LanesFor = (jobType, priority) => [MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.LaneFor(jobType, priority, hotPriorityCeiling)];
+        waitLedger.SlotSpells = (laneNames, from, to) => [.. created.NoRoomSpells(laneNames, from, to).Select(spell => new MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.Span(spell.From, spell.To))];
+        waitLedger.QuotaHold = quotaAwareLeasing.Enabled
+            ? new MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.QuotaHoldShape(quotaAwareLeasing.MaximumHold, Math.Max(JobPriorityPolicy.BulkUserAction, hotPriorityCeiling))
+            : null;
+        totalSlots = created.Total;
+        logger.LogInformation("Lane model is dispatcher: one dispatcher hands {Total} slots to the lanes {Lanes}; per-store cap {Cap} on {CappedLanes}; safety census every {Tick} s",
+            created.Total, string.Join(", ", lanes.Select(lane => $"{lane.Name} (reserved {settings.ReservedOf(lane.Name)}, share {settings.ShareOf(lane.Name)})")),
+            settings.ConnectionCap == 0 ? "off" : settings.ConnectionCap.ToString(System.Globalization.CultureInfo.InvariantCulture), string.Join(",", settings.CappedLanes), settings.SafetyTick.TotalSeconds);
+        return created.RunAsync(stoppingToken);
+    }
+
+    // Queue phase 2: the dispatcher's census (QueueHealthService.RunnableJobKindsAsync).
+    internal static Task<IReadOnlyCollection<(string JobType, int Priority)>> RunnableJobKindsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken) =>
+        QueueHealthService.RunnableJobKindsAsync(db, now, cancellationToken);
 
     // Queue phase 0: the ledger learns the lanes a job can go to, the pool's full spells (none with legacy lanes: the slot
     // figure stays unknown) and how the quota hold is set up.
@@ -171,6 +237,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         pressure.Released += () =>
         {
             lanePool?.QuotaReleased();
+            dispatcher?.Unblock();
             wakeRouter.WakeAll();
         };
         pressure.PairsTrimmed += dropped => logger.LogWarning("Quota-aware leasing: {Dropped} least recently learned connection + job type pairs dropped (limit reached)", dropped);
@@ -608,7 +675,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var due = await BecameDueAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), since, now, stoppingToken);
-            if (due.Count > 0) wakeRouter.NoteDue(due);
+            if (due.Count > 0 && dispatcher is not null) dispatcher.NoteDue(due);
+            else if (due.Count > 0) wakeRouter.NoteDue(due);
             return now;
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
@@ -662,7 +730,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null,
-        JobAttemptStart? attemptStart = null)
+        JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
@@ -672,7 +740,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var hold = singleJobId.HasValue ? null : QuotaHoldNow(now);
         var fairness = singleJobId.HasValue ? null : FairnessNow();
         var job = await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes, hold,
-            fairness, singleJobId.HasValue ? null : bulkhead, attemptStart ?? AttemptStart(null, null));
+            fairness, singleJobId.HasValue ? null : bulkhead, attemptStart ?? AttemptStart(null, null), singleJobId.HasValue ? null : connectionCap);
         if (job?.ConnectionId is { } connectionId) MarketplaceHub.Infrastructure.Jobs.ConnectionLeaseClock.Shared.Record(connectionId, now);
         // Queue phase 0: while it runs, its connection's other jobs of its lock group wait for it.
         if (job is not null) waitLedger.RunStarted(job.Id, job.ConnectionId, job.LockGroup, DateTimeOffset.UtcNow);
@@ -1201,7 +1269,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 connection.Notification += (_, notification) =>
                 {
                     wakeSignal.Pulse();
-                    wakeRouter.Route(notification.Payload);
+                    if (dispatcher is { } running) running.Route(notification.Payload);
+                    else wakeRouter.Route(notification.Payload);
                 };
                 await using (var listen = new NpgsqlCommand($"LISTEN {IntegrationJobNotifications.Channel}", connection))
                     await listen.ExecuteNonQueryAsync(stoppingToken);
@@ -1209,6 +1278,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 // Jobs queued while the listener was down are picked up right away.
                 wakeSignal.Pulse();
                 wakeRouter.WakeAll();
+                dispatcher?.CensusSoon();
                 while (!stoppingToken.IsCancellationRequested)
                     await connection.WaitAsync(TimeSpan.FromSeconds(30), stoppingToken);
             }

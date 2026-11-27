@@ -25,7 +25,12 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
     {
         var now = timeProvider.GetUtcNow();
         var since = now - window;
-        var lanes = WorkerLanes.All(hotPriorityCeiling);
+        // Queue phase 2: the dispatcher's work-type lanes when the worker runs it (Worker:LaneModel=dispatcher, shipped in the
+        // api's settings with the worker's), else the earlier lanes.
+        var dispatcherModel = WorkerLaneModel.IsDispatcher(configuration);
+        var dispatcherSettings = DispatcherSettings.From(configuration);
+        var lanes = WorkerLaneModel.Lanes(configuration, hotPriorityCeiling);
+        string LaneOf(string jobType, int priority) => WorkerLaneModel.LaneFor(configuration, jobType, priority, hotPriorityCeiling);
         // The lanes are the worker's own (WorkerLanes): a job belongs to the first lane that would lease it.
         var lane = LaneCaseSql(lanes, out var laneParameters);
         var parameters = new List<object>
@@ -83,18 +88,32 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                 .Select(group => new RunningRow(group.Key.JobType, group.Key.Priority, group.Count()))
                 .ToListAsync(cancellationToken)
             : null;
+        // Each lane's queued and running jobs per marketplace (the tenant's connections; a job without one counts under "").
+        var platforms = await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId)
+            .Select(connection => new { connection.Id, connection.PlatformCode }).ToDictionaryAsync(connection => connection.Id, connection => connection.PlatformCode, cancellationToken);
+        var model = dispatcherModel ? WorkerLaneModel.Dispatcher : flexibleLanes ? WorkerLaneModel.Flexible : WorkerLaneModel.Legacy;
         return lanes.Select(definition =>
         {
             var code = LaneCode(definition.Name);
             var attempt = attempts.FirstOrDefault(row => row.Lane == definition.Name);
-            var depth = queue.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).ToArray();
+            var depth = queue.Where(row => LaneOf(row.JobType, row.Priority) == definition.Name).ToArray();
             var wait = waits.FirstOrDefault(row => row.Lane == definition.Name);
             var alertSince = alerts.TryGetValue(definition.Name, out var since) ? since : (DateTimeOffset?)null;
             var status = alertSince is not null ? LaneWaitStatus.Alert : wait?.Breached == true ? LaneWaitStatus.OverTarget : LaneWaitStatus.Ok;
-            return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count), LaneSlots(definition),
+            var slots = dispatcherModel ? dispatcherSettings.SlotsOf(definition.Name) : LaneSlots(definition);
+            var byPlatform = depth.GroupBy(row => row.ConnectionId is { } connection && platforms.TryGetValue(connection, out var platform) ? platform : "", StringComparer.Ordinal)
+                .Select(group => new LanePlatformView(group.Key, group.Where(row => !row.Running).Sum(row => row.Count), group.Where(row => row.Running).Sum(row => row.Count)))
+                .OrderBy(view => PlatformRank(view.PlatformCode)).ThenBy(view => view.PlatformCode, StringComparer.Ordinal).ToList();
+            // Borrowed: the lane's running jobs (every tenant) beyond its own slots; under the dispatcher beyond its reserved
+            // slots and share (outside its share, the same thing job_attempts.Borrowed records).
+            return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count), slots,
                 LaneWaitTargets.For(configuration, definition.Name).TotalSeconds, wait?.RecentP95WaitSeconds, wait?.OldestWaitSeconds, status, alertSince,
-                running is null ? null : Math.Max(0, running.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).Sum(row => row.Count) - LaneSlots(definition)),
-                Causes(attempt));
+                running is null ? null : Math.Max(0, running.Where(row => LaneOf(row.JobType, row.Priority) == definition.Name).Sum(row => row.Count) - slots),
+                Causes(attempt),
+                dispatcherModel ? dispatcherSettings.ReservedOf(definition.Name) : null,
+                dispatcherModel ? dispatcherSettings.ShareOf(definition.Name) : null,
+                byPlatform,
+                model);
         }).ToList();
     }
 
@@ -132,6 +151,31 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             """).ToListAsync(cancellationToken);
 
     internal sealed record RunnableDepthRow(string JobType, int Priority, Guid? ConnectionId, bool Running, int Count);
+
+    // Queue phase 2, the dispatcher's census (LaneDispatcher): the type and priority of every queued job, across every tenant,
+    // that a lease could take by time. A connection in a quota backoff waits for its end, which the due-time wake announces; a
+    // busy lock group, a quota hold or the per-store cap still count (the lease tells those apart, and a job's end retries them).
+    public static async Task<IReadOnlyCollection<(string JobType, int Priority)>> RunnableJobKindsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        now = now.ToUniversalTime();
+        var rows = await db.Database.SqlQuery<JobKindRow>($"""
+            SELECT DISTINCT job."JobType" AS "JobType", job."Priority" AS "Priority"
+            FROM integration.jobs job
+            LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS job_group(job_type, lock_group)
+              ON job_group.job_type = job."JobType"
+            WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+              AND job."AvailableAt" <= {now}
+              AND job."AttemptCount" < job."MaxAttempts"
+              AND NOT EXISTS (
+                  SELECT 1 FROM integration.connection_backoffs backoff
+                  WHERE backoff."ConnectionId" = job."ConnectionId"
+                    AND backoff."LockGroup" = coalesce(job."LockGroup", job_group.lock_group)
+                    AND backoff."Until" > {now})
+            """).ToListAsync(cancellationToken);
+        return [.. rows.Select(row => (row.JobType, row.Priority))];
+    }
+
+    public sealed record JobKindRow(string JobType, int Priority);
 
     // The oldest AvailableAt among queued jobs a slot could take now, across every tenant, for /health/queues. Same
     // rule as RunnableDepthAsync (keep the two in step): a job waiting for its connection's busy lock group or a quota

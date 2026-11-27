@@ -293,9 +293,17 @@ public sealed record JobCountView(string Status, string JobType, int Count);
 // "3 / 2 (+1 ödünç)".
 // Queue phase 0 (27 Nov 2026): WaitCauses, why the lane's jobs waited in the window, from the attempts that recorded it (null
 // while none did): the wait per known cause and what is left without one.
+// Queue phase 2 (27 Nov 2026): Model, the lane model the worker runs (legacy, flexible or dispatcher; the lanes listed are that
+// model's). Under the dispatcher (the work-type lanes KULLANICI, ACIL, SIPARIS_OKUMA, DURUM_TARAMASI, IADE, KATALOG, ARKA_PLAN,
+// ILK_CEKIM): Reserved, the slots only the lane uses (a reservation for KULLANICI and ACIL, a minimum for SIPARIS_OKUMA and
+// DURUM_TARAMASI), and Share, its share of the shared slots (null with the other models); Slots is the two together and
+// Borrowed the lane's running jobs outside them. Platforms: the lane's queued and running jobs per marketplace (the tenant's;
+// PlatformCode "" for jobs without a connection), every model.
 public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running, int Slots = 0,
     double? TargetSeconds = null, double? RecentP95WaitSeconds = null, double? OldestWaitSeconds = null, string WaitStatus = LaneWaitStatus.Ok, DateTimeOffset? AlertSince = null,
-    int? Borrowed = null, LaneWaitCausesView? WaitCauses = null);
+    int? Borrowed = null, LaneWaitCausesView? WaitCauses = null, int? Reserved = null, int? Share = null, IReadOnlyList<LanePlatformView>? Platforms = null, string? Model = null);
+
+public sealed record LanePlatformView(string PlatformCode, int Queued, int Running);
 
 // Seconds summed over Attempts (the lane's first attempts in the window whose causes were recorded: the same attempts its
 // average and p95 wait measure): their whole wait, and the part held by the connection's lock group, a quota backoff, a quota

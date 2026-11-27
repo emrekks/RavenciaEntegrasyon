@@ -20,10 +20,19 @@ namespace MarketplaceHub.Infrastructure.Jobs;
 //                               a lock wait behind the same connection's reference read, not a slot wait.
 // Replayed with the alert rule below, the live week opens no alert; with the old single catalog slot the 17 Nov catalog wave
 // opens one for 11 minutes, and a marketplace quota full for 30 minutes opens one per lane it holds.
+// Queue phase 2 (27 Nov 2026), the dispatcher's lanes (DispatcherLanes): the plan's targets where it names the work (a job
+// started from the panel within 5 s, a delivered webhook in the panel within 5 s), the earlier lanes' targets for the same work
+// elsewhere: kullanici 5 s, acil 5 s, siparis-okuma 60 s (the earlier order lanes'; the plan's 3 minutes for a new order without
+// a webhook include the 3-minute poll), durum-taramasi 300 s, iade 300 s, katalog 60 s, arka-plan 600 s, ilk-cekim 120 s.
 public static class LaneWaitTargets
 {
     public static TimeSpan DefaultFor(string lane) => TimeSpan.FromSeconds(lane switch
     {
+        DispatcherLanes.User or DispatcherLanes.Urgent => 5,
+        DispatcherLanes.OrderReads or DispatcherLanes.Catalog => 60,
+        DispatcherLanes.StatusScans or DispatcherLanes.Returns => 300,
+        DispatcherLanes.Background => 600,
+        DispatcherLanes.InitialSync => 120,
         "user" => 5,
         "hot" or "hepsiburada-orders" or "pazarama-orders" or "pttavm-orders" => 60,
         "order-status" or "hepsiburada-status" or "returns-read" => 300,
@@ -41,7 +50,7 @@ public static class LaneWaitTargets
     }
 
     // Whether a job's wait counts toward its lane's target: in the user lane only the actions a user waits for (UserAction).
-    public static bool CountsTowardTarget(string lane, int priority) => lane != "user" || priority <= Application.JobPriorityPolicy.UserAction;
+    public static bool CountsTowardTarget(string lane, int priority) => lane is not ("user" or DispatcherLanes.User) || priority <= Application.JobPriorityPolicy.UserAction;
 
     // The recent window whose p95 wait is compared with the target (LaneAlerts:WindowMinutes, 1..60, default 5), shared by the
     // worker's alert and the API's lane metrics so both show the same state.
@@ -65,6 +74,7 @@ public static class LaneWaitTargets
         "pttavm-orders" => "PTT AVM Siparişleri",
         "hot" => "Öncelikli İşler",
         "background" => "Arka Plan",
+        _ when DispatcherLanes.IsDispatcherLane(lane) => DispatcherLanes.DisplayName(lane),
         _ => lane
     };
 
