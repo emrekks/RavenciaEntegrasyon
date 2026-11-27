@@ -9,6 +9,9 @@ internal static class ReplayStreams
 {
     public static readonly int[] Seeds = [11, 23, 37, 41, 53];
 
+    // Seeds never used while the lane table was tuned (second methodology review, 28 Nov): the acceptance run on fresh data.
+    public static readonly int[] FreshSeeds = [61, 73, 89, 97, 109];
+
     internal sealed class Builder(int seed)
     {
         private readonly List<ReplayJob> jobs = [];
