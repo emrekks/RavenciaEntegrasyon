@@ -6,7 +6,8 @@ using Microsoft.EntityFrameworkCore;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // The bell's "Yeni Sipariş" notifications (NewOrderNoticePolicy), written once at the end of a job run from the orders the
-// run created (JobRunContext.NoteNewOrder). Only rows that were really stored count, so a save that failed raises nothing.
+// run made actionable (OrderIngestionService.NoteNewlyActionableOrderAsync). Only rows that were really stored, and still
+// actionable when the run ends, count: a save that failed raises nothing.
 // It writes the notification center's row alone (ops.panel_notifications, shared): never an order, invoice or stock row.
 // The caller keeps a failure here away from the run (MarketplaceJobProcessor.RecordNewOrderNoticesAsync); inside an open
 // transaction the write runs under a savepoint so a failed insert does not abort the transaction around it.
@@ -36,27 +37,15 @@ internal static class NewOrderNotice
                 .OrderByDescending(x => x.OrderedAt).ThenBy(x => x.OrderNumber, StringComparer.Ordinal)
                 .ToList();
             if (orders.Count == 0) continue;
-            // A store that had no order before this run: its first read or a read after a reset, not new business. Every order
-            // this run created is in its list, so any other order of the store was there before.
-            var hadOrders = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && !ids.Contains(x.Id), cancellationToken);
-            if (!hadOrders) continue;
             var connection = await db.PlatformConnections.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.Id == connectionId)
                 .Select(x => new { x.PlatformCode, x.DisplayName })
                 .SingleOrDefaultAsync(cancellationToken);
             if (connection is null) continue;
-            var orderIds = orders.Select(x => x.Id).ToArray();
-            // Packages of the new orders; Trendyol's "0" placeholder of an order awaiting payment is not a package yet, but
-            // the order still counts as one.
-            var packageCounts = await db.ShipmentPackages.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.ExternalPackageId != ShipmentPackageSupersession.PlaceholderExternalId)
-                .GroupBy(x => x.OrderId)
-                .Select(group => new { group.Key, Count = group.Count() })
-                .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
-            var packages = orders.Sum(order => Math.Max(1, packageCounts.GetValueOrDefault(order.Id)));
+            // The count is of orders, as the Siparişler › Yeni card counts them (its "Paket" is an order with a package in Yeni).
             var single = orders.Count == 1 ? orders[0] : null;
             var platformCode = connection.PlatformCode.ToUpperInvariant();
-            var message = NewOrderNoticePolicy.Message(AttentionNoticePolicy.PlatformName(platformCode), packages, single?.OrderNumber);
+            var message = NewOrderNoticePolicy.Message(AttentionNoticePolicy.PlatformName(platformCode), orders.Count, single?.OrderNumber);
             var href = NewOrderNoticePolicy.Href(single?.OrderNumber);
             var actionLabel = single is null ? NewOrderNoticePolicy.ActionLabel : NewOrderNoticePolicy.SingleActionLabel;
             var key = NewOrderNoticePolicy.ClientKey(connectionId, run.NewOrderNoticeRunId);

@@ -6,6 +6,9 @@ import { RealtimeInvalidationThrottle, realtimeInvalidationsFor, realtimeReconne
 import { onUnauthorized } from '../../shared/api/client'
 import { queryKeys } from '../../shared/api/query-keys'
 
+/** How long after an order change the bell looks again for its "Yeni Sipariş" notice (written when the read ends). */
+export const newOrderNoticeDelayMs = 1500
+
 // Seconds before the next connection try: 3, 6, 12, 24, then every 60.
 export function realtimeRetryDelayMs(attempt: number) {
   return Math.min(60_000, 3000 * 2 ** Math.max(0, attempt))
@@ -32,12 +35,20 @@ export function useOperationsRealtime(enabled: boolean) {
     const throttle = new RealtimeInvalidationThrottle(queryKey => { void client.invalidateQueries({ queryKey, predicate: refetchable }) })
     // The job a screen has open (İşlem Takibi's detail) follows its own changes at once.
     const isWatchedJob = (jobId: string) => client.getQueryCache().findAll({ queryKey: queryKeys.job(jobId), exact: true, type: 'active' }).length > 0
+    // The bell's "Yeni Sipariş" row is written when the order read ends, after its orders were announced here: an order
+    // change looks for it once more a moment later (the 60 s poll is the backstop).
+    let noticeTimer: number | null = null
+    const refreshNewOrderNoticesSoon = () => {
+      if (noticeTimer !== null) window.clearTimeout(noticeTimer)
+      noticeTimer = window.setTimeout(() => { noticeTimer = null; void client.invalidateQueries({ queryKey: queryKeys.newOrderNotices() }) }, newOrderNoticeDelayMs)
+    }
     const flush = () => {
       flushTimer = null
       const resources = [...pendingResources]
       const events = pendingEvents.splice(0)
       pendingResources.clear()
       for (const invalidation of realtimeInvalidationsFor(resources, events, isWatchedJob)) throttle.request(invalidation)
+      if (resources.some(resource => resource.toLowerCase() === 'orders')) refreshNewOrderNoticesSoon()
     }
     // After the connection comes back, by SignalR's own reconnect or by a new start, anything may have changed meanwhile.
     let hadConnection = false
@@ -99,6 +110,7 @@ export function useOperationsRealtime(enabled: boolean) {
       document.removeEventListener('visibilitychange', reconnectWhenVisible)
       if (retryTimer !== null) window.clearTimeout(retryTimer)
       if (flushTimer !== null) window.clearTimeout(flushTimer)
+      if (noticeTimer !== null) window.clearTimeout(noticeTimer)
       throttle.dispose()
       void connection?.stop()
     }

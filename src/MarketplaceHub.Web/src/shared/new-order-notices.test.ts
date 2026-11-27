@@ -43,6 +43,29 @@ describe('new orders in the bell', () => {
     expect(orders().map(item => item.id)).toEqual([single.clientKey])
   })
 
+  it('does not bring back a notification cleared in any bell, also after a sign-out or on a new device', () => {
+    const cleared = { ...many, dismissedAt: '2026-11-27T09:10:00Z', readAt: '2026-11-27T09:10:00Z' }
+    // A fresh browser (the seen list is empty, as after clearPersonalStorage at sign-out): the cleared one stays away.
+    expect(syncNewOrderNotices([cleared, single])).toBe(true)
+    expect(orders().map(item => item.id)).toEqual([single.clientKey])
+    // Read on the server: shown read.
+    localStorage.clear()
+    syncNewOrderNotices([{ ...single, readAt: '2026-11-27T10:01:00Z' }])
+    expect(orders()[0].read).toBe(true)
+  })
+
+  it('keeps one entry per notification when two tabs wrote it at the same moment', () => {
+    syncNewOrderNotices([many])
+    const key = Object.keys(localStorage).find(name => name.startsWith('ravencia.notification-history') && !name.includes('.center'))!
+    const stored = JSON.parse(localStorage.getItem(key)!) as unknown[]
+    localStorage.setItem(key, JSON.stringify([...stored, ...stored]))
+    expect(orders()).toHaveLength(1)
+    // Not folded into a burst of two ("2×") either: it is the same notification.
+    expect(orders()[0].count).toBeUndefined()
+    expect(syncNewOrderNotices([many])).toBe(false)
+    expect(readNotificationHistory().filter(item => item.id === many.clientKey)).toHaveLength(1)
+  })
+
   it('keeps a notification read here read, and ignores rows that are not new-order notices', () => {
     syncNewOrderNotices([many, { ...single, clientKey: 'attention:x:1' }])
     expect(orders()).toHaveLength(1)

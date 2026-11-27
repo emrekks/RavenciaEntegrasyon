@@ -375,11 +375,16 @@ export function readNotificationHistory(): AppNotification[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
+    // One entry per id: two tabs that merged at the same moment (localStorage is not atomic) may both have written one;
+    // the first (newest) is kept.
+    const ids = new Set<string>()
     const entries = parsed.flatMap(item => {
       if (!item || typeof item !== 'object') return []
       const value = item as Record<string, unknown>
       if (typeof value.id !== 'string' || typeof value.message !== 'string' || typeof value.createdAt !== 'string'
         || (value.kind !== 'success' && value.kind !== 'error' && value.kind !== 'info' && value.kind !== 'warning')) return []
+      if (ids.has(value.id)) return []
+      ids.add(value.id)
       const title = text(value.title, 80)
       const kind = normalizeNotificationKind(value.message, value.kind as AppNotification['kind'])
       // History saved before the recording policy existed may hold routine messages; drop them on read. A notification
@@ -630,8 +635,10 @@ function attentionSignature(notification: AppNotification) {
 // "Yeni Sipariş" (owner, 27 Nov 2026): the server records one shared notification per store for each order read that
 // stored new orders (NewOrderNoticePolicy, GET /notifications/new-orders, newest 20 of the week). Each browser pulls them
 // into its bell by their server key: added once (also orders that arrived while no tab was open), never twice across
-// tabs, devices or reloads, read where the server already has them read, and not raised again once cleared here.
-// Marking one read goes to the server like any bell entry (the sink sends its key), so every device sees it read.
+// tabs, devices or reloads, read where the server already has them read, and not raised again once cleared: here (the
+// seen list) or in any bell of the tenant (the server row's dismissedAt, which also holds after a sign-out wiped the seen
+// list, and on a new device). Marking one read goes to the server like any bell entry (the sink sends its key), so every
+// device sees it read.
 export type NewOrderNoticeRow = {
   clientKey: string
   title: string
@@ -644,6 +651,7 @@ export type NewOrderNoticeRow = {
   createdAt: string
   updatedAt: string
   readAt?: string | null
+  dismissedAt?: string | null
 }
 
 export const newOrderNoticePrefix = 'new-orders:'
@@ -719,7 +727,7 @@ export function syncNewOrderNotices(rows: NewOrderNoticeRow[]) {
         next = next.map((notification, position) => position === index ? { ...updated, createdAt: notification.createdAt } : notification)
         changed = true
       }
-    } else if (!(row.clientKey in seen)) {
+    } else if (!(row.clientKey in seen) && !row.dismissedAt) {
       // New to this browser: placed by when it was raised among the entries (newest first).
       const notification = newOrderNotification(row)
       const created = Date.parse(notification.createdAt)

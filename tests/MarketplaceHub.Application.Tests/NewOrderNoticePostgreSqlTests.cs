@@ -18,8 +18,8 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
     {
         var (tenant, first) = await SeedAsync("PAZARAMA");
         var second = await AddConnectionAsync(tenant.Id, "PAZARAMA", "İkinci Mağaza");
-        await AddOlderOrderAsync(tenant.Id, first.Id);
-        await AddOlderOrderAsync(tenant.Id, second.Id);
+        await CaughtUpStoreAsync(tenant.Id, first.Id);
+        await CaughtUpStoreAsync(tenant.Id, second.Id);
         var now = DateTimeOffset.UtcNow;
 
         await using (var db = fixture.CreateContext())
@@ -57,7 +57,7 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
     public async Task AnOrderReadAgainRaisesNoSecondNotification()
     {
         var (tenant, connection) = await SeedAsync("PAZARAMA");
-        await AddOlderOrderAsync(tenant.Id, connection.Id);
+        await CaughtUpStoreAsync(tenant.Id, connection.Id);
         var now = DateTimeOffset.UtcNow;
         await using (var db = fixture.CreateContext())
         {
@@ -82,12 +82,12 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
     public async Task FirstImportsFullReadsAndOldOrdersRaiseNothing()
     {
         var now = DateTimeOffset.UtcNow;
-        // A store's first read (no order before the run), as after a new connection or a reset.
+        // A store whose order read never completed (a new connection, or the catch-up after a reset).
         var (fresh, freshConnection) = await SeedAsync("PAZARAMA");
         await RunAsync(fresh.Id, freshConnection.Id, false, "{}", Remote("NTC-F-0001", now.AddMinutes(-5)));
         // The activation's first import, and a read asked to read in full.
         var (boot, bootConnection) = await SeedAsync("PAZARAMA");
-        await AddOlderOrderAsync(boot.Id, bootConnection.Id);
+        await CaughtUpStoreAsync(boot.Id, bootConnection.Id);
         await RunAsync(boot.Id, bootConnection.Id, true, "{}", Remote("NTC-F-0002", now.AddMinutes(-5)));
         await RunAsync(boot.Id, bootConnection.Id, false, JsonSerializer.Serialize(new { connectionId = bootConnection.Id, full = true }), Remote("NTC-F-0003", now.AddMinutes(-5)));
         // An order first seen more than a day after it was placed.
@@ -107,8 +107,8 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
     {
         var (tenantA, connectionA) = await SeedAsync("PAZARAMA");
         var (tenantB, connectionB) = await SeedAsync("PAZARAMA");
-        await AddOlderOrderAsync(tenantA.Id, connectionA.Id);
-        await AddOlderOrderAsync(tenantB.Id, connectionB.Id);
+        await CaughtUpStoreAsync(tenantA.Id, connectionA.Id);
+        await CaughtUpStoreAsync(tenantB.Id, connectionB.Id);
         var now = DateTimeOffset.UtcNow;
         await RunAsync(tenantA.Id, connectionA.Id, false, "{}", Remote("NTC-T-0001", now.AddMinutes(-3)));
         await RunAsync(tenantB.Id, connectionB.Id, false, "{}", Remote("NTC-T-0002", now.AddMinutes(-3)));
@@ -137,7 +137,7 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
     public async Task AFailedNotificationWriteNeverFailsTheOrderImport()
     {
         var (tenant, connection) = await SeedAsync("PAZARAMA");
-        await AddOlderOrderAsync(tenant.Id, connection.Id);
+        await CaughtUpStoreAsync(tenant.Id, connection.Id);
         var suffix = connection.Id.ToString("N");
         // The notification center refuses this store's notice (as a full disk or a lock timeout would).
         await using (var db = fixture.CreateContext())
@@ -183,7 +183,7 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
     public async Task AJobRunWritesItsNoticeWhenItEnds()
     {
         var (tenant, connection) = await SeedAsync("PTTAVM");
-        await AddOlderOrderAsync(tenant.Id, connection.Id);
+        await CaughtUpStoreAsync(tenant.Id, connection.Id);
         var order = Remote("PTT-NTC0001-271126", DateTimeOffset.UtcNow.AddMinutes(-4));
         await using (var db = fixture.CreateContext())
         {
@@ -195,6 +195,68 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
         await using var check = fixture.CreateContext();
         var row = await check.PanelNotifications.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
         Assert.Equal(("PttAVM: 1 yeni paket, sipariş PTT-NTC0001-271126", "/orders?search=PTT-NTC0001-271126"), (row.Message, row.Href));
+    }
+
+    // Trendyol's awaiting-payment order is not work yet: it is announced once, when its payment arrives and it turns Yeni;
+    // one cancelled before payment never is, and reading the paid order again announces nothing more.
+    [PostgreSqlFact]
+    public async Task AnAwaitingPaymentOrderIsAnnouncedOnceWhenItsPaymentArrives()
+    {
+        var (tenant, connection) = await SeedAsync("PAZARAMA");
+        await CaughtUpStoreAsync(tenant.Id, connection.Id);
+        var now = DateTimeOffset.UtcNow;
+        await RunAsync(tenant.Id, connection.Id, false, "{}", Remote("NTC-P-0001", now.AddMinutes(-30), status: "Awaiting"), Remote("NTC-P-0002", now.AddMinutes(-29), status: "Awaiting"));
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(["PAYMENT_PENDING", "PAYMENT_PENDING"], await db.Orders.Where(x => x.TenantId == tenant.Id && x.ExternalOrderId.StartsWith("NTC-P-")).Select(x => x.DerivedStatus).ToListAsync());
+        Assert.Equal(0, await NoticeCountAsync(tenant.Id));
+
+        // A later run: the first is paid (Yeni), the second was cancelled before payment.
+        await RunAsync(tenant.Id, connection.Id, false, "{}", Remote("NTC-P-0001", now.AddMinutes(-30), modifiedAt: now.AddMinutes(-5)), Remote("NTC-P-0002", now.AddMinutes(-29), modifiedAt: now.AddMinutes(-5), status: "Cancelled"));
+        await using (var db = fixture.CreateContext())
+        {
+            var row = await db.PanelNotifications.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
+            Assert.Equal("Pazarama: 1 yeni paket, sipariş NTC-P-0001", row.Message);
+        }
+
+        // The paid order read again in another run (overlap window, a status scan): nothing new.
+        await RunAsync(tenant.Id, connection.Id, false, "{}", Remote("NTC-P-0001", now.AddMinutes(-30), modifiedAt: now.AddMinutes(-2)), Remote("NTC-P-0002", now.AddMinutes(-29), modifiedAt: now.AddMinutes(-2), status: "Cancelled"));
+        Assert.Equal(1, await NoticeCountAsync(tenant.Id));
+        Assert.False(NewOrderNoticePolicy.BecameActionable("NEW", "PROCESSING"));
+        Assert.False(NewOrderNoticePolicy.BecameActionable(null, "PAYMENT_PENDING"));
+    }
+
+    // Tam Sıfırlama (or a deleted and re-added connection) removes the orders and the read cursors; the re-import then
+    // runs in slices, each its own run, until the order read completes. None of it is announced, also not the orders of the
+    // last day; the first incremental read after the catch-up announces a really new order. A store's very first order
+    // after its catch-up is announced the same way (no "the store had no orders" rule).
+    [PostgreSqlFact]
+    public async Task TheSlicedReimportAfterAResetAnnouncesNothingAndTheNextReadDoes()
+    {
+        var (tenant, connection) = await SeedAsync("PAZARAMA");
+        await CaughtUpStoreAsync(tenant.Id, connection.Id);
+        await using (var db = fixture.CreateContext())
+        {
+            await db.Orders.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.SyncCursors.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+        }
+        var now = DateTimeOffset.UtcNow;
+        // 30 orders over the last 15 days, the newest five from the last day, read newest first in three slices.
+        var orders = Enumerable.Range(1, 30).Select(n => Remote($"NTC-S-{n:0000}", n <= 5 ? now.AddHours(-n) : now.AddDays(-n / 2.0))).ToList();
+        for (var slice = 0; slice < 3; slice++)
+        {
+            await RunAsync(tenant.Id, connection.Id, false, "{}", [.. orders.Skip(slice * 10).Take(10)]);
+            // The slice is recorded on the cursor; LastSuccessAt moves only when the whole run completes.
+            await SetHotCursorAsync(tenant.Id, connection.Id, completed: false);
+        }
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(30, await db.Orders.CountAsync(x => x.TenantId == tenant.Id));
+        Assert.Equal(0, await NoticeCountAsync(tenant.Id));
+
+        // The read completes; the next incremental read brings a really new order.
+        await SetHotCursorAsync(tenant.Id, connection.Id, completed: true);
+        await RunAsync(tenant.Id, connection.Id, false, "{}", Remote("NTC-S-0100", now.AddMinutes(-1)));
+        await using var check = fixture.CreateContext();
+        Assert.Equal("Pazarama: 1 yeni paket, sipariş NTC-S-0100", (await check.PanelNotifications.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).Message);
     }
 
     private sealed class SingleOrderPort(RemoteOrder order) : IOrderPort
@@ -232,12 +294,37 @@ public sealed class NewOrderNoticePostgreSqlTests(PostgreSqlTenantIsolationFixtu
             "{}");
     }
 
-    private async Task AddOlderOrderAsync(Guid tenantId, Guid connectionId)
+    // A store in normal running: an older order, and an order read that has completed (ORDERS_HOT with LastSuccessAt).
+    private async Task CaughtUpStoreAsync(Guid tenantId, Guid connectionId)
     {
         var then = DateTimeOffset.UtcNow.AddDays(-3);
         await using var db = fixture.CreateContext();
         db.Orders.Add(new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = $"old-{Guid.NewGuid():N}", OrderNumber = "OLD-0001", Currency = "TRY", OrderedAt = then, LastRemoteModifiedAt = then, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = "DELIVERED", CreatedAt = then, UpdatedAt = then, Version = 1 });
         await db.SaveChangesAsync();
+        await SetHotCursorAsync(tenantId, connectionId, completed: true);
+    }
+
+    // The store's order-read cursor: created by a slice (no LastSuccessAt) or by a completed run.
+    private async Task SetHotCursorAsync(Guid tenantId, Guid connectionId, bool completed)
+    {
+        await using var db = fixture.CreateContext();
+        var cursor = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == NewOrderNoticePolicy.CaughtUpCursor);
+        if (cursor is null)
+        {
+            cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = NewOrderNoticePolicy.CaughtUpCursor };
+            db.SyncCursors.Add(cursor);
+        }
+        var now = DateTimeOffset.UtcNow;
+        cursor.LastAttemptAt = now;
+        cursor.LastSliceAt = now;
+        cursor.LastSuccessAt = completed ? now : null;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<int> NoticeCountAsync(Guid tenantId)
+    {
+        await using var db = fixture.CreateContext();
+        return await db.PanelNotifications.CountAsync(x => x.TenantId == tenantId);
     }
 
     private async Task<(Tenant Tenant, PlatformConnection Connection)> SeedAsync(string platformCode)

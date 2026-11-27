@@ -288,7 +288,9 @@ internal sealed partial class OrderIngestionService
             || remote.LastModifiedAt >= order.LastRemoteModifiedAt
             || TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(order.CustomerSnapshotJson);
         if (!orderIsFresh) run.SkippedCount++;
-        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); run.InsertedCount++; run.NoteNewOrder(connectionId, order.Id); }
+        // The stored status before this read, for the bell's "Yeni Sipariş" (NewOrderNoticePolicy.BecameActionable).
+        var statusBefore = order?.DerivedStatus;
+        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); run.InsertedCount++; }
         // An order never changes storefront; the first read that names it is kept for later targeted reads.
         if (order.StoreFrontCode is null && !string.IsNullOrWhiteSpace(remote.StoreFrontCode)) order.StoreFrontCode = remote.StoreFrontCode;
         var isNewOrder = db.Entry(order).State == EntityState.Added;
@@ -807,6 +809,8 @@ internal sealed partial class OrderIngestionService
         }
         else
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
+        if (run.NewOrderNotices && NewOrderNoticePolicy.BecameActionable(isNewOrder ? null : statusBefore, order.DerivedStatus))
+            await NoteNewlyActionableOrderAsync(tenantId, connectionId, order.Id, cancellationToken);
         // The same order read again (overlap window, status scan) rewrites nothing and sends no event (SyncNoOpWrites).
         SyncNoOpWrites.DropUnchangedOrder(db, order, existingLines.Concat(lines.Values), orderPackages);
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);

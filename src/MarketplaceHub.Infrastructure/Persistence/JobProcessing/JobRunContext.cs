@@ -66,6 +66,8 @@ internal sealed class JobRunContext
     public bool NewOrderNotices;
     public Guid NewOrderNoticeRunId = Guid.CreateVersion7();
     public readonly Dictionary<Guid, HashSet<Guid>> NewOrderIdsByConnection = [];
+    // Whether each store's order read had completed once before this run noted its first order (stored cursor state).
+    public readonly Dictionary<Guid, bool> NewOrderNoticeCaughtUp = [];
 
     public void NoteNewOrder(Guid connectionId, Guid orderId)
     {
