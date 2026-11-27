@@ -169,7 +169,7 @@ public static class DispatcherLanes
 //   Worker:Dispatcher:Reserved:<lane>   slots only the lane uses, never lent (0..8)
 //   Worker:Dispatcher:Share:<lane>      the lane's share of the shared slots (0..8): served first on that many shared slots while
 //                                       it has work, lent while idle
-//   Worker:Dispatcher:ConnectionCap     at most this many running jobs of one store in the capped lanes (default 2, 0 = off)
+//   Worker:Dispatcher:ConnectionCap     at most this many running jobs of one store in the capped lanes (default 3, 0 = off)
 //   Worker:Dispatcher:CappedLanes       the lanes the cap counts and holds (comma list; default katalog,arka-plan,ilk-cekim: the
 //                                       bulk reads one store can queue by the dozen). Never kullanici, toplu, webhook or yazma.
 //                                       siparis-okuma, durum-taramasi and iade are not capped by default: a store runs at most
@@ -221,7 +221,7 @@ public sealed record DispatcherSettings(IReadOnlyDictionary<string, int> Reserve
         [DispatcherLanes.InitialSync] = 2
     };
 
-    public const int DefaultConnectionCap = 2;
+    public const int DefaultConnectionCap = 3;
     public static readonly TimeSpan DefaultSafetyTick = TimeSpan.FromSeconds(15);
 
     public static DispatcherSettings Default { get; } = new(DefaultReserved, DefaultShare, DefaultConnectionCap, DefaultSafetyTick, ParseCappedLanes(null));

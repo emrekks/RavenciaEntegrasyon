@@ -51,16 +51,18 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             await seed.SaveChangesAsync();
 
             // Each lease names its job (onlyJobId): other tests' jobs in the shared database are never leased.
-            // Two of the store's background reads, then the cap holds the third; the other store's read still goes.
+            // Three of the store's background reads (the default cap), then the cap holds the fourth; the other store's read still goes.
+            Assert.Equal(3, cap.Cap);
             Assert.NotNull(await Lease(storeReads[0], background, cap));
             Assert.NotNull(await Lease(storeReads[1], background, cap));
-            Assert.Null(await Lease(storeReads[2], background, cap));
+            Assert.NotNull(await Lease(storeReads[2], background, cap));
+            Assert.Null(await Lease(storeReads[3], background, cap));
             Assert.NotNull(await Lease(otherRead, background, cap));
             // Order reads and user work are not capped (and do not count).
             Assert.NotNull(await Lease(orderRead, orders, cap));
             Assert.NotNull(await Lease(userAction, user, cap));
-            // Without the cap (the earlier lane models) the store's third read is leased.
-            Assert.NotNull(await Lease(storeReads[2], background, null));
+            // Without the cap (the earlier lane models) the store's fourth read is leased.
+            Assert.NotNull(await Lease(storeReads[3], background, null));
 
             async Task<LeasedJob?> Lease(Guid jobId, WorkerLane lane, JobConnectionCap? connectionCap)
             {

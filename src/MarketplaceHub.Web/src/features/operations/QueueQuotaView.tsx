@@ -99,7 +99,7 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
 
     <section className="qq-section" aria-labelledby="qq-lanes">
       <h2 id="qq-lanes">Şeritler ve Slot Kullanımı</h2>
-      {dispatcher && <p className="qq-sub">Tek dağıtıcı boşalan slotu sıradaki işe verir. Kullanıcı, Webhook ve Pazaryerine Yazma’nın ayrılmış, Sipariş Okuma ve Durum Taraması’nın asgari slotları başka şeride verilmez; diğer şeritler ortak slotları payları kadar önce alır, paydan artanı önce kısa işler, sonra toplu ve uzun işler kullanır. Bir mağazanın Katalog, Arka Plan ve İlk Çekim işleri birlikte sayılır ve aynı anda en çok 2 slot kullanır; sipariş, durum, iade, webhook, yazma ve kullanıcı işleri bu sınıra girmez.</p>}
+      {dispatcher && <p className="qq-sub">Tek dağıtıcı boşalan slotu sıradaki işe verir. Kullanıcı, Webhook ve Pazaryerine Yazma’nın ayrılmış, Sipariş Okuma ve Durum Taraması’nın asgari slotları başka şeride verilmez; diğer şeritler ortak slotları payları kadar önce alır, paydan artanı önce kısa işler, sonra toplu ve uzun işler kullanır. Bir mağaza Katalog, Arka Plan ve İlk Çekim’de (üçü birlikte sayılır) aynı anda en çok 3 yığın işi çalıştırır; sipariş, durum, iade, webhook, yazma ve kullanıcı işleri bu sınıra girmez.</p>}
       {lanes.isLoading ? <Busy text="Şeritler yükleniyor…" /> : lanes.isError && !lanes.data ? <p role="alert" className="qq-error">Şerit ölçümleri alınamadı.</p> : <>
         {laneTabs.length > 1 && <Tabs className="rv-view-tabs qq-platform-tabs" ariaLabel="Şerit pazaryeri" value={activeLaneTab} onChange={setLaneTab} items={laneTabs.map(tab => ({
           value: tab.value, count: tab.count,
