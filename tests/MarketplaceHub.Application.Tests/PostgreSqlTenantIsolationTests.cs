@@ -2239,6 +2239,10 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
                 ({foregroundKey}, {now.AddMinutes(-5)}, 4), ({foregroundKey}, {now.AddMinutes(-2)}, 8),
                 ({backgroundKey}, {now.AddMinutes(-3)}, 12), ({backgroundKey}, {now.AddHours(-2)}, 18)
                 """);
+            // Queue phase 0: the card reads the buckets the worker saw the connection use (QuotaBucketOwners).
+            await seedDb.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.rate_limit_bucket_connections ("Key", "ConnectionId", "LastSeenAt") VALUES ({foregroundKey}, {connection.Id}, {now}), ({backgroundKey}, {connection.Id}, {now})
+                """);
         }
 
         try
@@ -2247,12 +2251,12 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             var service = new QueueHealthService(db, Options.Create(new MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolOptions()), fixture.TimeProvider);
             var quota = await service.QuotaAsync(tenant.Id, CancellationToken.None);
 
-            var foreground = Assert.Single(quota, row => row.Lane == "FOREGROUND");
-            Assert.Equal(12, foreground.LimitPerMinute);
+            var foreground = Assert.Single(quota, row => row.Bucket == "TRENDYOL:ORDERS_FG");
+            Assert.Equal(12d, foreground.LimitPerMinute);
             Assert.Equal(12, foreground.LastHourRequests);
             Assert.Equal(8, foreground.PeakMinuteRequests);
-            var background = Assert.Single(quota, row => row.Lane == "BACKGROUND");
-            Assert.Equal(18, background.LimitPerMinute);
+            var background = Assert.Single(quota, row => row.Bucket == "TRENDYOL:ORDERS_BG");
+            Assert.Equal(18d, background.LimitPerMinute);
             Assert.Equal(12, background.LastHourRequests);
             // One row per worker lane (Q21), not per priority band.
             Assert.Equal(MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All().Count, (await service.LanesAsync(tenant.Id, TimeSpan.FromHours(1), CancellationToken.None)).Count);
@@ -2261,6 +2265,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         {
             await using var cleanup = fixture.CreateContext();
             await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_usage WHERE \"Key\" IN ({foregroundKey}, {backgroundKey})");
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_bucket_connections WHERE \"ConnectionId\" = {connection.Id}");
             await DeleteInvoiceTestTenantAsync(tenant.Id);
         }
     }

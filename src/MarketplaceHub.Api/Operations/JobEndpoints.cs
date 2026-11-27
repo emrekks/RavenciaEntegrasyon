@@ -61,6 +61,11 @@ public static class JobEndpoints
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.QuotaAsync(tenant.TenantId, http.RequestAborted))
                 : Unauthorized(http)).Produces<IReadOnlyList<QuotaUsageView>>();
+        // Queue phase 0: the last 24 hours' orders, from the marketplace's order time to the panel, per marketplace and source.
+        api.MapGet("/metrics/order-latency", async (HttpContext http, IQueueHealthService service) =>
+            Tenant(http) is { } tenant
+                ? Results.Ok(await service.OrderLatencyAsync(tenant.TenantId, http.RequestAborted))
+                : Unauthorized(http)).Produces<IReadOnlyList<OrderLatencyView>>();
         api.MapGet("/{id:guid}", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? Result(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted))

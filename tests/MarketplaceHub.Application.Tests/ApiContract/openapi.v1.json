@@ -11197,6 +11197,41 @@
         }
       }
     },
+    "/api/v1/jobs/metrics/order-latency": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJobsMetricsOrderLatency",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderLatencyView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/jobs/metrics/quota": {
       "get": {
         "tags": [
@@ -32203,6 +32238,58 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "waitCauses": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LaneWaitCausesView"
+              }
+            ]
+          }
+        }
+      },
+      "LaneWaitCausesView": {
+        "required": [
+          "attempts",
+          "waitSeconds",
+          "lockSeconds",
+          "backoffSeconds",
+          "quotaHoldSeconds",
+          "slotSeconds",
+          "unknownSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waitSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "lockSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "backoffSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "quotaHoldSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "slotSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "unknownSeconds": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -33921,6 +34008,81 @@
             "type": "string"
           },
           "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "OrderLatencyView": {
+        "required": [
+          "platformCode",
+          "source",
+          "orders"
+        ],
+        "type": "object",
+        "properties": {
+          "platformCode": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "p50Seconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "p95Seconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "noticeP50Seconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "noticeP95Seconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "processingP50Seconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "processingP95Seconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "targetSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "status": {
             "type": [
               "null",
               "string"
@@ -40529,11 +40691,12 @@
         "required": [
           "platformCode",
           "storeName",
-          "lane",
-          "limitPerMinute",
+          "bucket",
+          "label",
           "lastHourRequests",
           "peakMinuteRequests",
-          "averagePerMinute"
+          "averagePerMinute",
+          "shared"
         ],
         "type": "object",
         "properties": {
@@ -40543,12 +40706,18 @@
           "storeName": {
             "type": "string"
           },
-          "lane": {
+          "bucket": {
+            "type": "string"
+          },
+          "label": {
             "type": "string"
           },
           "limitPerMinute": {
-            "type": "integer",
-            "format": "int32"
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
           },
           "lastHourRequests": {
             "type": "integer",
@@ -40561,6 +40730,10 @@
           "averagePerMinute": {
             "type": "number",
             "format": "double"
+          },
+          "shared": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

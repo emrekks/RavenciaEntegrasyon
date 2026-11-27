@@ -277,9 +277,15 @@ public sealed record JobCountView(string Status, string JobType, int Count);
 // Worker lanes step 3 (19 Nov 2026): Borrowed, how many jobs the lane runs now beyond its own slots, on idle slots of other
 // lanes (Worker:LaneModel=flexible, the default, read by the api too; null with Worker:LaneModel=legacy). Counted over every tenant, like Slots:
 // "3 / 2 (+1 ödünç)".
+// Queue phase 0 (27 Nov 2026): WaitCauses, why the lane's jobs waited in the window, from the attempts that recorded it (null
+// while none did): the wait per known cause and what is left without one.
 public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running, int Slots = 0,
     double? TargetSeconds = null, double? RecentP95WaitSeconds = null, double? OldestWaitSeconds = null, string WaitStatus = LaneWaitStatus.Ok, DateTimeOffset? AlertSince = null,
-    int? Borrowed = null);
+    int? Borrowed = null, LaneWaitCausesView? WaitCauses = null);
+
+// Seconds summed over Attempts (every attempt of the lane in the window whose causes were recorded): their whole wait, and
+// the part held by the connection's lock group, a quota backoff, a quota hold, no free slot, and with no known cause.
+public sealed record LaneWaitCausesView(int Attempts, double WaitSeconds, double LockSeconds, double BackoffSeconds, double QuotaHoldSeconds, double SlotSeconds, double UnknownSeconds);
 
 public static class LaneWaitStatus
 {
@@ -287,13 +293,30 @@ public static class LaneWaitStatus
     public const string OverTarget = "OVER_TARGET";
     public const string Alert = "ALERT";
 }
-// Lane is FOREGROUND (new-order reads, user actions) or BACKGROUND (every other order read).
-public sealed record QuotaUsageView(string PlatformCode, string StoreName, string Lane, int LimitPerMinute, int LastHourRequests, int PeakMinuteRequests, double AveragePerMinute);
+
+// Queue phase 0: one quota bucket a connection of the tenant took tokens from in the last 30 days, with its last hour.
+//   Bucket          the bucket's code (PLATFORM:NAME, e.g. TRENDYOL:ORDERS_FG, HEPSIBURADA:LISTING);
+//   Label           its name in the panel;
+//   LimitPerMinute  the code's limit for it per minute; null when the code keeps none for it (usage only, no bar);
+//   Shared          true for a bucket every account shares (Hepsiburada's catalogue quota is per server IP);
+//   PeakMinuteRequests, AveragePerMinute: the busiest minute of the last hour and the hour's requests over 60 minutes.
+public sealed record QuotaUsageView(string PlatformCode, string StoreName, string Bucket, string Label, double? LimitPerMinute, int LastHourRequests, int PeakMinuteRequests, double AveragePerMinute, bool Shared = false);
+
+// Queue phase 0: how long the orders first stored in the last 24 hours took from the marketplace's order time to the panel,
+// per marketplace. Source ALL (every order), WEBHOOK (stored by a webhook delivery's job) or POLLING (stored by a read); the
+// split is known only for orders stored by a worker job of this release. For WEBHOOK, NoticeP50/P95 is order time to the
+// delivery reaching us (the marketplace's delay) and ProcessingP50/P95 delivery to panel (ours). TargetSeconds and Status
+// (OK, WARN within twice the target, BAD) only on WEBHOOK (processing p95 against 5 s) and POLLING (total p95 against 180 s).
+// Orders 0: no data ("Veri Yok"), every figure null.
+public sealed record OrderLatencyView(string PlatformCode, string Source, int Orders, double? P50Seconds, double? P95Seconds,
+    double? NoticeP50Seconds = null, double? NoticeP95Seconds = null, double? ProcessingP50Seconds = null, double? ProcessingP95Seconds = null,
+    double? TargetSeconds = null, string? Status = null);
 
 public interface IQueueHealthService
 {
     Task<IReadOnlyList<LaneMetricView>> LanesAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken);
     Task<IReadOnlyList<QuotaUsageView>> QuotaAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<OrderLatencyView>> OrderLatencyAsync(Guid tenantId, CancellationToken cancellationToken);
 }
 
 public interface IJobOperationsService
