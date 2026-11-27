@@ -2285,13 +2285,14 @@ CrowdSec yeniden yüklenir), ardından `sudo cscli parsers inspect ravencia/pane
     Aynı basamakta payının en az ötesinde çalışan şerit, eşitse tablo sırası. `LaneDispatcher` tek döngüdür ve **işleri tek
     tek kiralar**; hangi işin kiralanacağı yine `JobLeaseService`'tedir (öncelik, mağazalar arası 15 dk öne alma, kilit
     grupları, kota geri çekilmesi ve bekletmesi, pazaryeri sınırları, mağaza sınırı).
-  - **Mağaza sınırı** (`ConnectionCap` 2, `CappedLanes` = Katalog, Arka Plan, İlk Çekim): bir mağazanın bu üç şeritteki işleri
-    **birlikte** sayılır ve aynı anda en çok 2 slot kullanır. Sipariş, durum, iade, webhook, yazma, toplu ve kullanıcı işleri
-    sınıra girmez ve sayılmaz. Bedeli: mağazanın kendi uzun işleri sırasında diğer sınırlı işleri onları bekler (iki 8,5 dk'lık
-    referans okuması varken uzlaştırmaları ~500 sn; yeni mağazanın altı ilk çekim işi ikişer ikişer, sonuncusu ~21 dk sonra).
-    Replay'de sınır 3 her iki ölçülen akışta biraz daha iyi (bir mağazanın 50 işlik selinde arka plan p95 444 → 210 sn), sınırı
-    bütün şeritlere yaymak ise sipariş okumasını bozar (Tüm Ürünleri Çek'te p95 ~1,7 → 21 sn); `Worker:Dispatcher:ConnectionCap`
-    ile değiştirilebilir.
+  - **Mağaza sınırı** (`ConnectionCap` 3, `CappedLanes` = Katalog, Arka Plan, İlk Çekim): bir mağazanın bu üç şeritteki işleri
+    **birlikte** sayılır; mağaza aynı anda en çok 3 yığın işi çalıştırır. Sipariş, durum, iade, webhook, yazma, toplu ve
+    kullanıcı işleri sınıra girmez ve sayılmaz. Varsayılan ikinci incelemeden (28 Kas) beri 3: replay'in ölçtüğü her hücrede
+    2'den iyi (bir mağazanın 50 işlik selinde arka plan p95 444 → 210 sn, sipariş okuması maks 35 → 12 sn; Tüm Ürünleri Çek'te
+    sipariş okuması p95 9,6 → 8,2 sn; iki 8,5 dk'lık referans okuması varken mağazanın uzlaştırmaları ~500 → ~15 sn). Bedeli
+    kalır: iki yeni mağazanın altı ilk çekim işi üçer üçer çalışır, sonuncusu ~11 dk sonra başlar (bugün ~3 dk, sınır 2'de ~21
+    dk). Sınırı bütün şeritlere yaymak sipariş okumasını bozar (Tüm Ürünleri Çek'te p95 ~1,7 → 21 sn).
+    `Worker:Dispatcher:ConnectionCap` ile değiştirilebilir.
   - **Erteleme** (`DeferStatusScans`, varsayılan açık): mağazanın kuyrukta koşulabilir bir sipariş okuması varken aynı kilit
     grubundaki durum taraması ve arka plan işi (örneğin `ORDER_RECONCILIATION`) kiralanmaz; önce siparişler okunur. Sipariş
     okuması geldiğinde zaten çalışan bir uzlaştırmayı bekler.

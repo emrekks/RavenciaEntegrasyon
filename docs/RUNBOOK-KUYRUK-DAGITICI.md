@@ -8,28 +8,33 @@ eşikleri. Modelin kendisi `docs/ISLEYIS-KILAVUZU.md` (İşlem Takibi › Şerit
 ## 1. Geçişten önce
 
 1. Esnek modelin (bugünkü) referans ölçümü: geçişten bir gün önce aynı saatlerde 3. bölümdeki Q1-Q6'yı çalıştır, sonucu
-   `.local-docs/` altına kaydet. Referans dalgasının (sabah 10:55-11:40 arası mağazaların referans okumaları) ve deploy
-   anlarının sayıları ayrı tutulur: Q1-Q3 her pencereyi ayrı verir (bkz. `params`).
+   `.local-docs/` altına kaydet. Referans okumalarının penceresi (Faz 1A'dan, 27 Kas'tan beri her bağlantının kendi
+   slotunda, İstanbul 06:00-10:00 = 03:00-07:00 UTC) ve her worker açılışından sonraki 10 dk ayrı sayılır: Q1 her pencereyi
+   ayrı verir (bkz. `params`).
 2. `bash .claude/skills/prod-logs/run.sh status`: worker ve api aynı sha'da, sağlıklı; `errors` son 1 saatte boş.
 3. Kuyruk sakinken geç (gece değil, normal iş saatinde ama toplu fatura ya da Tüm Ürünleri Çek sürmüyorken): sorun çıkarsa
    gerçek yük altında görünsün, ama ilk dakikalar bir dalgaya denk gelmesin.
 4. Geçiş: `src/MarketplaceHub.Worker/appsettings.json` ve `src/MarketplaceHub.Api/appsettings.json` içinde
    `"LaneModel": "dispatcher"` (ikisi aynı olmalı, bir test bunu ister), commit, `ship`. Veritabanı değişikliği yoktur.
 5. Geçiş anını (`flip_at`, worker konteynerinin başlama zamanı, `prod-logs status`) not al.
+6. Gün içindeki her worker açılışı (günde ~6 deploy) yeniden açılış dalgası getirir: açılış anları
+   `gh run list --workflow deploy.yml --created ">=<tarih>" --json updatedAt,conclusion` (başarılı deploy'ların bitişi) ve
+   `prod-logs status` (çalışan konteynerin başlangıcı) ile bulunur, Q1'in `worker_starts` dizisine yazılır.
 
 ## 2. Geçişten sonra: ne zaman neye bakılır
 
 | Ne zaman | Ne |
 |---|---|
-| İlk 10 dk | `prod-logs logs worker --since 10m --grep -i dispatcher`: "dispatcher turn" hatası yok; Kuyruk ve Kota sayfası 11 şeridi gösteriyor; Q5 (bekleyen ama başlamayan iş) boş |
+| İlk 10 dk | `prod-logs logs worker --since 10m --grep -i dispatcher`: "dispatcher turn" hatası yok; Kuyruk ve Kota sayfası 11 şeridi gösteriyor; Q5'e (bekleyen ama başlamayan iş) elle bak |
 | İlk 1 saat | Q1, Q2, Q4, Q5, Q6; eşiklerden biri aşılırsa hemen geri dön (4. bölüm) |
-| İlk referans dalgası (ertesi sabah 10:55-11:40) | Q1 ve Q3 bu pencere için ayrı; esnek modelin aynı penceresiyle karşılaştır |
+| İlk referans penceresi (ertesi sabah İstanbul 06:00-10:00 = 03:00-07:00 UTC) | Q1 ve Q3 bu pencere için ayrı; esnek modelin aynı penceresiyle karşılaştır |
 | 24 saat | Q1-Q6 tam pencere; Q7 iki kez (60 sn arayla) |
 
 ## 3. Doğrulama sorguları (salt okunur)
 
-Her sorgunun başındaki `params` satırında `flip_at` geçiş anıdır; `deploy_until` deploy anının sonu (geçişten 10 dk sonra:
-yeniden açılışta biriken işler bu pencerede ayrı sayılır); `ref_from`/`ref_to` referans dalgasıdır. Referans ölçümü için
+Her sorgunun başındaki `params` satırında `flip_at` geçiş anıdır; `worker_starts` pencere içindeki bütün worker açılışlarıdır
+(geçiş dahil; her birinden sonraki 10 dk "acilis" diliminde ayrı sayılır, yeniden açılışta biriken işler eşiklere girmez);
+`ref_from`/`ref_to` referans okumalarının penceresidir (03:00-07:00 UTC). Referans ölçümü için
 `flip_at` yerine bir gün önceki aynı saat yazılır. Bekleme = ilk denemenin `StartedAt - EligibleAt` süresi (kilit beklemeleri
 dahil); `WaitSlotMs` dağıtıcıda "slot için bekleme" (bütün bekleme eksi kilit, geri çekilme ve kota bekletmesi),
 `WaitLockMs` mağazanın aynı kilit grubundaki işini bekleme, `WaitQuotaHoldMs` kota bekletmesi.
@@ -56,10 +61,12 @@ CASE WHEN j."Priority" <= -3 THEN 'kullanici'
 
 ```sql
 WITH params AS (SELECT timestamptz '2026-11-28 09:00:00+00' AS flip_at, interval '24 hours' AS span,
-                       timestamptz '2026-11-29 07:55:00+00' AS ref_from, timestamptz '2026-11-29 08:40:00+00' AS ref_to),
+                       ARRAY[timestamptz '2026-11-28 09:00:00+00', timestamptz '2026-11-28 13:20:00+00'] AS worker_starts,
+                       timestamptz '2026-11-29 03:00:00+00' AS ref_from, timestamptz '2026-11-29 07:00:00+00' AS ref_to),
 typed AS (
   SELECT a.*, <WORK_TYPE> AS work_type,
-         CASE WHEN a."StartedAt" < p.flip_at + interval '10 minutes' THEN 'deploy'
+         CASE WHEN EXISTS (SELECT 1 FROM unnest(p.worker_starts) AS start(at)
+                           WHERE a."StartedAt" >= start.at AND a."StartedAt" < start.at + interval '10 minutes') THEN 'acilis'
               WHEN a."StartedAt" >= p.ref_from AND a."StartedAt" < p.ref_to THEN 'referans'
               ELSE 'normal' END AS slice,
          EXTRACT(EPOCH FROM a."StartedAt" - a."EligibleAt") AS wait_s
@@ -80,23 +87,27 @@ SELECT slice, work_type, count(*) AS n,
 FROM typed GROUP BY 1, 2 ORDER BY 1, 2;
 ```
 
-`<WORK_TYPE>` yerine yukarıdaki CASE yazılır. n < 30 olan satırda p95 yerine maks okunur.
+`<WORK_TYPE>` yerine yukarıdaki CASE yazılır. n < 30 olan satırda p95 yerine maks okunur. Eşikler yalnız "normal" ve
+"referans" dilimlerine uygulanır; "acilis" dilimi esnek modelin açılışlarıyla karşılaştırılır.
 
 ### Q2 Webhook: slot beklemesi ve başlama
 
 ```sql
-WITH params AS (SELECT timestamptz '2026-11-28 09:00:00+00' AS flip_at, interval '24 hours' AS span)
+WITH params AS (SELECT timestamptz '2026-11-28 09:00:00+00' AS flip_at, interval '24 hours' AS span,
+                       ARRAY[timestamptz '2026-11-28 09:00:00+00', timestamptz '2026-11-28 13:20:00+00'] AS worker_starts)
 SELECT count(*) AS n,
        round(percentile_cont(0.95) WITHIN GROUP (ORDER BY coalesce(a."WaitSlotMs", 0))::numeric / 1000, 2) AS slot_p95_s,
        round(max(EXTRACT(EPOCH FROM a."StartedAt" - a."EligibleAt"))::numeric, 1) AS start_max_s
 FROM integration.job_attempts a JOIN integration.jobs j ON j."Id" = a."JobId" CROSS JOIN params p
-WHERE a."StartedAt" >= p.flip_at + interval '10 minutes' AND a."StartedAt" < p.flip_at + p.span AND a."AttemptNumber" = 1
+WHERE a."StartedAt" >= p.flip_at AND a."StartedAt" < p.flip_at + p.span AND a."AttemptNumber" = 1
+  AND NOT EXISTS (SELECT 1 FROM unnest(p.worker_starts) AS start(at)
+                  WHERE a."StartedAt" >= start.at AND a."StartedAt" < start.at + interval '10 minutes')
   AND j."Priority" >= 0 AND j."JobType" IN ('TRENDYOL_WEBHOOK_INGEST','SHOPIFY_WEBHOOK_INGEST','HEPSIBURADA_WEBHOOK_INGEST');
 ```
 
 ### Q3 Mağaza başına aynı anda çalışan sınırlı iş (Katalog + Arka Plan + İlk Çekim birlikte)
 
-Sınır üç şeridin işlerini **birlikte** sayar (bir mağazanın üçünde toplam en çok `ConnectionCap`, varsayılan 2); sipariş,
+Sınır üç şeridin işlerini **birlikte** sayar (bir mağazanın üçünde toplam en çok `ConnectionCap`, varsayılan 3); sipariş,
 durum, iade, webhook, yazma, toplu ve kullanıcı işleri sayılmaz. Sınıflama Q1'in CASE'iyle yapılır (eski sürümdeki
 `NOT LIKE '%ORDER%'` süzgeci uzlaştırma işlerini, örneğin `ORDER_RECONCILIATION`, yanlışlıkla dışarıda bırakıyordu).
 
@@ -115,17 +126,23 @@ FROM (SELECT "ConnectionId", sum(d) OVER (PARTITION BY "ConnectionId" ORDER BY t
 GROUP BY "ConnectionId" ORDER BY 2 DESC LIMIT 20;
 ```
 
-### Q4 Kira süresi dolan işler ve hata oranı (geçişten sonraki saat, bir gün önceki aynı saate karşı)
+### Q4 Kira süresi dolan işler ve panel tarafı hata oranı (geçişten sonraki saat, bir gün önceki aynı saate karşı)
+
+"Hata" panel tarafı hatadır: bekleme sonuçları (`*_PENDING`, `*_NEXT_PHASE`, `*_SUPERSEDED`) ve pazaryeri ya da ağ kaynaklı
+kodlar (`*_NETWORK_ERROR`, `*_TIMEOUT`, `*REMOTE*`, `*_TOKEN_INVALID`, `*_CREDENTIALS_REJECTED`, `*_ACCESS_FORBIDDEN`)
+sayılmaz; son 14 günde başarısız denemelerin çoğu bu ikisiydi.
 
 ```sql
 WITH params AS (SELECT timestamptz '2026-11-28 09:00:00+00' AS flip_at)
 SELECT window_name, count(*) AS attempts,
-       count(*) FILTER (WHERE NOT a."Succeeded") AS failed,
-       round(100.0 * count(*) FILTER (WHERE NOT a."Succeeded") / greatest(count(*), 1), 2) AS failed_pct,
+       count(*) FILTER (WHERE panel_error) AS panel_errors,
+       round(100.0 * count(*) FILTER (WHERE panel_error) / greatest(count(*), 1), 2) AS panel_error_pct,
        count(*) FILTER (WHERE a."ErrorCode" = 'LEASE_EXPIRED') AS lease_expired
 FROM params p CROSS JOIN LATERAL (VALUES ('sonra', p.flip_at, p.flip_at + interval '1 hour'),
                                          ('dun ayni saat', p.flip_at - interval '1 day', p.flip_at - interval '23 hours')) w(window_name, w_from, w_to)
 JOIN integration.job_attempts a ON a."StartedAt" >= w.w_from AND a."StartedAt" < w.w_to
+CROSS JOIN LATERAL (SELECT NOT a."Succeeded"
+    AND coalesce(a."ErrorCode", '') !~ '(_PENDING|_NEXT_PHASE|_SUPERSEDED|_NETWORK_ERROR|_TIMEOUT|REMOTE|_TOKEN_INVALID|_CREDENTIALS_REJECTED|_ACCESS_FORBIDDEN)' AS panel_error) e
 GROUP BY 1 ORDER BY 1;
 ```
 
@@ -146,7 +163,7 @@ ORDER BY waiting_s DESC LIMIT 20;
 Kilit grubu çoğu işte iş tipinden türetilir (`MarketplaceSyncExecutionLock.GroupFor`) ve `LockGroup` sütunu boştur; bu
 sorgu yalnız sütunu karşılaştırır, bu yüzden bir satır "kilidi gerçekten boş" demek değildir: satırları `prod-logs` ile ve
 aynı mağazanın çalışan işiyle tek tek kontrol et. Toplu ve uzun şeritlerin (Toplu İşler, Katalog, Arka Plan, İlk Çekim)
-işleri slot doluyken burada görünebilir; eşik kısa iş şeritleri içindir.
+işleri slot doluyken burada görünebilir. Bu yüzden Q5 bir geri dönüş tetiği değil, elle bakılan bir işarettir.
 
 ### Q6 Şerit sayfasının kendi uyarıları
 
@@ -171,17 +188,35 @@ açılışıyla karşılaştırılır.
 
 | Eşik | Kaynak |
 |---|---|
-| Kısa iş şeritlerinde (Kullanıcı, Webhook, Pazaryerine Yazma, Elle Başlatılan Okuma, Sipariş Okuma, Durum Taraması, İade) bir denemenin `WaitSlotMs` değeri > 16 sn (güvenlik sayımı 15 sn + 1 sn: kaçmış bir uyandırma) | Q1 `slot_max_s` |
+| Kısa iş şeritlerinde (Kullanıcı, Webhook, Pazaryerine Yazma, Elle Başlatılan Okuma, Sipariş Okuma, Durum Taraması, İade) bir denemenin `WaitSlotMs` değeri > 16 sn (güvenlik sayımı 15 sn + 1 sn: kaçmış bir uyandırma); her worker açılışından sonraki 10 dk hariç | Q1 `slot_max_s`, "normal" ve "referans" dilimleri |
 | Kullanıcı p95 > 5 sn (n ≥ 10) ya da herhangi biri > 15 sn | Q1 |
-| Webhook slot beklemesi p95 > 1 sn ya da başlama > 30 sn | Q2 |
+| Webhook slot beklemesi p95 > 1 sn ya da başlama > 60 sn (başlama kilit beklemesini de içerir: bir Trendyol sipariş okuması "orders" kilidini 36 sn'ye kadar tutar; canlıda bugün en uzun 24 sn, replay'de dağıtıcı 39-52 sn) | Q2 |
 | Sipariş Okuma başlama p95 > 60 sn ya da herhangi biri > 180 sn | Q1 |
-| Kilidi boş, geri çekilmede olmayan koşulabilir bir iş > 120 sn başlamadı (kısa iş şeritleri) | Q5 |
-| Bir mağaza aynı anda sınırdan (`ConnectionCap`, 2) fazla sınırlı iş çalıştırdı | Q3 |
+| Bir mağaza aynı anda sınırdan (`ConnectionCap`, 3) fazla sınırlı iş çalıştırdı | Q3 |
 | `LEASE_EXPIRED` > 0 | Q4 |
-| Hata oranı bir gün önceki aynı saatin 2 katından fazla | Q4 |
+| Panel tarafı hata: saatte en az 10 hata **ve** oran %1'in üstünde **ve** bir gün önceki aynı saatin 2 katından fazla | Q4 |
 | Worker günlüğünde "dispatcher turn" hatası dakikada birden çok, ya da sağlık dosyası bayat (watchdog yeniden başlattı) | `prod-logs logs worker --grep dispatcher`, `status` |
 
+Elle bakılan işaret (tetik değil): Q5'te kilidi boş görünen, 120 sn'den eski bir kısa iş. Satırı mağazanın çalışan işiyle
+ve `prod-logs` ile kontrol et; gerçekten başlamayan bir iş varsa geri dön.
+
 Bilinen ve eşik dışı sayılmayan farklar (replay, `QueueReplayTests`): bir mağazanın sınırlı işleri o mağazanın kendi uzun
-işlerini bekler (iki uzun referans okuması varken uzlaştırmaları ~500 sn, iki yeni mağazanın ilk çekiminde son iş ~21 dk);
-"Tüm Ürünleri Çek" sırasında bir sipariş okuması, mağazanın o an çalışan uzlaştırmasını bekleyebilir (p95 ~10 sn, bugün
-~2 sn; en kötüsü bugünkünden kısa).
+işlerini bekler (iki yeni mağazanın ilk çekiminde son iş ~11 dk sonra başlar, bugün ~3 dk); "Tüm Ürünleri Çek" sırasında bir
+sipariş okuması mağazanın o an çalışan uzlaştırmasını bekleyebilir (p95 ~8 sn, bugün ~2 sn; en kötüsü bugünkünden kısa) ve
+bir durum taraması mağazanın sipariş okumasını bekler (yeni tohumlarda p95 4,5 sn, bugün 3,0 sn; en kötüsü 31 sn, bugün 55 sn).
+
+## 5. Kanıtın sınırları (replay, `QueueReplayTests`)
+
+- Esnek modelin 220 döngüsü tek iş parçacıklı bir pompada, hep aynı sırada çalışır: "bugün" sütunu bugünkü modelin olası
+  davranışlarından yalnız biridir; gerçek iş parçacıkları başka bir sırayla başka sayılar verebilir.
+- Kalibrasyon yalnız düşük yükte doğrulandı: canlı pencerede (27 Kas 13:33-19:43 UTC) aynı anda en çok 4 iş çalıştı (20 slotun
+  4'ü). Yoğun yükte replay ile canlının uyumu ölçülmedi.
+- İş içindeki kota beklemesi sabit çalışma sürelerinin içindedir (kalibrasyon penceresinde çalışma süresinin ~%60'ı); başka
+  bir eşzamanlılıkta bu beklemenin nasıl değişeceği modellenmedi.
+- Kira sorgusunun aday sınırı (kiracı başına ilk N iş) modellenmedi.
+- Kira gecikmesi: canlıda hiç beklemeden başlayan ilk denemelerde uyanmadan başlamaya kadar geçen süre (kira sorgusu dahil,
+  üst sınır) p50 2,7 ms, p90 5,5 ms, p95 7,2 ms (28 Kas, son 24 saat, n = 1787). Dağıtıcı tek tek kiraladığı için tavanı
+  1 / gecikme: p95'te ~140 kira/sn, replay'in yavaş senaryosundaki 40 ms'de 25 kira/sn. Canlıda son 7 günün en yoğun dakikası 14
+  iş (ölçülen: 30 iş/dk), açılışta biriken 300 iş p95 gecikmeyle ~2 sn, 40 ms ile ~12 sn kiralanır (boş kiralar hariç).
+- Tablo ayarı `ReplayStreams.Seeds` ile yapıldı; kabul bir kez de hiç kullanılmamış 5 tohumla (`FreshSeeds`) koşuldu, sonrasında
+  ayar değiştirilmedi.
