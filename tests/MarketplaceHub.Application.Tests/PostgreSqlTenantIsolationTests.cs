@@ -9600,6 +9600,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OperationalIssues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.SyncCursors.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        // An order read that stored new orders leaves a "Yeni Sipariş" notification (NewOrderNoticePolicy).
+        await db.PanelNotifications.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PackageLineAllocations.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();

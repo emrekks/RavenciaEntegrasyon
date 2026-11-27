@@ -171,11 +171,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // The bell's new-order notifications of this run (NewOrderNoticePolicy): none for the activation's first import or a
     // full read. Internal for the tests, which store orders through UpsertOrders outside ProcessAsync.
-    internal void BeginNewOrderNotices(bool bootstrapJob, string? payloadJson)
-    {
+    // Reads no clock: the job goldens replay every read of their fake clock.
+    internal void BeginNewOrderNotices(bool bootstrapJob, string? payloadJson) =>
         run.NewOrderNotices = NewOrderNoticePolicy.RunRaisesNotices(bootstrapJob, payloadJson);
-        run.NewOrderNoticeRunStartedAt = timeProvider.GetUtcNow();
-    }
 
     // Written once at the end of the run, also after a failed one (only orders really stored count). A notification is
     // never worth failing an order read for: any failure is logged and the run's result stands.
@@ -183,7 +181,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         try
         {
-            await NewOrderNotice.RecordAsync(db, tenantId, run, timeProvider.GetUtcNow(), CancellationToken.None);
+            await NewOrderNotice.RecordAsync(db, tenantId, run, CancellationToken.None);
         }
         catch (Exception exception)
         {

@@ -17,11 +17,12 @@ internal static class NewOrderNotice
     private static readonly JsonSerializerOptions PayloadJson = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
 
     // Returns how many notifications were written (one per store at most).
-    internal static async Task<int> RecordAsync(AppDbContext db, Guid tenantId, JobRunContext run, DateTimeOffset now, CancellationToken cancellationToken)
+    // The time is the database's (now()), not the job's clock: the run's own clock reads stay exactly what they were (the
+    // job goldens replay every read of their clock), and the row's time is the server's like the order rows beside it.
+    internal static async Task<int> RecordAsync(AppDbContext db, Guid tenantId, JobRunContext run, CancellationToken cancellationToken)
     {
-        if (!run.NewOrderNotices || run.NewOrderIdsByConnection.Count == 0) return 0;
-        now = now.ToUniversalTime();
-        var startedAt = run.NewOrderNoticeRunStartedAt.ToUniversalTime();
+        if (!run.NewOrderNotices || run.NewOrderIdsByConnection.All(entry => entry.Value.Count == 0)) return 0;
+        var now = (await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT now() AS \"Value\"").ToListAsync(cancellationToken))[0].ToUniversalTime();
         var written = 0;
         foreach (var (connectionId, noted) in run.NewOrderIdsByConnection)
         {
@@ -35,8 +36,9 @@ internal static class NewOrderNotice
                 .OrderByDescending(x => x.OrderedAt).ThenBy(x => x.OrderNumber, StringComparer.Ordinal)
                 .ToList();
             if (orders.Count == 0) continue;
-            // A store that had no order before this run began: its first read or a read after a reset, not new business.
-            var hadOrders = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.CreatedAt < startedAt, cancellationToken);
+            // A store that had no order before this run: its first read or a read after a reset, not new business. Every order
+            // this run created is in its list, so any other order of the store was there before.
+            var hadOrders = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && !ids.Contains(x.Id), cancellationToken);
             if (!hadOrders) continue;
             var connection = await db.PlatformConnections.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.Id == connectionId)

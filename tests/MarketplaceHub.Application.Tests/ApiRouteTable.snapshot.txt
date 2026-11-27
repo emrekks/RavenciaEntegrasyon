@@ -198,6 +198,7 @@ GET    /api/v1/mappings/name-hints | gate=SignedIn | sameOrigin=no | anon=401 AU
 GET    /api/v1/notifications/ | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/notifications/ | gate=Working | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=200 | ownerIfMatch=200
 POST   /api/v1/notifications/dismiss | gate=Working | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=200 | ownerIfMatch=200
+GET    /api/v1/notifications/new-orders | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/notifications/read | gate=Working | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=200 | ownerIfMatch=200
 GET    /api/v1/notifications/summary | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/orders | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR

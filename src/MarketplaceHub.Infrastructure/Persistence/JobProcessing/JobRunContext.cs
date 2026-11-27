@@ -61,10 +61,9 @@ internal sealed class JobRunContext
     // ISLEYICI-9 stage 3a: the records this run read (Çekilen Kayıtlar), flushed to the job by the processor.
     public readonly MarketplaceHub.Application.JobReadRecorder ReadRecorder = new();
     // The bell's new-order notifications (NewOrderNoticePolicy): whether this run raises them (off outside a job run, for
-    // the activation's first import and for full reads), when it began, its own id, and the orders it created by store.
-    // NewOrderNotice writes them once at the end of the run.
+    // the activation's first import and for full reads), its own id, and the orders it created by store. NewOrderNotice
+    // writes them once at the end of the run.
     public bool NewOrderNotices;
-    public DateTimeOffset NewOrderNoticeRunStartedAt;
     public Guid NewOrderNoticeRunId = Guid.CreateVersion7();
     public readonly Dictionary<Guid, HashSet<Guid>> NewOrderIdsByConnection = [];
 
