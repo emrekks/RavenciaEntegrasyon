@@ -141,7 +141,8 @@ internal static partial class JobGolden
             var rows = (IList<object>)await (Task<List<object>>)typeof(JobGolden).GetMethod(nameof(RowsAsync), BindingFlags.NonPublic | BindingFlags.Static)!
                 .MakeGenericMethod(entity.ClrType).Invoke(null, [db, tenantId])!;
             if (rows.Count == 0) continue;
-            var properties = entity.GetProperties().Where(property => property.PropertyInfo is not null).OrderBy(property => property.Name, StringComparer.Ordinal).ToList();
+            var properties = entity.GetProperties().Where(property => property.PropertyInfo is not null && !MeasurementOnly.Contains($"{entity.ClrType.Name}.{property.Name}"))
+                .OrderBy(property => property.Name, StringComparer.Ordinal).ToList();
             tables.Add(new
             {
                 Table = entity.ClrType.Name,
@@ -158,6 +159,15 @@ internal static partial class JobGolden
         });
         return tables;
     }
+
+    // Queue phase 0 (27 Nov 2026): measurement columns (when and why an attempt waited, its lane and token waits, a webhook's
+    // event time, the job that first stored an order). They say nothing about what a job sends or stores, so the goldens leave
+    // them out and stay as they were; QueueVisibilityPhase0Tests checks them.
+    private static readonly HashSet<string> MeasurementOnly = new(StringComparer.Ordinal)
+    {
+        "JobAttempt.EligibleAt", "JobAttempt.Lane", "JobAttempt.Borrowed", "JobAttempt.NotDueMs", "JobAttempt.WaitLockMs", "JobAttempt.WaitBackoffMs",
+        "JobAttempt.WaitQuotaHoldMs", "JobAttempt.WaitSlotMs", "JobAttempt.QuotaWaitMs", "JobAttempt.QuotaWaits", "InboxMessage.EventAt", "Order.CreatedByJobId"
+    };
 
     private static string SortKey(string text, IReadOnlyDictionary<Guid, string> known) =>
         GuidPattern().Replace(text, match => known.TryGetValue(Guid.Parse(match.Value), out var name) ? name : "#");
