@@ -550,15 +550,29 @@ değerlerini doldurur, oraya yazılan `References__BrandDiffWrites=false` worker
 deploy, worker yeniden başlar). Tablo iki yolda da aynı biçimde kalır; geçiş istenen anda güvenlidir. Eski yolun ilk
 okuması listeyi bir kez baştan yazar (fark yolundan sonra sıra numaraları ardışık değildir), sonrası eskisi gibidir.
 
-**Gerçek büyük küçülme (`REFERENCE_LIST_SHRANK` her gün işi durduruyorsa):** fark yolu, okunan liste güncelden %20'den
-ve 50 kayıttan fazla kısaysa hiçbir şey silmez, iş `Blocked REFERENCE_LIST_SHRANK` olur ve Sorunlar'da
-`reference-list-shrank:<bağlantı>:BRANDS` anahtarlı kayıt açılır. Önce pazaryerinin panelinde marka sayısının gerçekten
-düştüğünü doğrulayın (bir okuma hatası değilse). Gerçekse tek seferlik çıkış:
-1. Yukarıdaki geri dönüşle (`BrandDiffWrites: false`) bir sürüm gönderin.
-2. Eşleştirmeler › Marka Eşleme'de o bağlantı için Senkronize Et (ya da ertesi günkü planlı okuma): eski yol listeyi
-   küçülme kontrolü olmadan baştan yazar; eşli olup kaybolan markaların eşlemesi eski snapshot'ta kalır, panelde yeniden
-   eşlenmesi gerekir.
-3. İş başarılı olunca `BrandDiffWrites: true` ile tekrar gönderin. Sonraki fark okuması küçülme kaydını kapatır.
+**Küçülme kuralı:** bir okuma güncel listeden en çok `max(50 kayıt, 100.000'e kadar: min(%20, 2.000 kayıt), daha büyük
+listelerde %2)` eksik olabilir (`ReferenceSyncService.AllowedBrandListDrop`; Trendyol ~820 bin markada ~16 bin, Pazarama
+~103 bin markada ~2 bin). Fazlası güvenilmez okumadır: hiçbir şey yazılmaz ve silinmez, iş `Blocked REFERENCE_LIST_SHRANK`
+olur, `reference-list-shrank:<bağlantı>:BRANDS` anahtarlı sorun açılır.
+
+**Gerçek büyük küçülme (sahibin adımı, sürüm gerekmez):** önce pazaryerinin panelinde marka sayısının gerçekten düştüğünü
+doğrulayın. Gerçekse Eşleştirmeler › Marka Eşleme'de o platformun kartındaki uyarıda **Küçülmeyi Onayla** (yalnız sahip ve
+yönetici; denetim kaydına `REFERENCE_LIST_SHRINK_APPROVED` yazılır). Onay 48 saat geçerlidir ve bağlantının bir sonraki
+marka okumasında bir kez kullanılır; beklemek istemezseniz aynı ekranda Senkronize Et. Kaybolan eşli markaların eşlemesi
+küçük bir `RETIRED-` snapshot'ta kalır, yeniden eşlenmeleri gerekir. Onayın süresi dolarsa uyarı yeniden açılır.
+
+**Ölçülen değerler (özel PG18, 27 Kas 2026, fsync kapalı):** 1 milyon satır, %0,1 değişiklik (400 ad, 300 yeni, 301
+kaybolan):
+
+| Yol | Süre | Eklenen / güncellenen / silinen | WAL |
+| --- | --- | --- | --- |
+| Eski, değişiklik yok | 1,9 s | 0 / 0 / 0 | 0 |
+| Eski, %0,1 değişiklik | 62,9 s | 999.999 / 0 / 0 (+ ertesi gün 1 M silme) | 1.454 MiB |
+| Yeni, değişiklik yok | 2,5 s | 0 / 0 / 0 | 0 |
+| Yeni, %0,1 değişiklik | 3,3 s (tüm çalışma) | 300 / 400 / 301 | 12,5 MiB |
+
+Uygulama sırasında arama beklemez: 60 bin satırda 30 bin değişiklik 1,0 s, en yavaş arama 23 ms; arama ya eski ya yeni
+listenin tamamını görür. Taze 993 bin satırlık tablo 530 MB (canlıda 1.067 MB); tablo artık büyümez.
 
 Canlı kontrol sorguları (salt okuma, boyut ve sayaçlar): `.local-docs/kuyruk-faz1b-verify.sql` (git dışı); boşalan
 alanın geri kazanılması (VACUUM FULL / pg_repack / REINDEX CONCURRENTLY, ~500 MB) sahibin ayrı kararıdır, otomatik yapılmaz.

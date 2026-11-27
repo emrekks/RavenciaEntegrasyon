@@ -37,6 +37,12 @@ public static partial class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.UnmappedBrandsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<UnmappedMarketplaceBrandView>>();
         api.MapGet("/reference-data/brands/lookup", async (Guid connectionId, string? ids, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.LookupBrandsAsync(tenant.TenantId, connectionId, (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
+        // Kuyruk Faz 1B: a brand list read refused for shrinking, and the owner's one-time approval for the next read.
+        api.MapGet("/reference-data/brands/shrink", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.BrandListShrinkAsync(tenant.TenantId, connectionId, http.RequestAborted), ShrinkOrNull) : Unauthorized(http)).ProducesOneOf(StatusCodes.Status200OK, typeof(BrandListShrinkView), null);
+        api.MapPost("/reference-data/brands/shrink/approval", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.ApproveBrandListShrinkAsync(tenant.TenantId, tenant.UserId, connectionId, http.TraceIdentifier, http.RequestAborted), Results.Ok) : Unauthorized(http))
+            .RequireGate(ApiGate.Elevated).Produces<BrandListShrinkView>().Idempotent("acknowledges the open shrink issue; a repeat renews the same one-time approval");
         api.MapGet("/connections/{connectionId:guid}/attribute-defaults", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.ListAttributeDefaultsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<ConnectionAttributeDefaultView>>();
         api.MapPut("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, HttpContext http, IReferenceDataService service) =>

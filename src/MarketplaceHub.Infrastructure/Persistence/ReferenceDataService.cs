@@ -349,6 +349,57 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<CatalogMappingView?>.Ok(mapping is null ? null : Map(mapping));
     }
 
+    internal const string BrandReferenceChangedCode = "REFERENCE_ITEM_CHANGED";
+    internal const string BrandReferenceChangedMessage = "Marka Listesi Değişti, Yeniden Seçin: seçtiğiniz pazaryeri markası siz seçtikten sonra değişti ya da listeden kalktı. Liste yenilendi; markayı yeniden seçip kaydedin.";
+
+    public async Task<ServiceResult<BrandListShrinkView?>> BrandListShrinkAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<BrandListShrinkView?>();
+        var issue = await OpenBrandListShrinkIssueAsync(tenantId, connectionId, tracked: false, cancellationToken);
+        return ServiceResult<BrandListShrinkView?>.Ok(issue is null ? null : await ShrinkViewAsync(tenantId, connectionId, issue, cancellationToken));
+    }
+
+    public async Task<ServiceResult<BrandListShrinkView>> ApproveBrandListShrinkAsync(Guid tenantId, Guid? actorUserId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<BrandListShrinkView>();
+        var issue = await OpenBrandListShrinkIssueAsync(tenantId, connectionId, tracked: true, cancellationToken);
+        if (issue is null) return ServiceResult<BrandListShrinkView>.Fail("BRAND_LIST_SHRINK_NOT_FOUND", "Bu mağazanın onay bekleyen bir marka listesi küçülmesi yok.", 404);
+        var now = timeProvider.GetUtcNow();
+        // The approval is the acknowledged issue; its LastSeenAt is the approval time (ReferenceSyncService.IsLiveShrinkApproval).
+        issue.Status = IssueStatus.Acknowledged;
+        issue.LastSeenAt = now;
+        var reason = $"Marka listesi küçülmesi onaylandı; sonraki okuma bir kez uygular. {issue.Summary}";
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = tenantId,
+            ActorUserId = actorUserId,
+            Action = "REFERENCE_LIST_SHRINK_APPROVED",
+            TargetType = "PlatformConnection",
+            TargetId = connectionId.ToString(),
+            Reason = reason.Length <= 512 ? reason : reason[..512],
+            CorrelationId = correlationId,
+            CreatedAt = now
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<BrandListShrinkView>.Ok(await ShrinkViewAsync(tenantId, connectionId, issue, cancellationToken));
+    }
+
+    private Task<OperationalIssue?> OpenBrandListShrinkIssueAsync(Guid tenantId, Guid connectionId, bool tracked, CancellationToken cancellationToken)
+    {
+        var key = ReferenceSyncService.BrandListShrankIssueKey(connectionId);
+        var query = tracked ? db.OperationalIssues : db.OperationalIssues.AsNoTracking();
+        return query.Where(x => x.TenantId == tenantId && x.DedupeKey == key && x.Status != IssueStatus.Resolved).OrderByDescending(x => x.LastSeenAt).FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<BrandListShrinkView> ShrinkViewAsync(Guid tenantId, Guid connectionId, OperationalIssue issue, CancellationToken cancellationToken)
+    {
+        var currentCount = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == Brands && x.ScopeExternalId == "" && x.IsCurrent)
+            .OrderByDescending(x => x.FetchedAt).Select(x => x.ItemCount).FirstOrDefaultAsync(cancellationToken);
+        var approvedAt = issue.Status == IssueStatus.Acknowledged ? issue.LastSeenAt : (DateTimeOffset?)null;
+        return new(connectionId, currentCount, issue.LastSeenAt, issue.Summary, approvedAt, approvedAt + ReferenceSyncService.BrandListShrinkApprovalLifetime);
+    }
+
     public async Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, command.ConnectionId, cancellationToken)) return NotFound<CatalogMappingView>();
@@ -368,6 +419,11 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             if (typed is null) return ServiceResult<CatalogMappingView>.Fail("SHOPIFY_PRODUCT_TYPE_INVALID", $"Shopify ürün türü 1-{ShopifyProductTypeNames.MaximumLength} karakter olmalı ve kontrol karakteri içermemelidir.", 422);
             external = await ShopifyProductTypeEntryAsync(tenantId, snapshot, typed, cancellationToken);
         }
+        // Kuyruk Faz 1B (review O1): the brand list is updated in place, so the snapshot id no longer tells a page read
+        // before a rename from a current one. The brand is bound only while its current row carries the name the user
+        // chose; a renamed or vanished brand, or a client that sends no name, is refused and the page reads the list again.
+        if (mappingType == "brands" && (external is null || command.ExternalName is null || !string.Equals(external.Name, command.ExternalName, StringComparison.Ordinal)))
+            return ServiceResult<CatalogMappingView>.Fail(BrandReferenceChangedCode, BrandReferenceChangedMessage, 409);
         if (external is null) return ServiceResult<CatalogMappingView>.Fail("EXTERNAL_REFERENCE_NOT_FOUND", "Seçilen pazaryeri değeri güncel listede bulunamadı; listeyi yenileyip yeniden seçin.", 422);
         if (mappingType == "categories" && (!external.IsLeaf || !external.IsActive)) return ServiceResult<CatalogMappingView>.Fail("ACTIVE_LEAF_CATEGORY_REQUIRED", "Ürün eşlemesi yalnız etkin, en alt düzeydeki bir kategoriye yapılabilir; alt kategori seçin.", 422);
 

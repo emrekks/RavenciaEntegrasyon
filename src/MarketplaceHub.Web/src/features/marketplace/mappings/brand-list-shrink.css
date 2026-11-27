@@ -1,0 +1,8 @@
+/* A brand list read refused for shrinking, with the owner's one-time approval (brand-list-shrink.tsx). */
+.brand-list-shrink { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; padding: 12px 14px; color: var(--rv-color-ink); background: var(--rv-color-warning-soft); border: 1px solid var(--rv-color-warning); border-radius: 12px; }
+.brand-list-shrink > div { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.brand-list-shrink strong { font-size: 14px; font-weight: 600; }
+.brand-list-shrink p { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.brand-list-shrink small { color: var(--rv-color-muted); font-size: 12px; }
+.brand-list-shrink button { flex: none; height: 36px; min-height: 0; padding: 0 14px; border-radius: 7px; white-space: nowrap; }
+@media (max-width: 760px) { .brand-list-shrink { flex-direction: column; } }

@@ -17,7 +17,8 @@ import { appendNotification } from '../../../../shared/notifications'
 import { mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from '../../mapping-platforms'
 import { formatDateTime } from '../../../../shared/format-date'
 import { Connection, MappingStateGlyph, useKindedNotice } from '../../shared'
-import { brandMappingReadState, brandPlatformConnectionId } from '../brand-mapping-state'
+import { BrandListShrinkNotice } from '../brand-list-shrink'
+import { brandListChangedMessage, brandMappingReadState, brandPlatformConnectionId, isBrandListChangedError, reloadAfterBrandListChange } from '../brand-mapping-state'
 import { BrandReferencePicker, BrandReferenceSelect, brandReferenceKey, lookupBrandReferences, useBrandReferenceLookup, useBrandReferenceSummary, type BrandReferenceItem, type BrandReferenceSlice } from '../brand-reference'
 import { PanelSelect } from '../../../../shared/PanelSelect'
 import { EmptyState } from '../../../../shared/components/EmptyState'
@@ -34,7 +35,8 @@ const autoQueuedBrandSyncs = new Set<string>()
 // panel brand is sent as it is, so card 2 explains that instead of offering a mapping.
 const brandListPlatformCodes: readonly MappingPlatformCode[] = ['TRENDYOL', 'PAZARAMA']
 const brandAutoMatchLocative: Partial<Record<MappingPlatformCode, string>> = { HEPSIBURADA: "Hepsiburada'da", N11: "N11'de", SHOPIFY: "Shopify'da" }
-type BrandMappingSaveInput = { connectionId: string; snapshotId: string; localId: string; externalId: string; version?: number }
+// externalName: the marketplace brand's name as the page showed it; the server refuses the save when the list changed it since.
+type BrandMappingSaveInput = { connectionId: string; snapshotId: string; localId: string; externalId: string; externalName: string; version?: number; edited?: boolean }
 
 export function BrandMappingPage() {
   const [confirm, confirmDialog] = useConfirmDialog()
@@ -119,9 +121,18 @@ export function BrandMappingPage() {
     startBrandSync()
   }, [brandMappingSupported, connectionId, brandSyncPending, references.isError, references.error, startBrandSync])
   const save = useMutation({
-    mutationFn: (input: BrandMappingSaveInput) => hubApi<CatalogMapping>(`/mappings/brands/${input.localId}`, { method: 'PUT', headers: input.version !== undefined ? { 'If-Match': `"v${input.version}"` } : {}, body: JSON.stringify({ connectionId: input.connectionId, snapshotId: input.snapshotId, externalId: input.externalId, status: 'VERIFIED' }) }),
+    mutationFn: (input: BrandMappingSaveInput) => hubApi<CatalogMapping>(`/mappings/brands/${input.localId}`, { method: 'PUT', headers: input.version !== undefined ? { 'If-Match': `"v${input.version}"` } : {}, body: JSON.stringify({ connectionId: input.connectionId, snapshotId: input.snapshotId, externalId: input.externalId, externalName: input.externalName, status: 'VERIFIED' }) }),
     onSuccess: async (value, input) => { setNotice('Marka eşlemesi doğrulandı ve kaydedildi.', 'success'); if (input.connectionId === connectionId && input.localId === localId) setExternalId(value.externalId); setEditingBrandMappingId(''); client.setQueryData(queryKeys.brandMapping(input.localId, input.connectionId), value); client.setQueryData<CatalogMapping[]>(queryKeys.brandMappings(input.connectionId), current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.brandMapping(input.localId, input.connectionId) }), client.invalidateQueries({ queryKey: queryKeys.brandMappings(input.connectionId) }), client.invalidateQueries({ queryKey: queryKeys.brandUnmapped(input.connectionId) })]) },
-    onError: async (reason, input) => { setNotice(mappingSaveErrorMessage(reason, 'Eşleme kaydedilemedi.'), 'error'); if (isStaleMappingError(reason)) await Promise.all([client.invalidateQueries({ queryKey: queryKeys.brandMapping(input.localId, input.connectionId) }), client.invalidateQueries({ queryKey: queryKeys.brandMappings(input.connectionId) })]) },
+    onError: async (reason, input) => {
+      // The brand was renamed or removed since the page showed it (or a list refresh moved the mapping aside): the list
+      // and the mappings are read again and the brand is chosen anew.
+      if (isBrandListChangedError(reason)) {
+        setNotice(brandListChangedMessage, 'error')
+        if (input.edited) { setEditingExternalId(''); setEditingPickedBrand(null) } else if (input.connectionId === connectionId && input.localId === localId) { setExternalId(''); setPickedBrand(null) }
+        await reloadAfterBrandListChange(client, input.connectionId, input.localId)
+        return
+      }
+      setNotice(mappingSaveErrorMessage(reason, 'Eşleme kaydedilemedi.'), 'error'); if (isStaleMappingError(reason)) await Promise.all([client.invalidateQueries({ queryKey: queryKeys.brandMapping(input.localId, input.connectionId) }), client.invalidateQueries({ queryKey: queryKeys.brandMappings(input.connectionId) })]) },
     onSettled: (_, __, input) => refreshMappingConflicts(client, input.connectionId)
   })
   // A failed read of the saved mapping is unknown, not none: Kaydet waits for an answer (scan 25 Nov 2026, D-4).
@@ -129,11 +140,15 @@ export function BrandMappingPage() {
   function saveSelectedBrandMapping() {
     if (mappingRead !== 'known') { setNotice('Bu markanın kayıtlı eşlemesi okunamadı; önce yeniden deneyin.', 'error'); return }
     if (!references.data || !localId || !externalId) { setNotice(`Bağlantı, panel markası ve ${brandPlatformLabel} markası zorunludur.`, 'error'); return }
-    save.mutate({ connectionId, snapshotId: references.data.snapshotId, localId, externalId, version: mapping.data?.version })
+    const externalName = (pickedBrand?.externalId === externalId ? pickedBrand.name : undefined) ?? selectedBrandLookup.byId.get(externalId)?.name
+    if (!externalName) { setNotice(`Seçilen ${brandPlatformLabel} markasının adı henüz okunmadı; bir an sonra yeniden deneyin.`, 'error'); return }
+    save.mutate({ connectionId, snapshotId: references.data.snapshotId, localId, externalId, externalName, version: mapping.data?.version })
   }
   function saveEditedBrandMapping(item: CatalogMapping) {
     if (!savedReferences.data || !savedConnectionId || !editingExternalId) { setNotice(`Güncel ${savedBrandPlatformLabel} marka listesi olmadan eşleştirme kaydedilemez.`, 'error'); return }
-    save.mutate({ connectionId: savedConnectionId, snapshotId: savedReferences.data.snapshotId, localId: item.localId, externalId: editingExternalId, version: item.version })
+    const externalName = (editingPickedBrand?.externalId === editingExternalId ? editingPickedBrand.name : undefined) ?? savedBrandName(editingExternalId)
+    if (!externalName) { setNotice(`Seçilen ${savedBrandPlatformLabel} markasının adı henüz okunmadı; bir an sonra yeniden deneyin.`, 'error'); return }
+    save.mutate({ connectionId: savedConnectionId, snapshotId: savedReferences.data.snapshotId, localId: item.localId, externalId: editingExternalId, externalName, version: item.version, edited: true })
   }
   const createBrand = useMutation({ mutationFn: () => { if (!brandName.trim()) throw new Error('Marka adı zorunludur.'); return hubApi<ApiAnswer<'postCatalogBrands'>>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: brandName.trim() }) }) }, onSuccess: async brand => { await refreshLocalBrands(client); setBrandOpenSignal(value => value + 1); setLocalId(brand.id); setExternalId(''); setBrandName(''); setNotice(`“${brand.name}” panel markası oluşturuldu ve seçildi.`, 'success') }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka oluşturulamadı.', 'error') })
   // An existing mapping fills the platform brand; with none, a platform brand picked before the panel brand stays.
@@ -202,12 +217,13 @@ export function BrandMappingPage() {
         if (target) brandIdMap.set(source.id, target.id)
       }
       if (brandTransferSelection.mappings) {
-        const externalIds = new Set((await lookupBrandReferences(savedConnectionId, brandTransferBundle.mappings.map(item => item.externalId))).map(brand => brand.externalId))
+        // The backup names no brand: each one is sent with the name the current list gives it just now.
+        const currentNames = new Map((await lookupBrandReferences(savedConnectionId, brandTransferBundle.mappings.map(item => item.externalId))).map(brand => [brand.externalId, brand.name]))
         const brandNames = new Map(brandTransferBundle.brands.map(brand => [brand.id, brand.name.trim()]))
         result = await importBrandMappingItems(brandTransferBundle.mappings, {
-          target: item => { const targetLocalId = brandIdMap.get(item.localId) ?? allLocalBrands.find(brand => brand.id === item.localId)?.id; return targetLocalId && externalIds.has(item.externalId) ? targetLocalId : null },
+          target: item => { const targetLocalId = brandIdMap.get(item.localId) ?? allLocalBrands.find(brand => brand.id === item.localId)?.id; return targetLocalId && currentNames.has(item.externalId) ? targetLocalId : null },
           nameOf: item => brandNames.get(item.localId) ?? item.externalId,
-          send: (item, targetLocalId) => hubApi<CatalogMapping>(`/mappings/brands/${targetLocalId}`, { method: 'PUT', body: JSON.stringify({ connectionId: savedConnectionId, snapshotId: savedReferences.data?.snapshotId, externalId: item.externalId, status: 'VERIFIED' }) })
+          send: (item, targetLocalId) => hubApi<CatalogMapping>(`/mappings/brands/${targetLocalId}`, { method: 'PUT', body: JSON.stringify({ connectionId: savedConnectionId, snapshotId: savedReferences.data?.snapshotId, externalId: item.externalId, externalName: currentNames.get(item.externalId), status: 'VERIFIED' }) })
         })
       }
       const message = brandMappingImportMessage({ created, brandFailures, ...result })
@@ -243,6 +259,7 @@ export function BrandMappingPage() {
     {brandMappingSupported && <>
     <article className="mapping-reference-card brand-mapping-console">
       <header className="mapping-builder-head"><h2><UiIcon name="link" />2. Yeni Marka Eşleme</h2>{brandPlatformTabs}</header>
+      {connectionId && <BrandListShrinkNotice connectionId={connectionId} platformLabel={brandPlatformLabel} />}
       <div className="mapping-pair-grid brand-mapping-pair-grid"><section className="mapping-side local"><div className="mapping-side-head"><span>Panel Kataloğu</span></div><SearchableSelect label="Panel Markası" value={localId} options={activeLocalBrands.map(item => ({ value: item.id, label: item.name, description: 'Panel markası' }))} placeholder="Panel markalarında ara" disabled={!connectionId} triggerClassName="panel-category-picker-trigger" onChange={value => { if (localId) setExternalId(''); setLocalId(value); setNotice('', 'info') }} /></section><div className="mapping-link-rail" aria-hidden="true"><UiIcon name="link" /><small>Eşleştir</small></div><section className="mapping-side remote"><div className="mapping-side-head"><div className="mapping-side-head-copy"><span>Hedef Pazar Yeri &amp; Marka</span></div></div><div className="mapping-side-field"><span className="mapping-label-line">{brandPlatformLabel} Markası<TitleHint label={`${brandPlatformLabel} Markası`}>{brandReferenceInfo}</TitleHint></span><div className="mapping-target-controls brand-mapping-target-controls">{platformConnections.length > 1 && <PanelSelect ariaLabel="Hedef pazaryeri bağlantısı" value={connectionId} onChange={next => { setConnectionChoice(next); setLastListConnectionId(next); setEditingBrandMappingId(''); setLocalId(''); setExternalId(''); setNotice('', 'info') }} options={[{ value: '', label: `${brandPlatformLabel} Bağlantısı` }, ...platformConnections.map(item => ({ value: item.id, label: `${brandPlatformLabel}${platformConnections.length > 1 ? ` · ${item.displayName}` : ''}` }))]} />}<BrandReferencePicker key={`${connectionId}:${localId}`} connectionId={connectionId} snapshot={references.data} value={externalId} selectedName={selectedExternalName} placeholder={references.data || referencesPending ? 'Platform Markası Seçin...' : references.isFetching || syncBrands.isPending ? 'Markalar yükleniyor…' : 'Önce marka listesini senkronize edin'} disabled={!connectionId || !references.data} onChange={(id, item) => { setExternalId(id); setPickedBrand(item) }} /></div></div></section></div>
       {connections.isError || localBrands.isError ? <ErrorBox error={connections.error ?? localBrands.error} /> : connectionId ? <div className={`mapping-action brand-reference-action${references.isError && !references.data ? ' has-error' : ''}`} aria-busy={referencesPending || undefined}><div className="brand-reference-buttons"><button type="button" className="secondary" disabled={!connectionId || syncBrands.isPending || referencesPending} onClick={() => syncBrands.mutate()}><UiIcon name={syncBrands.isPending ? 'loader' : 'refresh'} />{syncBrands.isPending ? 'Kuyruğa Alınıyor…' : 'Senkronize Et'}</button>{(references.data || referencesPending) && <button type="button" disabled={!references.data || !localId || !externalId || save.isPending || mappingRead !== 'known'} onClick={saveSelectedBrandMapping}>{save.isPending ? 'Kaydediliyor…' : mapping.data ? 'Eşleştirmeyi Güncelle' : 'Eşleştirmeyi Kaydet'}</button>}</div></div> : null}
       {mappingRead === 'failed' && <div className="unknown" role="alert"><strong>Kayıtlı Eşleme Okunamadı</strong><p>Bu panel markasının {brandPlatformLabel} eşlemesi okunamadı; okunmadan kayıt yapılmaz.</p><button type="button" className="secondary" onClick={() => void mapping.refetch()}>Yeniden Dene</button></div>}

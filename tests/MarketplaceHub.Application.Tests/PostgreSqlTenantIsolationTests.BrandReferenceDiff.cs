@@ -213,14 +213,36 @@ public sealed partial class PostgreSqlTenantIsolationTests
                 var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == $"reference-list-shrank:{connection.Id:N}:BRANDS");
                 Assert.Equal("REFERENCE_LIST_SHRANK", issue.Code);
                 Assert.Equal(IssueStatus.Open, issue.Status);
-                Assert.Contains("1000", issue.Summary);
+                Assert.Contains("1.000 kayıttan 701 kayda", issue.Summary);
+                Assert.Contains("hiçbir marka silinmedi", issue.Summary);
+                Assert.Contains("Küçülmeyi Onayla", issue.Summary);
             }
             var unchanged = await CurrentBrandListAsync(tenant.Id, connection.Id);
             Assert.Equal(snapshot.Id, unchanged.Current.Id);
             Assert.Equal(snapshot.ContentHash, unchanged.Current.ContentHash);
 
-            // A small loss (under 20 %) is trusted: applied, and the shrink issue resolves.
-            RemoteReferenceItem[] smaller = [.. list.Take(900)];
+            // The owner approves it ("Küçülmeyi Onayla"): the next read applies the shrink once and the approval is used up.
+            await using (var db = fixture.CreateContext())
+                Assert.True((await new ReferenceDataService(db, fixture.TimeProvider).ApproveBrandListShrinkAsync(tenant.Id, null, connection.Id, "brand-diff-approve", CancellationToken.None)).Succeeded);
+            await SyncBrandListOkAsync(tenant.Id, connection.Id, shrunk, diff: true);
+            await AssertBrandListIsAsync(tenant.Id, connection.Id, shrunk);
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Code == "REFERENCE_LIST_SHRANK")).Status);
+
+            // The next large shrink is refused again: the approval held for one read only.
+            RemoteReferenceItem[] halved = [.. shrunk.Take(350)];
+            var again = await SyncBrandListAsync(tenant.Id, connection.Id, new PagedBrandPort(halved), diff: true);
+            Assert.Equal("REFERENCE_LIST_SHRANK", again.ErrorCode);
+            // An approval older than 48 hours no longer counts.
+            await using (var db = fixture.CreateContext())
+                await db.OperationalIssues.Where(x => x.TenantId == tenant.Id && x.Code == "REFERENCE_LIST_SHRANK")
+                    .ExecuteUpdateAsync(x => x.SetProperty(i => i.Status, IssueStatus.Acknowledged).SetProperty(i => i.LastSeenAt, DateTimeOffset.UtcNow.AddHours(-49)));
+            var expired = await SyncBrandListAsync(tenant.Id, connection.Id, new PagedBrandPort(halved), diff: true);
+            Assert.Equal("REFERENCE_LIST_SHRANK", expired.ErrorCode);
+            await AssertBrandListIsAsync(tenant.Id, connection.Id, shrunk);
+
+            // A small loss (within the rule) is trusted: applied, and the shrink issue resolves.
+            RemoteReferenceItem[] smaller = [.. shrunk.Take(600)];
             await SyncBrandListOkAsync(tenant.Id, connection.Id, smaller, diff: true);
             await AssertBrandListIsAsync(tenant.Id, connection.Id, smaller);
             await using (var db = fixture.CreateContext())
@@ -232,16 +254,35 @@ public sealed partial class PostgreSqlTenantIsolationTests
         }
     }
 
-    [PostgreSqlFact]
-    public void BrandDiff_TheShrinkGuardTrustsSmallLossesAndRefusesLargeOnes()
+    // The shrink rule (ReferenceSyncService.AllowedBrandListDrop): max(50, up to 100k: min(20 %, 2,000), above: 2 %).
+    [Theory]
+    [InlineData(4, 50)]
+    [InlineData(200, 50)]
+    [InlineData(1_000, 200)]
+    [InlineData(10_000, 2_000)]
+    [InlineData(50_000, 2_000)]
+    [InlineData(100_000, 2_000)]
+    [InlineData(103_048, 2_060)]
+    [InlineData(818_545, 16_370)]
+    [InlineData(2_000_000, 40_000)]
+    public void BrandDiff_TheShrinkRuleAllowsTwentyPercentOnSmallListsAndTwoPercentOnLargeOnes(int currentCount, int allowedDrop)
     {
-        Assert.False(ReferenceSyncService.IsTrustedBrandListSize(0, 10));
-        Assert.True(ReferenceSyncService.IsTrustedBrandListSize(3, 4));
-        Assert.True(ReferenceSyncService.IsTrustedBrandListSize(800_000, 818_545));
-        Assert.True(ReferenceSyncService.IsTrustedBrandListSize(654_836, 818_545));
-        Assert.False(ReferenceSyncService.IsTrustedBrandListSize(654_835, 818_545));
-        Assert.True(ReferenceSyncService.IsTrustedBrandListSize(160, 200));
-        Assert.False(ReferenceSyncService.IsTrustedBrandListSize(100, 200));
+        Assert.Equal(allowedDrop, ReferenceSyncService.AllowedBrandListDrop(currentCount));
+        Assert.True(ReferenceSyncService.IsTrustedBrandListSize(Math.Max(1, currentCount - allowedDrop), currentCount));
+        if (currentCount - allowedDrop - 1 > 0) Assert.False(ReferenceSyncService.IsTrustedBrandListSize(currentCount - allowedDrop - 1, currentCount));
+        Assert.False(ReferenceSyncService.IsTrustedBrandListSize(0, currentCount));
+    }
+
+    [Fact]
+    public void BrandDiff_AnApprovalCountsWhileAcknowledgedAndYoungerThanFortyEightHours()
+    {
+        var now = DateTimeOffset.UtcNow;
+        OperationalIssue Issue(IssueStatus status, double hoursAgo) => new() { Id = Guid.NewGuid(), DedupeKey = "k", Code = "REFERENCE_LIST_SHRANK", Summary = "s", Status = status, LastSeenAt = now.AddHours(-hoursAgo) };
+        Assert.True(ReferenceSyncService.IsLiveShrinkApproval(Issue(IssueStatus.Acknowledged, 47.9), now));
+        Assert.False(ReferenceSyncService.IsLiveShrinkApproval(Issue(IssueStatus.Acknowledged, 48.1), now));
+        Assert.False(ReferenceSyncService.IsLiveShrinkApproval(Issue(IssueStatus.Open, 1), now));
+        Assert.False(ReferenceSyncService.IsLiveShrinkApproval(Issue(IssueStatus.Resolved, 1), now));
+        Assert.False(ReferenceSyncService.IsLiveShrinkApproval(null, now));
     }
 
     // A brand the owner mapped: what the composers and the mapping pages resolve through its mapping (the mapping on the
@@ -560,6 +601,90 @@ public sealed partial class PostgreSqlTenantIsolationTests
             """).SingleAsync();
         var parts = text.Split('/').Select(long.Parse).ToArray();
         return (parts[0], parts[1], parts[2], parts[3]);
+    }
+
+    // Review probe 2: an id reused for another brand, a case-only or whitespace-only rename and a deactivation each take
+    // the VERIFIED mapping off the current list (the composer then asks for a mapping); a payload-only change keeps it.
+    [PostgreSqlFact]
+    public async Task BrandDiff_AnyNameOrActiveChangeTakesTheMappingOffTheCurrentList()
+    {
+        var (tenant, connection) = await SeedBrandDiffTenantAsync("brand-diff-reuse");
+        var now = DateTimeOffset.UtcNow;
+        var locals = Enumerable.Range(0, 5).Select(_ => Guid.CreateVersion7()).ToArray();
+        try
+        {
+            var list = DiffBrandList("R", 100);
+            await SyncBrandListOkAsync(tenant.Id, connection.Id, list, diff: true);
+            var snapshot = (await CurrentBrandListAsync(tenant.Id, connection.Id)).Current;
+            await using (var db = fixture.CreateContext())
+            {
+                for (var i = 0; i < locals.Length; i++)
+                {
+                    db.Brands.Add(new Brand { Id = locals[i], TenantId = tenant.Id, Name = $"Panel {i}", NormalizedName = $"PANEL {i}", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
+                    db.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = snapshot.Id, LocalId = locals[i], ScopeExternalId = "", ExternalId = list[i + 1].ExternalId, Status = "VERIFIED", VerifiedAt = now, Version = 1 });
+                }
+                await db.SaveChangesAsync();
+            }
+            RemoteReferenceItem[] next = [list[0],
+                DiffBrand(list[1].ExternalId, "Bambaşka Firma"),
+                DiffBrand(list[2].ExternalId, list[2].Name.ToLowerInvariant()),
+                DiffBrand(list[3].ExternalId, list[3].Name + " "),
+                list[4] with { IsActive = false },
+                DiffBrand(list[5].ExternalId, list[5].Name, ""","logo":"x" """),
+                .. list.Skip(6)];
+            await SyncBrandListOkAsync(tenant.Id, connection.Id, next, diff: true);
+            var results = new List<bool>();
+            foreach (var local in locals) results.Add((await MappedBrandAsync(tenant.Id, connection.Id, local)).OnCurrent);
+            Assert.Equal([false, false, false, false, true], results);
+            await using (var db = fixture.CreateContext())
+                Assert.All(await db.BrandMappings.AsNoTracking().Where(m => m.TenantId == tenant.Id).ToListAsync(), m => Assert.Contains(m.LocalId, locals));
+        }
+        finally
+        {
+            await DeleteBrandDiffTenantAsync(tenant.Id);
+        }
+    }
+
+    // Review probe 3: a second run of the same connection while the first is still reading is refused by the connection
+    // lock; the first applies its own list.
+    [PostgreSqlFact]
+    public async Task BrandDiff_TwoRunsOfOneConnectionDoNotInterleave()
+    {
+        var (tenant, connection) = await SeedBrandDiffTenantAsync("brand-diff-concurrent-runs");
+        try
+        {
+            var list = DiffBrandList("C", 400);
+            await SyncBrandListOkAsync(tenant.Id, connection.Id, list, diff: true);
+            RemoteReferenceItem[] listA = [.. list.Skip(1), DiffBrand("C9999991", "A Ekledi")];
+            RemoteReferenceItem[] listB = [.. list.Skip(2), DiffBrand("C9999992", "B Ekledi")];
+            var gate = new TaskCompletionSource();
+            var entered = new TaskCompletionSource();
+            var runA = Task.Run(() => SyncBrandListAsync(tenant.Id, connection.Id, new GatedBrandPort(listA, entered, gate.Task), diff: true));
+            await entered.Task;
+            var b = await SyncBrandListAsync(tenant.Id, connection.Id, new PagedBrandPort(listB), diff: true);
+            gate.SetResult();
+            var a = await runA;
+            Assert.Equal("CONNECTION_OPERATION_BUSY", b.ErrorCode);
+            Assert.True(a.Succeeded, a.ErrorSummary);
+            await AssertBrandListIsAsync(tenant.Id, connection.Id, listA);
+        }
+        finally
+        {
+            await DeleteBrandDiffTenantAsync(tenant.Id);
+        }
+    }
+
+    private sealed class GatedBrandPort(IReadOnlyList<RemoteReferenceItem> items, TaskCompletionSource entered, Task gate) : IReferenceDataPort
+    {
+        public async Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken)
+        {
+            var index = string.IsNullOrEmpty(page.Cursor) ? 0 : int.Parse(page.Cursor);
+            if (index == 1) { entered.TrySetResult(); await gate; }
+            const int size = 200;
+            var slice = items.Skip(index * size).Take(size).ToList();
+            var hasMore = (index + 1) * size < items.Count;
+            return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(slice, hasMore ? (index + 1).ToString() : null, hasMore));
+        }
     }
 
     // A brand list served in pages; it can fail on a page or repeat a cursor.

@@ -13,7 +13,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 //   1. The current snapshot's rows are loaded as (ExternalId -> row id, digest of every stored column but Id, SnapshotId
 //      and SortOrder; no brand reader orders by SortOrder). Nothing is written while the list is read.
 //   2. The whole list is read with the same guards as before (ReadBrandPagesAsync). A failed or partial read throws and
-//      changes nothing. An empty list, or one more than 20 % (and 50 rows) shorter than the current one, is unreliable: nothing
+//      changes nothing. An empty list, or one shorter than the shrink rule allows (AllowedBrandListDrop), is unreliable: nothing
 //      is written or deleted, an operational issue is raised and the job is blocked with its cause.
 //   3. One transaction locks the current snapshot row (FOR UPDATE: a second run of the same list waits, a run that finds
 //      the snapshot changed retries), deletes the vanished rows, updates the changed ones (only where a column IS
@@ -42,10 +42,15 @@ internal sealed partial class ReferenceSyncService
     internal const string BrandListShrankCode = "REFERENCE_LIST_SHRANK";
     internal const string BrandListMovedCode = "REFERENCE_LIST_MOVED";
     internal const string RetiredSnapshotPrefix = "RETIRED-";
-    // A read with more than this share fewer brands than the current list is not trusted to delete anything, once it
-    // lacks at least BrandListShrinkMinimumRows (a short list may lose a few brands for real).
-    internal const double BrandListShrinkLimit = 0.20;
+    // The shrink rule (D1, review 27 Nov 2026), in one place: a complete read may lack at most
+    //   max(50 rows, lists up to 100,000: min(20 %, 2,000 rows); larger lists: 2 %)
+    // of the current list. A short page that ends a read early must never delete a large part of a big list (Trendyol
+    // ~820k brands: at most ~16k); a short list may still lose a few brands for real. More is an unreliable read: nothing
+    // is written, an issue is raised, and only the owner's "Küçülmeyi Onayla" lets the next read apply it (once, 48 h).
     internal const int BrandListShrinkMinimumRows = 50;
+    internal const int BrandListLargeSize = 100_000;
+    internal const int BrandListSmallDropCap = 2_000;
+    internal static readonly TimeSpan BrandListShrinkApprovalLifetime = TimeSpan.FromHours(48);
     private const int BrandDiffChunk = 5_000;
 
     internal static string BrandListShrankIssueKey(Guid connectionId) => $"reference-list-shrank:{connectionId:N}:BRANDS";
@@ -71,10 +76,29 @@ internal sealed partial class ReferenceSyncService
         public bool IsEmpty => Added.Count == 0 && Changed.Count == 0 && Vanished.Count == 0;
     }
 
-    // Whether a complete read of readCount brands may replace a list of currentCount: not when it is empty or more than
-    // BrandListShrinkLimit shorter (a marketplace answering a part of its list must never remove the rest).
+    // How many brands a complete read may lack against a current list of currentCount (the shrink rule above).
+    internal static int AllowedBrandListDrop(int currentCount) =>
+        Math.Max(BrandListShrinkMinimumRows, currentCount <= BrandListLargeSize ? Math.Min(currentCount / 5, BrandListSmallDropCap) : currentCount / 50);
+
+    // Whether a complete read of readCount brands may replace a list of currentCount: not when it is empty or lacks more
+    // than AllowedBrandListDrop (a marketplace answering a part of its list must never remove the rest).
     internal static bool IsTrustedBrandListSize(int readCount, int currentCount) =>
-        readCount > 0 && (readCount >= currentCount * (1 - BrandListShrinkLimit) || currentCount - readCount < BrandListShrinkMinimumRows);
+        readCount > 0 && currentCount - readCount <= AllowedBrandListDrop(currentCount);
+
+    // The owner's approval of a refused shrink: the shrink issue acknowledged (its LastSeenAt is the approval time) and
+    // not older than BrandListShrinkApprovalLifetime. The next successful apply resolves the issue, which uses it up.
+    internal static bool IsLiveShrinkApproval(OperationalIssue? issue, DateTimeOffset now) =>
+        issue is { Status: IssueStatus.Acknowledged } && now - issue.LastSeenAt <= BrandListShrinkApprovalLifetime;
+
+    internal static string BrandListShrinkSummary(int currentCount, int readCount)
+    {
+        var turkish = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+        var missingPercent = Math.Round(100.0 * (currentCount - readCount) / currentCount);
+        return $"Marka listesi {currentCount.ToString("N0", turkish)} kayıttan {readCount.ToString("N0", turkish)} kayda düştü (%{missingPercent} eksik). "
+            + "Okuma güvenilir sayılmadı: hiçbir marka silinmedi, paneldeki liste korunuyor. Küçülme pazaryerinde gerçekse Eşleştirmeler › Marka "
+            + "Eşleme'de «Küçülmeyi Onayla» ile sonraki okumanın bir kez uygulamasına izin verin (48 saat geçerli); değilse bir şey yapmanız gerekmez, "
+            + "sonraki planlı okuma yeniden dener.";
+    }
 
     // The current brand snapshot's rows, or null when the connection has none (or an empty one): the first list is then
     // stored whole by the full-copy path.
@@ -139,9 +163,13 @@ internal sealed partial class ReferenceSyncService
         var diff = await DiffBrandListAsync(current, ReadBrandPagesAsync(tenantId, connectionId, correlationId, cancellationToken), cancellationToken);
         var now = timeProvider.GetUtcNow();
         if (diff.ReadCount == 0) throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", "Trendyol BRANDS salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
-        if (!IsTrustedBrandListSize(diff.ReadCount, current.Count))
+        var shrinkApproved = IsLiveShrinkApproval(await db.OperationalIssues.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.DedupeKey == BrandListShrankIssueKey(connectionId))
+            .OrderByDescending(x => x.LastSeenAt)
+            .FirstOrDefaultAsync(cancellationToken), now);
+        if (!IsTrustedBrandListSize(diff.ReadCount, current.Count) && !shrinkApproved)
         {
-            var summary = $"Marka listesi {current.Count} kayıttan {diff.ReadCount} kayda düştü (%{Math.Round(100.0 * (current.Count - diff.ReadCount) / current.Count)} eksik); okuma güvenilir sayılmadı, hiçbir marka silinmedi, paneldeki liste korunuyor.";
+            var summary = BrandListShrinkSummary(current.Count, diff.ReadCount);
             if (issues is not null)
             {
                 await issues.RecordAsync(tenantId, BrandListShrankIssueKey(connectionId), BrandListShrankCode, summary, now, cancellationToken);
