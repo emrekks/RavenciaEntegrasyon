@@ -191,8 +191,12 @@ internal static partial class JobGolden
         return json;
     }
 
+    // KATALOG-14 D5 step B2b: a colour card's and a variant's model fields as every reader sees them (the model's,
+    // EffectiveCatalog), so the golden is the same whether Catalog:MirrorModelFields keeps the copy columns or not.
     private static async Task<List<object>> RowsAsync<T>(AppDbContext db, Guid tenantId) where T : class =>
-        db.Model.FindEntityType(typeof(T))!.FindProperty("TenantId")!.ClrType == typeof(Guid?)
+        typeof(T) == typeof(Product) ? [.. await EffectiveCatalog.Products(db).Where(row => row.TenantId == tenantId).ToListAsync()]
+        : typeof(T) == typeof(ProductVariant) ? [.. await EffectiveCatalog.Variants(db).Where(row => row.TenantId == tenantId).ToListAsync()]
+        : db.Model.FindEntityType(typeof(T))!.FindProperty("TenantId")!.ClrType == typeof(Guid?)
             ? [.. await db.Set<T>().AsNoTracking().Where(row => EF.Property<Guid?>(row, "TenantId") == tenantId).ToListAsync()]
             : [.. await db.Set<T>().AsNoTracking().Where(row => EF.Property<Guid>(row, "TenantId") == tenantId).ToListAsync()];
 }

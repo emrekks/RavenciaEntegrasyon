@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -141,14 +142,36 @@ public static class EffectiveCatalog
     // while Catalog:MirrorModelFields is off, and stay stale for rows edited then after it is switched back on): a value
     // equal to a stale copy but not to the model is written, and an unchanged value writes nothing. The name and the brand
     // (the card's own name and its link to the model) are not touched. Ürün Hareketleri then records the model's old value.
-    // The card's model is read from the database (a save may have moved it since the row was loaded). Returns how many rows
-    // it looked at.
-    public static async Task<int> RebaseAsync(AppDbContext db, CancellationToken cancellationToken)
+    // A copy column that held another value than the model's is remembered: while the copies are kept, a save that writes
+    // the row anyway heals it quietly (ModelFieldCopyHold). The card's model is read from the database (a save may have
+    // moved it since the row was loaded). Returns how many rows it rebased.
+    public static Task<int> RebaseAsync(AppDbContext db, CancellationToken cancellationToken)
     {
-        var products = db.ChangeTracker.Entries<Product>()
-            .Where(x => x.State is EntityState.Unchanged or EntityState.Modified && !db.RebasedRows.Contains(x.Entity)).ToList();
-        var variants = db.ChangeTracker.Entries<ProductVariant>()
-            .Where(x => x.State is EntityState.Unchanged or EntityState.Modified && !db.RebasedRows.Contains(x.Entity)).ToList();
+        var tracker = db.ChangeTracker;
+        var auto = tracker.AutoDetectChangesEnabled;
+        tracker.AutoDetectChangesEnabled = false;
+        try
+        {
+            IEnumerable<object> rows = [.. tracker.Entries<Product>().Select(x => (object)x.Entity), .. tracker.Entries<ProductVariant>().Select(x => (object)x.Entity)];
+            return RebaseAsync(db, rows, cancellationToken);
+        }
+        finally
+        {
+            tracker.AutoDetectChangesEnabled = auto;
+        }
+    }
+
+    // The same for the given tracked rows only (an import's row, without walking the whole tracker).
+    public static async Task<int> RebaseAsync(AppDbContext db, IEnumerable<object> rows, CancellationToken cancellationToken)
+    {
+        var products = new List<EntityEntry<Product>>();
+        var variants = new List<EntityEntry<ProductVariant>>();
+        foreach (var row in rows)
+        {
+            if (db.RebasedRows.TryGetValue(row, out _)) continue;
+            if (row is Product product && db.Entry(product) is { State: EntityState.Unchanged or EntityState.Modified } productEntry) products.Add(productEntry);
+            else if (row is ProductVariant variant && db.Entry(variant) is { State: EntityState.Unchanged or EntityState.Modified } variantEntry) variants.Add(variantEntry);
+        }
         if (products.Count == 0 && variants.Count == 0) return 0;
         var cardIds = products.Select(x => x.Entity.Id).Concat(variants.Select(x => x.Entity.ProductId)).Distinct().ToArray();
         var models = new Dictionary<Guid, ModelValues>();
@@ -161,28 +184,34 @@ public static class EffectiveCatalog
                 models[row.CardId] = row;
         foreach (var entry in products)
         {
-            db.RebasedRows.Add(entry.Entity);
-            if (!models.TryGetValue(entry.Entity.Id, out var model)) continue;
-            Rebase(entry.Property(x => x.Description), model.Description);
-            Rebase(entry.Property(x => x.VatRate), model.VatRate);
-            Rebase(entry.Property(x => x.VatInclusion), model.VatInclusion);
-            Rebase(entry.Property(x => x.CategoryId), model.CategoryId);
-            Rebase(entry.Property(x => x.WarrantyMonths), model.WarrantyMonths);
-            Rebase(entry.Property(x => x.DeliveryDays), model.DeliveryDays);
+            var stale = new HashSet<string>(StringComparer.Ordinal);
+            if (models.TryGetValue(entry.Entity.Id, out var model))
+            {
+                Rebase(entry.Property(x => x.Description), model.Description, stale);
+                Rebase(entry.Property(x => x.VatRate), model.VatRate, stale);
+                Rebase(entry.Property(x => x.VatInclusion), model.VatInclusion, stale);
+                Rebase(entry.Property(x => x.CategoryId), model.CategoryId, stale);
+                Rebase(entry.Property(x => x.WarrantyMonths), model.WarrantyMonths, stale);
+                Rebase(entry.Property(x => x.DeliveryDays), model.DeliveryDays, stale);
+            }
+            db.RebasedRows.AddOrUpdate(entry.Entity, stale);
         }
         foreach (var entry in variants)
         {
-            db.RebasedRows.Add(entry.Entity);
-            if (models.TryGetValue(entry.Entity.ProductId, out var model) && model.Desi is not null) Rebase(entry.Property(x => x.Desi), model.Desi);
+            var stale = new HashSet<string>(StringComparer.Ordinal);
+            if (models.TryGetValue(entry.Entity.ProductId, out var model) && model.Desi is not null) Rebase(entry.Property(x => x.Desi), model.Desi, stale);
+            db.RebasedRows.AddOrUpdate(entry.Entity, stale);
         }
         return products.Count + variants.Count;
     }
 
     private sealed record ModelValues(Guid CardId, string Description, decimal? VatRate, string? VatInclusion, Guid? CategoryId, int? WarrantyMonths, int? DeliveryDays, decimal? Desi);
 
-    private static void Rebase<TEntity, TValue>(Microsoft.EntityFrameworkCore.ChangeTracking.PropertyEntry<TEntity, TValue> property, TValue value) where TEntity : class
+    private static void Rebase<TEntity, TValue>(PropertyEntry<TEntity, TValue> property, TValue value, HashSet<string> stale) where TEntity : class
     {
-        if (property.IsModified || (Equals(property.OriginalValue, value) && Equals(property.CurrentValue, value))) return;
+        if (property.IsModified) return;
+        if (!Equals(property.OriginalValue, value)) stale.Add(property.Metadata.Name);
+        if (Equals(property.OriginalValue, value) && Equals(property.CurrentValue, value)) return;
         property.OriginalValue = value;
         property.CurrentValue = value;
         property.IsModified = false;

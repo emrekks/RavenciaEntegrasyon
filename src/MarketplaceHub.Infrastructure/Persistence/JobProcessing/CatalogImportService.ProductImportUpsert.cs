@@ -382,7 +382,7 @@ internal sealed partial class CatalogImportService
         }
 
         // KATALOG-14 D5 step B2b: an existing card compares the listing's values with its model's, never with its copies.
-        if (!isNewProduct) await EffectiveCatalog.RebaseAsync(db, cancellationToken);
+        if (!isNewProduct) await EffectiveCatalog.RebaseAsync(db, [product], cancellationToken);
         var preserveDueToLocalChanges = link is not null && (!overwriteLocalChanges && ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson) || observeOnly && !isNewProduct);
         var preserveDueToImportOption = link is not null && !updateExistingProducts && !isNewProduct;
         var preserveLocal = preserveDueToLocalChanges || preserveDueToImportOption;

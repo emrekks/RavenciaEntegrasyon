@@ -2023,7 +2023,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             db.ChangeTracker.Clear();
             return updateConflict;
         }
-        await LinkSavedModelAsync(tenantId, id, familyVariantProductIds, command, product, cancellationToken);
+        await LinkSavedModelAsync(tenantId, id, familyVariantProductIds, command, cancellationToken);
         return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
@@ -2064,7 +2064,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // Model Kaydı Faz 1: after an editor save the family's model link is checked again (a variant the save deleted by SQL
     // is not seen by AppDbContext), and the model takes the shared fields the save wrote to every card (write-through).
     // The save itself already stands: a failure here only leaves the link or the model's fields for the next save.
-    private async Task LinkSavedModelAsync(Guid tenantId, Guid productId, IReadOnlyCollection<Guid> familyProductIds, UpdateProductCommand command, Product saved, CancellationToken cancellationToken)
+    private async Task LinkSavedModelAsync(Guid tenantId, Guid productId, IReadOnlyCollection<Guid> familyProductIds, UpdateProductCommand command, CancellationToken cancellationToken)
     {
         try
         {
@@ -2072,10 +2072,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var keys = await ProductModelLinks.KeysOfProductsAsync(db, tenantId, [.. familyProductIds.Append(productId).Distinct()], cancellationToken);
             await ProductModelLinks.ReconcileAsync(db, tenantId, keys, now, cancellationToken);
             if (!(command.FamilySharedFields ?? []).Any(ProductFamilySharedFields.IsKnown)) return;
-            var signatures = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId)
-                .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.OptionSignature).ToListAsync(cancellationToken);
-            var color = signatures.Select(ProductFamilyColorOrder.ColorOf).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-            try { await ProductModelLinks.WriteFieldsAsync(db, tenantId, saved, color, now, cancellationToken); }
+            try { await ProductModelLinks.WriteFieldsAsync(db, tenantId, productId, command.ClearWarrantyMonths && command.WarrantyMonths is null, now, cancellationToken); }
             catch (Exception exception) when (exception is DbException or InvalidOperationException) { await ProductModelLinks.RecordLinkFailureAsync(db, tenantId, exception, timeProvider.GetUtcNow()); }
             if ((command.FamilySharedFields ?? []).Contains(ProductFamilySharedFields.Attributes, StringComparer.Ordinal) && command.Attributes is not null)
                 await ProductModelLinks.WriteAttributesAsync(db, tenantId, productId, now, cancellationToken);

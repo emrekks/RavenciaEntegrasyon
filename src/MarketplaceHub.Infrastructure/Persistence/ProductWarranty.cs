@@ -28,12 +28,14 @@ public static class ProductWarranty
     // migration 20261115170000): a card copy left empty on a card that is not a draft takes 0, and a model record takes 0
     // only when none of its cards' copies is empty. A model with an empty warranty and a draft beside a card on sale keeps
     // its empty warranty, as does the draft's copy.
+    // KATALOG-14 D5 step B2b: with Catalog:MirrorModelFields off the one-time repair is retired (it judges by the copies,
+    // which are no longer kept, and automatic passes write none of the model fields): every pass only counts. On, the pass
+    // is exactly the one above.
     public static async Task<PassResult> RunPassAsync(AppDbContext db, bool firstPassAfterStart, CancellationToken cancellationToken)
     {
-        // KATALOG-14 D5 step B2b: with Catalog:MirrorModelFields off the one-time repair is retired: it judged by the copies
-        // (which are no longer kept) and the owner rule is that automatic passes write none of the model fields; every pass
-        // only counts, by the model, for the Worker's warning.
-        if (!firstPassAfterStart || !ModelFieldCopies.Written)
+        if (!ModelFieldCopies.Written)
+            return new(0, 0, await EffectiveCatalog.Products(db).CountAsync(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft, cancellationToken));
+        if (!firstPassAfterStart)
             return new(0, 0, await EffectiveCatalog.Products(db).CountAsync(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft, cancellationToken));
         var cards = await db.Products.Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);

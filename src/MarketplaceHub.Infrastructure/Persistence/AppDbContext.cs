@@ -179,6 +179,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
         // KATALOG-14 phase D5a: the save, its model links and the model's values in one transaction (SaveChangesAsync).
         var reported = ModelMirrorReport.Count;
+        ModelFieldCopyHold.Held? held = null;
         using var owned = models is not null && Database.CurrentTransaction is null ? Database.BeginTransaction() : null;
         if (owned is not null) OwnsModelLinkTransaction = true;
         try
@@ -189,7 +190,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             // KATALOG-14 D5 step B1: a new card is inserted with its model (ProductModelLinks.GiveNewCardsModels).
             if (models is not null) ProductModelLinks.GiveNewCardsModels(this, models, _timeProvider.GetUtcNow());
             // KATALOG-14 D5 step B2b: no copy column of the model fields is written while Catalog:MirrorModelFields is off.
-            var held = ModelFieldCopyHold.Before(ChangeTracker);
+            held = ModelFieldCopyHold.Before(this);
             _saving = true;
             try { saved = base.SaveChanges(acceptAllChangesOnSuccess && owned is null); }
             finally { _saving = false; ModelFieldCopyHold.After(held); }
@@ -210,6 +211,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             if (models is not null) ProductModelLinks.ForgetFreshModels(this, models);
             ForgetModelMirrorReport(reported);
+            ModelFieldCopyHold.Undo(held);
             throw;
         }
         finally
@@ -232,6 +234,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         // the same transaction (the caller's, else one opened here), so no reader ever sees a card without its model or a
         // model behind its cards.
         var reported = ModelMirrorReport.Count;
+        ModelFieldCopyHold.Held? held = null;
         await using var owned = models is not null && Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(cancellationToken) : null;
         if (owned is not null) OwnsModelLinkTransaction = true;
         try
@@ -242,10 +245,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             // KATALOG-14 D5 step B1: a new card is inserted with its model (ProductModelLinks.GiveNewCardsModels).
             if (models is not null) ProductModelLinks.GiveNewCardsModels(this, models, _timeProvider.GetUtcNow());
             // KATALOG-14 D5 step B2b: no copy column of the model fields is written while Catalog:MirrorModelFields is off.
-            var held = ModelFieldCopyHold.Before(ChangeTracker);
+            held = ModelFieldCopyHold.Before(this);
             _saving = true;
             // In its own transaction the changes are accepted only after the commit: a link or model write that fails rolls
-            // the save back and leaves the tracked entities as they were, so the caller's next save writes them again.
+            // the save back and leaves the tracked entities as they were (the model-field columns a switched-off save held back are
+            // put back as changed, ModelFieldCopyHold.Undo), so the caller's next save writes them again.
             try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess && owned is null, cancellationToken); }
             finally { _saving = false; ModelFieldCopyHold.After(held); }
             CatalogListGenerations.Bump(catalogTenants);
@@ -265,6 +269,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             if (models is not null) ProductModelLinks.ForgetFreshModels(this, models);
             ForgetModelMirrorReport(reported);
+            ModelFieldCopyHold.Undo(held);
             throw;
         }
         finally
@@ -274,7 +279,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     }
 
     // KATALOG-14 D5 step B2b: the tracked cards and variants already rebased on their model (EffectiveCatalog.RebaseAsync).
-    internal HashSet<object> RebasedRows { get; } = new(ReferenceEqualityComparer.Instance);
+    // Each row holds the copy columns that differed from the model when it was rebased. Weak (a row the context no longer
+    // holds goes with it), and a row the context starts tracking again (after ChangeTracker.Clear or a re-attach) is
+    // rebased again (review, 27 Nov 2026).
+    internal System.Runtime.CompilerServices.ConditionalWeakTable<object, HashSet<string>> RebasedRows
+    {
+        get
+        {
+            if (_rebasedRows is null)
+            {
+                var rows = new System.Runtime.CompilerServices.ConditionalWeakTable<object, HashSet<string>>();
+                ChangeTracker.Tracked += (_, e) => rows.Remove(e.Entry.Entity);
+                _rebasedRows = rows;
+            }
+            return _rebasedRows;
+        }
+    }
+
+    private System.Runtime.CompilerServices.ConditionalWeakTable<object, HashSet<string>>? _rebasedRows;
 
     // True while SaveChanges runs its own transaction around a save and its model links (KATALOG-14 phase D5a): the
     // reconcile then takes its advisory locks inside it (ProductModelLinks.ReconcileAsync).

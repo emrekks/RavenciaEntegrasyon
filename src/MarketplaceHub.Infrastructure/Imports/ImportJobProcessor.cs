@@ -207,7 +207,7 @@ public sealed class ImportJobProcessor(
                     // KATALOG-14 D5 step B2b: "none" is the desi every reader sees (the model's), not the variant's copy.
                     if (ImportedDesi.From(ParseDecimal(Value(values, "desi"))) is { } linkedDesi
                         && await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == row.decision.LinkVariantId.Value, cancellationToken) is { } linkedVariant
-                        && await EffectiveCatalog.RebaseAsync(db, cancellationToken) is var _ && linkedVariant.Desi is null)
+                        && linkedVariant.Desi is null && await EffectiveCatalog.RebaseAsync(db, [linkedVariant], cancellationToken) is var _ && linkedVariant.Desi is null)
                     {
                         linkedVariant.Desi = linkedDesi;
                         linkedVariant.UpdatedAt = timeProvider.GetUtcNow();

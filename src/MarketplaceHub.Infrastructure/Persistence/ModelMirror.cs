@@ -345,9 +345,10 @@ public static class ModelMirror
 
     public sealed record Gap(Guid ModelId, string ModelCode, IReadOnlyList<string> Fields);
 
-    // KATALOG-14 D5 step B2b: with Catalog:MirrorModelFields off a copy is allowed to differ (nothing writes or reads it), so
-    // there is no gap to report: every reader reads the model, which cannot differ from itself. The open gap warnings are
-    // settled (the last statement below) and nothing is written to a card or a model.
+    // KATALOG-14 D5 step B2b: with Catalog:MirrorModelFields on this is exactly the check above (the copies are kept, so a
+    // copy that differs is reported as before; after switching back from off, an owner save of the product heals its copy,
+    // ModelFieldCopyHold, and the next check resolves the warning). Off, a copy is allowed to differ (nothing writes or reads
+    // it), so there is no gap to look for: no row is read, no warning opens and the open gap warnings are settled.
     public static async Task<IReadOnlyList<Gap>> ReportGapsAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var copies = ModelFieldCopies.Written;
