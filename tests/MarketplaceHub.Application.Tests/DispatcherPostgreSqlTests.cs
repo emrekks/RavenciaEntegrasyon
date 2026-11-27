@@ -190,6 +190,76 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // Second correctness review (28 Nov, M1): only a new-order read the lease could take now defers a status scan. A recovery
+    // read (priority 6, the kind the quota hold holds) or a first-import read (priority -1) of the store does not; a runnable
+    // new-order read does, the census says so too (HeldBy), and once that read has run the status scan is leased.
+    [PostgreSqlFact]
+    public async Task OnlyARunnableNewOrderReadDefersAStatusScan()
+    {
+        var tenant = ScheduledPolicyIsolationTests.NewTenant("dispatcher-defer");
+        Guid recoveryStore = Guid.NewGuid(), initialStore = Guid.NewGuid(), orderStore = Guid.NewGuid();
+        var settings = DispatcherSettings.Default;
+        var statusLane = DispatcherLanes.All().First(lane => lane.Name == DispatcherLanes.StatusScans);
+        var ordersLane = DispatcherLanes.All().First(lane => lane.Name == DispatcherLanes.OrderReads);
+        var deferral = DispatcherLanes.DeferralFor(DispatcherLanes.StatusScans, settings);
+        Assert.NotNull(deferral);
+        // Each status scan shares its lock group with the read next to it: only the rule decides.
+        Assert.Equal(MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.PttAvmOrderRecoverySync), MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.PttAvmOrderStatusSync));
+        Assert.Equal(MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.N11OrderSync), MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderStatusSync));
+        await using var seed = fixture.CreateContext();
+        try
+        {
+            seed.Tenants.Add(tenant);
+            var now = DateTimeOffset.UtcNow;
+            Guid Add(Guid connection, string type, int priority, string key)
+            {
+                var id = Guid.NewGuid();
+                JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, connection, type, "{}", $"defer:{key}", "test", now.AddMinutes(-1)) { Priority = priority, Id = id });
+                return id;
+            }
+            Add(recoveryStore, MarketplaceJobTypes.PttAvmOrderRecoverySync, JobPriorityPolicy.Recovery, "recovery");
+            var recoveryScan = Add(recoveryStore, MarketplaceJobTypes.PttAvmOrderStatusSync, 0, "recovery-scan");
+            Add(initialStore, MarketplaceJobTypes.N11OrderSync, JobPriorityPolicy.InitialDataSync, "initial");
+            var initialScan = Add(initialStore, MarketplaceJobTypes.OrderStatusSync, 0, "initial-scan");
+            var orderRead = Add(orderStore, MarketplaceJobTypes.N11OrderSync, 0, "order-read");
+            var orderScan = Add(orderStore, MarketplaceJobTypes.OrderStatusSync, 0, "order-scan");
+            await seed.SaveChangesAsync();
+
+            await using (var db = fixture.CreateContext())
+            {
+                var rows = await QueueHealthService.RunnableJobKindsAsync(db, now, CancellationToken.None, DispatcherLanes.ConnectionCap(settings),
+                    DispatcherLanes.DeferredRules(settings), deferral, null);
+                Guid? HeldBy(Guid store, string type) => rows.Single(row => row.ConnectionId == store && row.JobType == type).HeldBy;
+                Assert.Null(HeldBy(recoveryStore, MarketplaceJobTypes.PttAvmOrderStatusSync));
+                Assert.Null(HeldBy(initialStore, MarketplaceJobTypes.OrderStatusSync));
+                Assert.Equal(orderStore, HeldBy(orderStore, MarketplaceJobTypes.OrderStatusSync));
+            }
+            // The lease agrees with the census.
+            Assert.NotNull(await Lease(recoveryScan, statusLane, deferral));
+            Assert.NotNull(await Lease(initialScan, statusLane, deferral));
+            Assert.Null(await Lease(orderScan, statusLane, deferral));
+            // The order read runs and ends; the status scan goes next.
+            Assert.NotNull(await Lease(orderRead, ordersLane, null));
+            await seed.Database.ExecuteSqlInterpolatedAsync($"UPDATE integration.jobs SET \"Status\" = 'SUCCEEDED', \"LeaseExpiresAt\" = NULL WHERE \"Id\" = {orderRead}");
+            Assert.NotNull(await Lease(orderScan, statusLane, deferral));
+
+            async Task<LeasedJob?> Lease(Guid jobId, WorkerLane lane, JobDeferral? jobDeferral)
+            {
+                await using var leaseDb = fixture.CreateContext();
+                return await new JobLeaseService(leaseDb, fixture.TokenHasher, fixture.TimeProvider).TryLeaseAsync(TimeSpan.FromMinutes(2), lane.MaximumPriority, lane.MinimumPriority, CancellationToken.None,
+                    includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], onlyJobId: jobId,
+                    connectionCap: DispatcherLanes.ConnectionCap(settings), deferral: jobDeferral);
+            }
+        }
+        finally
+        {
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.job_attempts WHERE \"TenantId\" = {tenant.Id}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.outbox_events WHERE \"TenantId\" = {tenant.Id}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.jobs WHERE \"TenantId\" = {tenant.Id}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM iam.tenants WHERE \"Id\" = {tenant.Id}");
+        }
+    }
+
     // The real Worker (ExecuteAsync: the dispatcher or today's lane loops, the notification listener, the due-time wake, the
     // reaper) over a mixed stream of 48 jobs on four stores: user actions, webhooks, writes, order reads, status scans, return
     // reads, catalogue reads and background reads; some fail once and are retried, some stop as blocked. The job processor is

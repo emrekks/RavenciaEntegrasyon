@@ -304,7 +304,7 @@ internal static class ReplayHarness
                     if (stopping.IsCancellationRequested) return null;
                     foreach (var filter in lane.Filters)
                         if (queue.Lease(filter.MaximumPriority, filter.MinimumPriority, filter.IncludedJobTypes, filter.ExcludedJobTypes,
-                            bulkheads.For(lane.Definition.Name, WorkerLanes.DefaultHotPriorityCeiling), settings.IsCapped(lane.Definition.Name) ? cap : null,
+                            bulkheads.For(lane.Definition.Name, WorkerLanes.DefaultHotPriorityCeiling), cap.Cap > 0 ? cap : null,
                             DispatcherLanes.DeferralFor(lane.Definition.Name, settings)) is { } job) return job;
                     return null;
                 },
@@ -615,10 +615,13 @@ internal sealed class ReplayQueue(ReplayClock clock, DispatcherSettings settings
         cap is { Cap: > 0 } && job.Job.Connection is { } connection && cap.Caps(job.Job.JobType, job.Job.Priority)
         && running.Values.Count(other => other.Job.Connection == connection && cap.Caps(other.Job.JobType, other.Job.Priority)) >= cap.Cap;
 
-    private bool Deferred(QueuedJob job, Application.JobDeferral? deferral, DateTimeOffset now) =>
+    // JobDeferral's predicate: a job of the store queued ahead in the same lock group that the lease could take now (an ahead
+    // type in the priority range, runnable, not backed off, not held by the store cap; the quota hold never holds the range).
+    private bool Deferred(QueuedJob job, Application.JobDeferral? deferral, Application.JobConnectionCap? cap, DateTimeOffset now) =>
         deferral is not null && job.Job.Connection is { } connection
         && queued.Any(other => other != job && other.Job.Connection == connection && other.LockGroup == job.LockGroup
-            && deferral.AheadJobTypes.Contains(other.Job.JobType) && other.RunnableAt <= now && !BackedOff(other, now));
+            && deferral.AheadJobTypes.Contains(other.Job.JobType) && other.Job.Priority >= deferral.MinimumAheadPriority && other.Job.Priority <= deferral.MaximumAheadPriority
+            && other.RunnableAt <= now && !BackedOff(other, now) && !Capped(other, cap));
 
     private bool Leasable(QueuedJob candidate, int? maximumPriority, int? minimumPriority, IReadOnlyList<string> included, IReadOnlyList<string> excluded,
         Application.JobBulkhead? bulkhead, Application.JobConnectionCap? cap, Application.JobDeferral? deferral, DateTimeOffset now)
@@ -632,7 +635,7 @@ internal sealed class ReplayQueue(ReplayClock clock, DispatcherSettings settings
         if (Busy(candidate) || BackedOff(candidate, now)) return false;
         if (job.Priority > Application.JobQuotaHold.DefaultHeldAbovePriority && held.TryGetValue((connection, job.JobType), out var until) && until > now
             && candidate.RunnableAt > now - MaximumHold) return false;
-        return !BulkheadFull(candidate, bulkhead) && !Capped(candidate, cap) && !Deferred(candidate, deferral, now);
+        return !BulkheadFull(candidate, bulkhead) && !Capped(candidate, cap) && !Deferred(candidate, deferral, cap, now);
     }
 
     // A bulkhead class at its cap for the job's tenant and marketplace (JobBulkhead).
@@ -736,7 +739,7 @@ internal sealed class ReplayQueue(ReplayClock clock, DispatcherSettings settings
     private Guid? HeldBy(QueuedJob job, Application.JobConnectionCap? cap, Application.JobConnectionCap deferredKinds, Application.JobDeferral? deferral, Application.JobBulkhead? bulkhead, DateTimeOffset now)
     {
         if (job.Job.Connection is not { } connection) return null;
-        if (Busy(job) || Capped(job, cap) || (deferredKinds.Caps(job.Job.JobType, job.Job.Priority) && Deferred(job, deferral, now))) return StoreGuid(connection);
+        if (Busy(job) || Capped(job, cap) || (deferredKinds.Caps(job.Job.JobType, job.Job.Priority) && Deferred(job, deferral, cap, now))) return StoreGuid(connection);
         if (bulkhead is null || !BulkheadFull(job, bulkhead)) return null;
         var types = bulkhead.JobTypes.ToList();
         var className = bulkhead.Classes[types.IndexOf(job.Job.JobType)];

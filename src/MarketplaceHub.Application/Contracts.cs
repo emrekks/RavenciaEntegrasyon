@@ -106,10 +106,14 @@ public sealed record JobConnectionCap(int Cap, IReadOnlyList<JobConnectionCap.Ru
         && !rule.ExcludedJobTypes.Contains(jobType));
 }
 
-// Queue phase 2 (review of 27 Nov 2026): a job is not leased while its connection has a runnable job of one of AheadJobTypes
-// queued in the same lock group (not under a quota backoff). The dispatcher passes it for the status scans and the background
-// reads, so a store's order read goes before its next status scan or order reconciliation ("orders" lock group). Null: none.
-public sealed record JobDeferral(IReadOnlyList<string> AheadJobTypes);
+// Queue phase 2 (reviews of 27 and 28 Nov 2026): a job is not leased while its connection has a job queued ahead in the same
+// lock group that the lease could take right now: one of AheadJobTypes, of priority MinimumAheadPriority..MaximumAheadPriority
+// (a range the quota hold never holds: at most its HeldAbovePriority), runnable by time and attempts, not under a quota backoff
+// and not held by the per-store cap. The dispatcher passes the new-order reads (*_ORDER_SYNC, never a recovery, reconciliation
+// or first-import read) for the status scans and the background reads, so a store's new orders are read before its next status
+// scan or order reconciliation ("orders" lock group). The lease (JobLeaseService) and the census
+// (QueueHealthService.RunnableJobKindsAsync) apply this same predicate with the same parameters. Null: none.
+public sealed record JobDeferral(IReadOnlyList<string> AheadJobTypes, int MinimumAheadPriority = 0, int MaximumAheadPriority = JobQuotaHold.DefaultHeldAbovePriority);
 
 // QueueWait: how long the job waited between becoming runnable and this lease (slot, lock group or backoff wait).
 // Priority, LockGroup (the group the lease's busy check uses; null when the job has none) and EligibleAt (when it became
@@ -120,7 +124,10 @@ public sealed record LeasedJob(Guid Id, Guid TenantId, Guid? ConnectionId, strin
 // Queue phase 0 (27 Nov 2026), measurement only. What the leasing worker knows about the attempt it starts: its lane, whether
 // the slot was borrowed, and (Waits) why the job waited, asked once the job is picked and written with the attempt row in the
 // lease's own save. Nothing in it changes which job is leased or when. A null value is unknown, never a guess.
-public sealed record JobAttemptStart(string? Lane, bool? Borrowed, Func<JobWaitQuery, JobWaitBreakdown>? Waits = null);
+// FinishOnceLocked (queue phase 2, dispatcher only): once the job row is locked the lease saves and commits without the
+// caller's token, so a lease timeout cancels the query but never lands at COMMIT (where it could leave the job LEASED until the
+// reaper and burn an attempt).
+public sealed record JobAttemptStart(string? Lane, bool? Borrowed, Func<JobWaitQuery, JobWaitBreakdown>? Waits = null, bool FinishOnceLocked = false);
 
 // The picked job as the wait attribution needs it. LockGroup is the group the lease's busy check compares (null: none).
 // Fresh: the job never ran, failed or was retried (its first lease after it was queued).

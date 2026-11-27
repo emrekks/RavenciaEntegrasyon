@@ -27,6 +27,8 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         // Queue phase 2, deferral (JobDeferral): off (null) unless the dispatcher passes it for its status scans.
         var deferOn = deferral is { AheadJobTypes.Count: > 0 };
         var aheadJobTypes = deferral?.AheadJobTypes.ToArray() ?? [];
+        var aheadMinimum = deferral?.MinimumAheadPriority ?? 0;
+        var aheadMaximum = deferral?.MaximumAheadPriority ?? 0;
         var now = timeProvider.GetUtcNow();
         includedJobTypes ??= [];
         excludedJobTypes ??= [];
@@ -199,6 +201,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                           WHERE ahead."ConnectionId" = candidate."ConnectionId"
                             AND ahead."Id" <> candidate."Id"
                             AND ahead."JobType" = ANY({aheadJobTypes}::text[])
+                            AND ahead."Priority" BETWEEN {aheadMinimum} AND {aheadMaximum}
                             AND coalesce(ahead."LockGroup", ahead_group.lock_group) = coalesce(candidate."LockGroup", candidate_group.lock_group)
                             AND ahead."Status" IN ('PENDING', 'RETRY_SCHEDULED')
                             AND ahead."AvailableAt" <= {now}
@@ -207,7 +210,15 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                                 SELECT 1 FROM integration.connection_backoffs ahead_backoff
                                 WHERE ahead_backoff."ConnectionId" = ahead."ConnectionId"
                                   AND ahead_backoff."LockGroup" = coalesce(ahead."LockGroup", ahead_group.lock_group)
-                                  AND ahead_backoff."Until" > {now})))
+                                  AND ahead_backoff."Until" > {now})
+                            -- the job ahead is leasable now: not held by the per-store cap (the quota hold never holds its range)
+                            AND NOT ({capOn}
+                                AND EXISTS (
+                                    SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS ahead_rule(minimum, maximum, included, excluded)
+                                    WHERE ahead."Priority" BETWEEN ahead_rule.minimum AND ahead_rule.maximum
+                                      AND (ahead_rule.included = '' OR strpos(ahead_rule.included, '|' || ahead."JobType" || '|') > 0)
+                                      AND strpos(ahead_rule.excluded, '|' || ahead."JobType" || '|') = 0)
+                                AND {cap} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = ahead."ConnectionId"), 0))))
                   -- Quota-aware leasing: a job whose marketplace quota is full right now waits in the queue, not in a slot.
                   -- Background work only (never a user action, a new-order read, a webhook or a write), and never longer
                   -- than the hold allows since the job became runnable.
@@ -309,8 +320,10 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         // The panel learns that the job started, once: later leases of the same job (retries, slices of a long
         // run) would only make every open screen refetch its job list again.
         if (firstLease) AddOutboxEvent(job, now);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        // The dispatcher's lease timeout stops before the row is locked, never at COMMIT (JobAttemptStart.FinishOnceLocked).
+        var finishToken = attemptStart?.FinishOnceLocked == true ? CancellationToken.None : cancellationToken;
+        await db.SaveChangesAsync(finishToken);
+        await transaction.CommitAsync(finishToken);
         return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token, queueWait, job.Priority, busyLockGroup, eligibleAt);
     }
 
