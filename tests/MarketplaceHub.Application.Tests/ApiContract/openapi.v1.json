@@ -14071,6 +14071,41 @@
         }
       }
     },
+    "/api/v1/notifications/new-orders": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "operationId": "getNotificationsNewOrders",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PanelNotificationView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/notifications/read": {
       "post": {
         "tags": [

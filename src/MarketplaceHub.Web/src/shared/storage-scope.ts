@@ -26,7 +26,7 @@ export function scopedStorageKey(base: string) {
 export const personalStorageKeyPrefixes = [
   'ravencia.notification-history', 'rv-tab-counts:', 'rv-question-sync-count', 'rv-appearance-settings',
   // Background notices already raised, and the store and tariff the commission tab last opened on.
-  'ravencia.attention-notices', 'price-stock-monitor-notified', 'rv-commission-tariff-last',
+  'ravencia.attention-notices', 'ravencia.new-order-notices', 'price-stock-monitor-notified', 'rv-commission-tariff-last',
   // sessionStorage: "Sonra Karar Ver" on the workspace invitations window, for this tab until sign-out.
   'rv-invitations-later'
 ] as const

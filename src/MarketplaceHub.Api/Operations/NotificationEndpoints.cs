@@ -23,6 +23,11 @@ public static class NotificationEndpoints
         }).Produces<PageResult<PanelNotificationView>>();
         api.MapGet("/summary", async (HttpContext http, IPanelNotificationService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.SummaryAsync(tenant.TenantId, tenant.UserId, http.RequestAborted)) : Unauthorized(http)).Produces<PanelNotificationSummary>();
+        // The tenant's "Yeni Sipariş" notifications (NewOrderNoticePolicy) for the bell, newest first: every signed-in role,
+        // like the order list (GET /orders) they lead to.
+        api.MapGet("/new-orders", async (HttpContext http, IPanelNotificationService service) =>
+            Tenant(http) is { } tenant ? Results.Ok(await service.NewOrdersAsync(tenant.TenantId, tenant.UserId, http.RequestAborted)) : Unauthorized(http))
+            .Produces<IReadOnlyList<PanelNotificationView>>();
         api.MapPost("", async (HttpContext http, IPanelNotificationService service, SaveRequest request) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

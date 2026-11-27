@@ -80,6 +80,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             run = new JobRunContext();
             run.ReadRecordingKind = ReadRecordKind(jobType) ?? "ORDER";
             run.ReadRecordingEnabled = jobId is not null && ReadRecordKind(jobType) is not null;
+            BeginNewOrderNotices(currentJobIsBootstrap, payloadJson);
             if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
             try
             {
@@ -163,7 +164,34 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 // A run that ended in an error, a block or a timeout still shows what it read up to that point.
                 await FlushReadRecordsAsync(tenantId, jobId, CancellationToken.None, final: true);
+                await RecordNewOrderNoticesAsync(tenantId);
             }
+        }
+    }
+
+    // The bell's new-order notifications of this run (NewOrderNoticePolicy): none for the activation's first import or a
+    // full read. Internal for the tests, which store orders through UpsertOrders outside ProcessAsync.
+    internal void BeginNewOrderNotices(bool bootstrapJob, string? payloadJson)
+    {
+        run.NewOrderNotices = NewOrderNoticePolicy.RunRaisesNotices(bootstrapJob, payloadJson);
+        run.NewOrderNoticeRunStartedAt = timeProvider.GetUtcNow();
+    }
+
+    // Written once at the end of the run, also after a failed one (only orders really stored count). A notification is
+    // never worth failing an order read for: any failure is logged and the run's result stands.
+    internal async Task RecordNewOrderNoticesAsync(Guid tenantId)
+    {
+        try
+        {
+            await NewOrderNotice.RecordAsync(db, tenantId, run, timeProvider.GetUtcNow(), CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(exception, "New-order notifications of a run could not be recorded");
+        }
+        finally
+        {
+            run.NewOrderIdsByConnection.Clear();
         }
     }
 

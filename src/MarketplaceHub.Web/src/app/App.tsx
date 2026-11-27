@@ -20,7 +20,7 @@ import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScr
 import { stuckChangeEvent } from '../shared/hooks/useStuckHead'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
-import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification } from '../shared/notifications'
+import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, syncNewOrderNotices, type AppNotification } from '../shared/notifications'
 import { connectionIdentityFromCache } from '../shared/notification-connections'
 import { startNotificationCenterSink } from '../shared/notification-center'
 import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
@@ -145,6 +145,9 @@ function Shell({ me }: { me: Me }) {
   // Background states for the notification center (reads failing again and again, approvals that ran out of time).
   const attentionNotices = useQuery({ queryKey: queryKeys.jobs('attention'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsAttention'>>('/jobs/attention', { signal }), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
   useEffect(() => { if (Array.isArray(attentionNotices.data)) syncAttentionNotices(attentionNotices.data) }, [attentionNotices.data])
+  // New orders the server recorded for the bell (one per store and read); an order change announced in real time looks again.
+  const newOrderNotices = useQuery({ queryKey: queryKeys.newOrderNotices(), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getNotificationsNewOrders'>>('/notifications/new-orders', { signal }), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
+  useEffect(() => { if (Array.isArray(newOrderNotices.data)) syncNewOrderNotices(newOrderNotices.data) }, [newOrderNotices.data])
   const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)

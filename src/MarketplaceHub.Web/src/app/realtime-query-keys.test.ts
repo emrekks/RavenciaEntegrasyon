@@ -35,7 +35,7 @@ describe('realtime refresh map', () => {
   it('refreshes the same roots for each resource as the map written by hand before the factory', () => {
     const roots = (resource: string) => (realtimeQueryKeysByResource[resource] ?? []).map(key => key.join('/')).sort()
     const sorted = (list: string[]) => [...list].sort()
-    expect(roots('orders')).toEqual(sorted(['orders', 'shipment', 'invoice-workspace-page', 'invoice-workspace-summary', 'dashboard-bootstrap']))
+    expect(roots('orders')).toEqual(sorted(['orders', 'shipment', 'invoice-workspace-page', 'invoice-workspace-summary', 'dashboard-bootstrap', 'new-order-notices']))
     expect(roots('returns')).toEqual(sorted(['returns', 'return', 'dashboard-bootstrap']))
     expect(roots('products')).toEqual(sorted(['products', 'product', 'publication-status', 'dashboard-bootstrap']))
     expect(roots('inventory')).toEqual(sorted(['products', 'product', 'dashboard-bootstrap']))

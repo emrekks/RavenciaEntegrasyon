@@ -35,6 +35,8 @@ export const queryKeys = {
   // Refreshed by realtime announcements (app/realtime-query-keys.ts).
   orders: queryRoot('orders', ['orders', 'invoices']),
   shipment: queryRoot('shipment', ['orders']),
+  // The bell's "Yeni Sipariş" notifications (GET /notifications/new-orders): an order change looks for a new one.
+  newOrderNotices: queryRoot('new-order-notices', ['orders']),
   invoiceWorkspacePage: queryRoot('invoice-workspace-page', ['orders', 'invoices', 'connections']),
   invoiceWorkspaceSummary: queryRoot('invoice-workspace-summary', ['orders', 'invoices', 'connections']),
   // The operational cards and menu badges: a cheap snapshot read every data change refreshes; the worker announces
