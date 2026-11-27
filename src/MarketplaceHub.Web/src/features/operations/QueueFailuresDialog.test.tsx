@@ -17,7 +17,7 @@ beforeEach(() => { hubPoll.mockReset(); container = document.createElement('div'
 afterEach(() => { act(() => root.unmount()); container.remove(); document.body.innerHTML = '' })
 
 const metric = (jobType: string, failed: number): JobTypeMetric =>
-  ({ jobType, queued: 0, running: 0, attempts: failed + 4, failed, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: null, p95DurationSeconds: null })
+  ({ jobType, queued: 0, running: 0, attempts: failed + 4, failed, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: null, p95DurationSeconds: null, lanes: null })
 const failures: JobTypeFailures = {
   jobType: 'PTTAVM_ORDER_SYNC', totalCount: 3, groupCount: 2, page: 1, pageSize: 20,
   groups: [

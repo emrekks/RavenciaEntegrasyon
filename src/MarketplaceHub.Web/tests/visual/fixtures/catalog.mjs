@@ -415,12 +415,14 @@ function jobDetail({ match }) {
   }
 }
 
+// Queue phase 1A: the lanes that ran each type (a recovery read in Arka Plan, the same read started by hand in its lane).
+const ranIn = (...lanes) => lanes.map(([lane, attempts, borrowed = 0]) => ({ lane, attempts, borrowed }))
 const jobMetrics = [
-  { jobType: 'TRENDYOL_ORDER_SYNC', attempts: 288, failed: 3, averageWaitSeconds: 4.2, p95WaitSeconds: 18, averageDurationSeconds: 21, p95DurationSeconds: 64, queued: 0, running: 1 },
-  { jobType: 'HEPSIBURADA_ORDER_SYNC', attempts: 96, failed: 0, averageWaitSeconds: 2.1, p95WaitSeconds: 7, averageDurationSeconds: 38, p95DurationSeconds: 71, queued: 0, running: 0 },
-  { jobType: 'PRICE_INVENTORY_SYNC', attempts: 412, failed: 57, averageWaitSeconds: 35, p95WaitSeconds: 240, averageDurationSeconds: 3.4, p95DurationSeconds: 9, queued: 6, running: 0 },
-  { jobType: 'PRODUCT_PUBLICATION', attempts: 12, failed: 2, averageWaitSeconds: 0.6, p95WaitSeconds: 2, averageDurationSeconds: 66, p95DurationSeconds: 190, queued: 0, running: 0 },
-  { jobType: 'N11_ORDER_RECOVERY_SYNC', attempts: 4, failed: 0, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: 5400, p95DurationSeconds: 7800, queued: 1, running: 0 }
+  { jobType: 'TRENDYOL_ORDER_SYNC', attempts: 288, failed: 3, averageWaitSeconds: 4.2, p95WaitSeconds: 18, averageDurationSeconds: 21, p95DurationSeconds: 64, queued: 0, running: 1, lanes: ranIn(['HOT', 288]) },
+  { jobType: 'HEPSIBURADA_ORDER_SYNC', attempts: 96, failed: 0, averageWaitSeconds: 2.1, p95WaitSeconds: 7, averageDurationSeconds: 38, p95DurationSeconds: 71, queued: 0, running: 0, lanes: ranIn(['HEPSIBURADA_ORDERS', 90, 4]) },
+  { jobType: 'PRICE_INVENTORY_SYNC', attempts: 412, failed: 57, averageWaitSeconds: 35, p95WaitSeconds: 240, averageDurationSeconds: 3.4, p95DurationSeconds: 9, queued: 6, running: 0, lanes: ranIn(['HOT', 380], ['USER', 32]) },
+  { jobType: 'PRODUCT_PUBLICATION', attempts: 12, failed: 2, averageWaitSeconds: 0.6, p95WaitSeconds: 2, averageDurationSeconds: 66, p95DurationSeconds: 190, queued: 0, running: 0, lanes: [] },
+  { jobType: 'N11_ORDER_RECOVERY_SYNC', attempts: 4, failed: 0, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: 5400, p95DurationSeconds: 7800, queued: 1, running: 0, lanes: ranIn(['BACKGROUND', 3], ['HOT', 1]) }
 ]
 // Invented figures (queue phase 0 adds each lane's recorded wait causes, every quota bucket and the order block).
 const laneWait = (targetSeconds, waitCauses = null) => ({ targetSeconds, recentP95WaitSeconds: null, oldestWaitSeconds: null, waitStatus: 'OK', alertSince: null, borrowed: 0, waitCauses })
@@ -453,11 +455,11 @@ const laneMetrics = [
   { lane: 'HOT', attempts: 610, averageWaitSeconds: 3.1, p95WaitSeconds: 14, queued: 0, running: 1, slots: 3, ...laneWait(30, { attempts: 610, waitSeconds: 1891, lockSeconds: 1220, backoffSeconds: 0, quotaHoldSeconds: 0, slotSeconds: 12, unknownSeconds: 659 }) },
   { lane: 'BACKGROUND', attempts: 230, averageWaitSeconds: 48, p95WaitSeconds: 310, queued: 6, running: 0, slots: 2, ...laneWait(300, { attempts: 230, waitSeconds: 11040, lockSeconds: 7600, backoffSeconds: 120, quotaHoldSeconds: 2400, slotSeconds: 300, unknownSeconds: 620 }), waitStatus: 'OVER_TARGET' }
 ]
-const bucket = (platformCode, storeName, code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, shared = false) =>
-  ({ platformCode, storeName, bucket: code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, averagePerMinute: Math.round(lastHourRequests / 6) / 10, shared })
+const bucket = (platformCode, storeName, code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, shared = false, baseLimit = false) =>
+  ({ platformCode, storeName, bucket: code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, averagePerMinute: Math.round(lastHourRequests / 6) / 10, shared, baseLimit })
 const quotaUsage = [
-  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:ORDERS_FG', 'Sipariş Okuma · Ön Plan', 12, 310, 8),
-  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:ORDERS_BG', 'Sipariş Okuma · Arka Plan', 18, 420, 17),
+  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:ORDERS_FG', 'Sipariş Okuma · Ön Plan', 12, 310, 8, false, true),
+  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:ORDERS_BG', 'Sipariş Okuma · Arka Plan', 18, 420, 17, false, true),
   bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:FINANCE', 'Finans', 100, 160, 64),
   bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:GLOBAL:ORDER:CLAIMS', 'Genel Limit · order:claims', 300, 95, 12),
   bucket('HEPSIBURADA', 'Örnek Hepsiburada', 'HEPSIBURADA:OMS', 'Sipariş (OMS)', 600, 820, 41),

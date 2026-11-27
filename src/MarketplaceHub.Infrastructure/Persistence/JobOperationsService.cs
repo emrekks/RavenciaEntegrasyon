@@ -192,6 +192,20 @@ public sealed partial class JobOperationsService(AppDbContext db, TimeProvider t
                   WHERE connection."TenantId" = {tenantId} AND connection."Id" = job."ConnectionId" AND connection."PlatformCode" = ANY({codes})))
             GROUP BY job."JobType"
             """).ToListAsync(cancellationToken);
+        // Queue phase 1A: the lanes that ran each type's attempts (recorded since phase 0; older attempts have none).
+        var laneRows = await db.Database.SqlQuery<JobLaneMetricRow>($"""
+            SELECT job."JobType" AS "JobType", attempt."Lane" AS "Lane", count(*)::int AS "Attempts",
+                   count(*) FILTER (WHERE attempt."Borrowed")::int AS "Borrowed"
+            FROM integration.job_attempts attempt
+            JOIN integration.jobs job ON job."Id" = attempt."JobId"
+            WHERE attempt."TenantId" = {tenantId} AND attempt."StartedAt" >= {since} AND attempt."Lane" IS NOT NULL
+              AND ({anyPlatform} OR EXISTS (SELECT 1 FROM integration.platform_connections connection
+                  WHERE connection."TenantId" = {tenantId} AND connection."Id" = job."ConnectionId" AND connection."PlatformCode" = ANY({codes})))
+            GROUP BY job."JobType", attempt."Lane"
+            """).ToListAsync(cancellationToken);
+        var lanesByType = laneRows.GroupBy(row => row.JobType, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<JobTypeLaneView>)[.. group.OrderByDescending(row => row.Attempts).ThenBy(row => row.Lane, StringComparer.Ordinal)
+                .Select(row => new JobTypeLaneView(QueueHealthService.LaneCode(row.Lane), row.Attempts, row.Borrowed))], StringComparer.Ordinal);
         // Queued counts only jobs a slot could take now, as the lane metrics do: one waiting for its connection's
         // busy lock group or quota backoff is not counted.
         var platformConnections = anyPlatform
@@ -217,7 +231,8 @@ public sealed partial class JobOperationsService(AppDbContext db, TimeProvider t
                     Round(attempt?.AverageDurationSeconds),
                     Round(attempt?.P95DurationSeconds),
                     depth?.Queued ?? 0,
-                    depth?.Running ?? 0);
+                    depth?.Running ?? 0,
+                    lanesByType.GetValueOrDefault(jobType) ?? []);
             })
             .OrderByDescending(row => row.Queued + row.Running)
             .ThenByDescending(row => row.Attempts)
@@ -225,6 +240,8 @@ public sealed partial class JobOperationsService(AppDbContext db, TimeProvider t
 
         static double? Round(double? value) => value is { } number ? Math.Round(number, 1) : null;
     }
+
+    private sealed record JobLaneMetricRow(string JobType, string Lane, int Attempts, int Borrowed);
 
     private sealed record JobAttemptMetricRow(string JobType, int Attempts, int Failed, double? AverageWaitSeconds, double? P95WaitSeconds, double? AverageDurationSeconds, double? P95DurationSeconds);
 

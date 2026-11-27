@@ -12,7 +12,7 @@ import { jobTitle } from './job-presentation'
 import { formatDateTime } from '../../shared/format-date'
 import { ChoiceField } from './filter-fields'
 import {
-  activeJobTypes, countsByStatus, filterByMarketplace, filterJobsByTab, generalJobTab, jobPlatformTabs, formatSeconds, laneHint, laneWaitCauseLines, laneWaitState, laneLabel, laneTotals,
+  activeJobTypes, countsByStatus, filterByMarketplace, filterJobsByTab, generalJobTab, jobLaneText, jobPlatformTabs, formatSeconds, laneDetail, laneHint, laneWaitCauseLines, laneWaitState, laneLabel, laneTotals,
   latencySeconds, latencySourceLabel, latencyState, marketplaceTabs, queueWindowOptions, quotaPeakText, usagePercent, usageTone, windowSince,
   type QueueWindow
 } from './queue-quota'
@@ -98,7 +98,7 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
       {lanes.isLoading ? <Busy text="Şeritler yükleniyor…" /> : lanes.isError && !lanes.data ? <p role="alert" className="qq-error">Şerit ölçümleri alınamadı.</p> : <div className="qq-table-scroll"><table className="qq-table">
         <thead><tr><th className="qq-first">Şerit</th><th className="qq-usage-th">Slot Kullanımı</th><th className="is-num">Bekleyen</th><th className="is-num">Deneme</th><th className="is-num">Ort. Bekleme</th><th className="is-num">En Uzun %5 Bekleme</th><th className="is-num">Hedef</th><th>Durum</th></tr></thead>
         <tbody>{(lanes.data ?? []).map(lane => <tr key={lane.lane}>
-          <td className="qq-first"><strong>{laneLabel(lane.lane)}</strong><small>{laneHint(lane.lane)}</small></td>
+          <td className="qq-first"><strong>{laneLabel(lane.lane)}</strong><small title={laneDetail(lane.lane)}>{laneHint(lane.lane)}</small></td>
           <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={lane.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${lane.running} / ${lane.slots} slot`} /><span>{lane.running} / {lane.slots}</span></span></td>
           <td className="is-num" data-label="Bekleyen">{lane.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{lane.attempts.toLocaleString('tr-TR')}</td>
@@ -140,7 +140,7 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
           <thead><tr><th className="qq-first">Kota</th><th className="qq-usage-th">En Yoğun Dakika</th><th className="is-num">Son 1 Saat</th><th className="is-num">Ortalama</th></tr></thead>
           <tbody>{shownQuota.map(row => <tr key={`${row.bucket}:${row.storeName}`}>
             <td className="qq-first"><span className="qq-mark-line"><PlatformSquareMark code={row.platformCode} name={platformDisplayName(row.platformCode)} size="sm" /><strong>{row.label}</strong></span><small>{row.shared ? 'Tüm hesaplar ortak' : row.storeName}</small></td>
-            <td className="qq-usage-cell" data-label="En Yoğun Dakika"><span className="qq-usage">{row.limitPerMinute ? <UsageBar used={row.peakMinuteRequests} limit={row.limitPerMinute} label={`${row.label}: en yoğun dakika ${quotaPeakText(row)}`} /> : null}<span>{quotaPeakText(row)}</span>{row.limitPerMinute ? null : <small className="qq-no-limit">Sınır tutulmuyor</small>}</span></td>
+            <td className="qq-usage-cell" data-label="En Yoğun Dakika"><span className="qq-usage">{row.limitPerMinute ? <UsageBar used={row.peakMinuteRequests} limit={row.limitPerMinute} label={`${row.label}: en yoğun dakika ${quotaPeakText(row)}`} /> : null}<span>{quotaPeakText(row)}</span>{row.limitPerMinute ? (row.baseLimit ? <small className="qq-no-limit" title="Kodun başladığı sınır. İşçi, Trendyol’un yanıtlarından daha yüksek bir kademe öğrenebilir; panel o kademeyi bilmez.">Taban Sınır</small> : null) : <small className="qq-no-limit">Sınır tutulmuyor</small>}</span></td>
             <td className="is-num" data-label="Son 1 Saat">{row.lastHourRequests.toLocaleString('tr-TR')} istek</td>
             <td className="is-num" data-label="Ortalama">{row.averagePerMinute.toLocaleString('tr-TR')} / dk</td>
           </tr>)}</tbody>
@@ -163,9 +163,10 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
           label: tab.value === 'ALL' || tab.value === generalJobTab ? tab.label : <><PlatformSquareMark code={tab.value} name={tab.label} size="sm" />{tab.label}</>
         }))} />
         <div className="qq-table-scroll"><table className="qq-table">
-        <thead><tr><th className="qq-first">İş Türü</th><th className="is-num">Bekleyen</th><th className="is-num">Çalışan</th><th className="is-num">Deneme</th><th className="is-num">Hata</th><th className="is-num">Ort. Bekleme</th><th className="is-num">Ort. Süre</th></tr></thead>
+        <thead><tr><th className="qq-first">İş Türü</th><th title="Bu aralıktaki denemeleri çalıştıran şerit; birden fazlaysa en çok çalıştıran önce">Şerit</th><th className="is-num">Bekleyen</th><th className="is-num">Çalışan</th><th className="is-num">Deneme</th><th className="is-num">Hata</th><th className="is-num">Ort. Bekleme</th><th className="is-num">Ort. Süre</th></tr></thead>
         <tbody>{shownTypes.map(row => <tr key={row.jobType}>
           <td className="qq-first"><strong>{jobTitle(row.jobType)}</strong><small>{row.jobType}</small></td>
+          <td className="qq-lane-cell" data-label="Şerit">{(() => { const lane = jobLaneText(row.lanes); return <span className={(row.lanes ?? []).length > 0 ? 'qq-causes' : undefined} title={lane.title}>{lane.text}</span> })()}</td>
           <td className="is-num" data-label="Bekleyen">{row.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Çalışan">{row.running.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{row.attempts.toLocaleString('tr-TR')}</td>

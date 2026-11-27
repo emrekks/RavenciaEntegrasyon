@@ -16,18 +16,39 @@ export const queueWindowOptions: Array<{ value: QueueWindow; label: string }> = 
 ]
 
 // The worker's lanes (WorkerLanes): which work each runs, in plain words.
-const laneLabels: Record<string, { label: string; hint: string }> = {
-  USER: { label: 'Kullanıcı İşlemleri', hint: 'Panelden başlatılan işler; toplu işler de burada sıraya girer.' },
+// What each lane really carries (WorkerLanes and JobPriorityPolicy on the server). Queue phase 1A, item 5: a platform lane
+// takes only part of its platform's reads; the scheduled order history scans of Hepsiburada, Pazarama and PTT AVM run in
+// Arka Plan (priority 3), only a scan started by hand runs in the platform's lane. The job-type table's Şerit column shows
+// where each type actually ran.
+// hint: the short line under the lane's name; detail: the full list, in its tooltip.
+const laneLabels: Record<string, { label: string; hint: string; detail?: string }> = {
+  USER: { label: 'Kullanıcı İşlemleri', hint: 'Paket, iade, etiket, fatura ve elle sipariş yenileme.', detail: 'Kullanıcının beklediği işlemler: paket ve iade işlemleri, etiket, elle sipariş yenileme, fatura kesme ve iletme. Toplu fatura işleri de burada, tekil isteklerin arkasında sıraya girer.' },
   INITIAL: { label: 'İlk Çekim', hint: 'Yeni bağlanan mağazanın ilk veri çekimi.' },
-  ORDER_STATUS: { label: 'Sipariş Durumu Taraması', hint: 'Açık siparişlerin durumlarının yeniden okunması.' },
-  RETURNS_READ: { label: 'İade Okuma', hint: 'Pazaryerlerinden iade talepleri ve durumları.' },
-  PRODUCT_CATALOG: { label: 'Ürün Kataloğu', hint: 'Ürün listesi eşitleme ve yayın kontrolleri.' },
+  ORDER_STATUS: { label: 'Sipariş Durumu Taraması', hint: 'Trendyol ve Shopify açık sipariş durumları.' },
+  RETURNS_READ: { label: 'İade Okuma', hint: 'Bütün pazaryerlerinin iadeleri ve iade durumları.', detail: 'Bütün pazaryerlerinin yeni iade okumaları ve açık iade durum kontrolleri.' },
+  PRODUCT_CATALOG: { label: 'Ürün Kataloğu', hint: 'Ürün çekme, yayın doğrulaması, varyant arama.', detail: 'Ürün çekme, ürün yapısı aktarımı, gece yayın doğrulaması ve varyant arama.' },
   HEPSIBURADA_STATUS: { label: 'Hepsiburada Durum Taraması', hint: 'Hepsiburada açık sipariş durumları.' },
-  HEPSIBURADA_ORDERS: { label: 'Hepsiburada Siparişleri', hint: 'Hepsiburada sipariş okumaları.' },
-  PAZARAMA_ORDERS: { label: 'Pazarama Siparişleri', hint: 'Pazarama sipariş okumaları.' },
-  PTTAVM_ORDERS: { label: 'PTT AVM Siparişleri', hint: 'PTT AVM sipariş okumaları.' },
-  HOT: { label: 'Öncelikli İşler', hint: 'Yeni siparişler, webhooklar ve pazaryerine yazmalar.' },
-  BACKGROUND: { label: 'Arka Plan', hint: 'Zamanlanmış diğer okumalar.' }
+  HEPSIBURADA_ORDERS: { label: 'Hepsiburada Siparişleri', hint: 'Yeni siparişler; geçmiş taraması Arka Plan’da.', detail: 'Hepsiburada yeni sipariş okuması. Sipariş geçmişi taraması yalnız elle başlatılınca burada; zamanlanmış olanı Arka Plan’da çalışır.' },
+  PAZARAMA_ORDERS: { label: 'Pazarama Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: 'Pazarama yeni sipariş okuması ve açık sipariş durum taraması. Sipariş geçmişi taraması yalnız elle başlatılınca burada; zamanlanmış olanı Arka Plan’da çalışır.' },
+  PTTAVM_ORDERS: { label: 'PTT AVM Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: 'PTT AVM yeni sipariş okuması ve açık sipariş durum taraması. Sipariş geçmişi taraması yalnız elle başlatılınca burada; zamanlanmış olanı Arka Plan’da çalışır.' },
+  HOT: { label: 'Öncelikli İşler', hint: 'Trendyol, N11, Shopify siparişleri; webhook, yazmalar.', detail: 'Trendyol, N11 ve Shopify yeni sipariş okumaları, anlık bildirimler (webhook), pazaryerine yazmalar (paket işlemi, fiyat ve stok, ürün) ve elle başlatılan diğer okumalar.' },
+  BACKGROUND: { label: 'Arka Plan', hint: 'Geçmiş taramaları, uzlaştırma, soru, finans, listeler.', detail: 'Zamanlanmış diğer okumalar: sipariş geçmişi taramaları (Hepsiburada, Pazarama ve PTT AVM dahil), uzlaştırmalar, müşteri soruları, finans, kategori ve marka listeleri, fatura süre takibi.' }
+}
+
+/** The lane's full description (tooltip of its short line). */
+export function laneDetail(code: string) {
+  return laneLabels[code]?.detail ?? laneLabels[code]?.hint ?? ''
+}
+
+export type JobTypeLane = NonNullable<JobTypeMetric['lanes']>[number]
+
+/** The Şerit cell: the lanes that ran the type's attempts in the window ("Arka Plan" or "Arka Plan +1") and a tooltip with the counts. */
+export function jobLaneText(lanes: readonly JobTypeLane[] | null | undefined): { text: string; title: string } {
+  const list = lanes ?? []
+  if (list.length === 0) return { text: '—', title: 'Bu aralıkta şerit kaydı yok (şerit 27 Kasım’dan beri kaydediliyor).' }
+  const text = list.length === 1 ? laneLabel(list[0].lane) : `${laneLabel(list[0].lane)} +${list.length - 1}`
+  const title = list.map(lane => `${laneLabel(lane.lane)}: ${lane.attempts.toLocaleString('tr-TR')} deneme${lane.borrowed > 0 ? ` (${lane.borrowed.toLocaleString('tr-TR')} ödünç slotta)` : ''}`).join('\n')
+  return { text, title }
 }
 
 export function laneLabel(code: string) {

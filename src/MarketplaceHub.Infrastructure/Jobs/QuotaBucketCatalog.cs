@@ -12,7 +12,7 @@ namespace MarketplaceHub.Infrastructure.Jobs;
 // so no Shopify key exists.
 public sealed class QuotaBucketCatalog(TrendyolOptions trendyol, N11Options n11, PazaramaOptions pazarama, PttAvmOptions pttAvm)
 {
-    public sealed record Bucket(string PlatformCode, string Code, string Label, double? LimitPerMinute, bool Shared = false);
+    public sealed record Bucket(string PlatformCode, string Code, string Label, double? LimitPerMinute, bool Shared = false, bool BaseLimit = false);
 
     public Bucket? Describe(string key)
     {
@@ -46,8 +46,9 @@ public sealed class QuotaBucketCatalog(TrendyolOptions trendyol, N11Options n11,
                     var tail = string.Join(':', parts[4..]);
                     return tail switch
                     {
-                        "fg" => new("TRENDYOL", "TRENDYOL:ORDERS_FG", "Sipariş Okuma · Ön Plan", PerMinute(foreground, trendyol.OrderRequestInterval)),
-                        "bg" => new("TRENDYOL", "TRENDYOL:ORDERS_BG", "Sipariş Okuma · Arka Plan", PerMinute(background, trendyol.OrderRequestInterval)),
+                        // BaseLimit: the panel labels the number "Taban Sınır" (queue phase 1A, item 6).
+                        "fg" => new("TRENDYOL", "TRENDYOL:ORDERS_FG", "Sipariş Okuma · Ön Plan", PerMinute(foreground, trendyol.OrderRequestInterval), BaseLimit: true),
+                        "bg" => new("TRENDYOL", "TRENDYOL:ORDERS_BG", "Sipariş Okuma · Arka Plan", PerMinute(background, trendyol.OrderRequestInterval), BaseLimit: true),
                         "spacing" => new("TRENDYOL", "TRENDYOL:ORDER_PAGE_SPACING", "Sipariş Akışı Sayfa Aralığı", Spacing(trendyol.OrderRequestMinimumInterval)),
                         "spacing:start" => new("TRENDYOL", "TRENDYOL:ORDER_QUERY_SPACING", "Sipariş Akışı Sorgu Aralığı", Spacing(trendyol.OrderStreamStartMinimumInterval)),
                         _ => new("TRENDYOL", $"TRENDYOL:ORDERS:{tail.ToUpperInvariant()}", $"Sipariş · {tail}", null)
