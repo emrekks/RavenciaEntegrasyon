@@ -2257,32 +2257,61 @@ CrowdSec yeniden yüklenir), ardından `sudo cscli parsers inspect ravencia/pane
   yuvayı bekleyen), seçilen pencerenin işleri duruma ve iş tipine göre, her mağazanın pazaryeri kotasının son saatteki kullanımı
   (`QueueQuotaView.tsx`; uçlar `/jobs/metrics`, `/jobs/metrics/lanes`, `/jobs/metrics/quota`, `/jobs/counts`:
   `JobEndpoints.cs:32-46`).
-- **Şerit modeli ve dağıtıcı** (Kuyruk Faz 2, 27 Kas 2026; `Worker:LaneModel`, geçiş ve geri dönüş `docs/RUNBOOK-GERI-ALMA.md`
-  2b). Bu yayında çalışan model `flexible`'dır (11 şerit, 20 slot tek havuz). `dispatcher` seçilince:
-  - **Şeritler iş türüne göre**, her iş tek bir şeride düşer (`DispatcherLanes.cs`): **Kullanıcı** (öncelik -2 ve altı), **Acil**
-    (webhook ve pazaryerine yazma, öncelik 0-2), **Sipariş Okuma** (bütün pazaryerlerinin yeni sipariş ve geçmiş okumaları),
-    **Durum Taraması** (açık sipariş durumları), **İade**, **Katalog** (ürün çekme, yayın doğrulaması), **Arka Plan** (diğer
-    zamanlanmış okumalar), **İlk Çekim** (öncelik -1). Sayfadaki şerit tablosunun üstündeki pazaryeri sekmeleri her şeridin o
-    pazaryerine ait çalışan ve bekleyen işini gösterir.
-  - **Slotlar** (toplam 20, `Worker:Dispatcher:*`): ayrılmış Kullanıcı 2, Acil 1; asgari Sipariş Okuma 3, Durum Taraması 3 (bu
-    on slot başka şeride hiç verilmez); kalan 11 ortak slotta İade 3, Katalog 3, Arka Plan 2, İlk Çekim 3 pay (işi varken payı
-    kadar ortak slotu önce alır, boşken başkası kullanır). Payının ötesinde boş ortak slot, payının en az ötesinde çalışan
-    şeride gider (eşitse tablo sırası). Bir mağaza Katalog, Arka Plan ve İlk Çekim'de aynı anda en çok 2 iş çalıştırır
-    (`ConnectionCap`, `CappedLanes`); sipariş, durum ve iade okumaları zaten kilit grubuyla mağaza başına birer tanedir.
-  - **Karar tek yerde** (`DispatcherCore.Decide`, saf ve deterministik): girdi her şeridin "işi olabilir" ipucu, çalışan
-    sayıları ve slot payları; çıktı sıradaki şerit ya da hiçbiri. `LaneDispatcher` tek döngüdür ve **işleri tek tek kiralar**;
-    hangi işin kiralanacağı yine `JobLeaseService`'tedir (öncelik, mağazalar arası 15 dk öne alma, kilit grupları, kota
-    geri çekilmesi ve bekletmesi, pazaryeri sınırları, mağaza sınırı); tek tek kiralama mağaza sınırını kendi kiralarıyla
-    yarıştırmaz.
-  - **İşi nereden öğrenir**: NOTIFY yükü `job:<tip>:<öncelik>` o şeridi hazır yapar, `freed` ve kendi işinin bitişi engelli
-    şeritleri bir kez daha dener, vadesi gelen iş (due-time wake) ve kota bekletmesinin bitişi de öyle. Kira boş dönerse tek
-    bir "sayım" sorgusu (kuyruktaki koşulabilir işlerin tip ve önceliği) şeridin engelli mi boş mu olduğunu söyler; boş şerit
-    bildirim gelene kadar sorgulanmaz. Bildirimler hiç gelmese bile sayım her 15 sn'de bir okunur (`SafetyTickSeconds`), yani
-    kaybolan bir uyandırma en çok 15 sn geciktirir. Boşta işçi saniyede ~0,07 sorgu yapar (esnek modelde ~1,4).
-  - Kira hata verirse şeridi 1, 2, 4 ... 15 sn bekler, döngü dönmez; kapanışta çalışan işler bitirilir (yazma işi
-    tamamlanır, okuma kuyruğa geri verilir), sonra döngü durur.
+- **Şerit modeli ve dağıtıcı** (Kuyruk Faz 2, 27 Kas 2026; `Worker:LaneModel`; geçiş, doğrulama sorguları ve geri dönüş
+  eşikleri `docs/RUNBOOK-KUYRUK-DAGITICI.md`, geri dönüşün yayını `docs/RUNBOOK-GERI-ALMA.md` 2b). Bu yayında çalışan model
+  `flexible`'dır (11 şerit, 20 slot tek havuz). `dispatcher` seçilince:
+  - **Şeritler iş türüne göre**, her iş tek bir şeride düşer (`DispatcherLanes.LaneFor`); slotlar toplam 20
+    (`Worker:Dispatcher:Reserved:<şerit>`, `Share:<şerit>`):
+
+    | Şerit | Ne taşır | Ayrılmış / asgari | Pay | Neden |
+    |---|---|---|---|---|
+    | Kullanıcı | Panelden tek tek başlatılan işler (öncelik -3 ve altı) | 1 | 1 | Kullanıcı bekler (hedef 5 sn); ikinci iş paydan |
+    | Webhook | Pazaryeri bildirimleri (öncelik 0 ve üstü) | 1 | 0 | Kısa işler; kendi slotu hiç dolmaz, hedef 5 sn |
+    | Pazaryerine Yazma | Otomatik yazmalar: fiyat-stok, ürün, paket, fatura iletimi (öncelik 0 ve üstü) | 1 | 1 | Bir yazma okumaların arkasında beklememeli |
+    | Elle Başlatılan Okuma | Diğer kısa okumalar (öncelik 0-2) | 0 | 0 | Az ve kısa; boş ortak slotu kullanır |
+    | Sipariş Okuma | Bütün pazaryerlerinin yeni sipariş ve kurtarma okumaları | 3 asgari | 0 | Siparişler en önce okunur; asgari hiç ödünç verilmez |
+    | Durum Taraması | Açık sipariş durumları | 2 asgari | 0 | Sipariş okumasıyla aynı kilit grubu; 3 asgari iadeyi yavaşlatıyordu (replay) |
+    | İade | Yeni iade ve iade durumu okumaları | 0 | 2 | |
+    | Toplu İşler | Toplu fatura, toplu ürün güncelleme ve yayın (öncelik -2), dosyadan içe aktarma (`IMPORT_PREVIEW`, `IMPORT_APPLY`) | 0 | 2 | Yüzlerce iş tek kullanıcı işinin önüne geçmesin |
+    | Katalog | Ürün çekme, yapı aktarımı, yayın doğrulaması | 0 | 2 | |
+    | Arka Plan | Uzlaştırma, soru, finans, liste ve diğer zamanlanmış okumalar (öncelik 3 ve üstü) | 0 | 2 | |
+    | İlk Çekim | Yeni mağazanın ilk çekimi (öncelik -1) | 0 | 2 | |
+
+    Ayrılmış 3 + asgari 5 = 8 slot başka şeride hiç verilmez; kalan 12 ortak slottan her şerit işi varken payı kadarını önce
+    alır, boşken başkası kullanır.
+  - **Karar tek yerde** (`DispatcherCore.Decide`, saf ve deterministik). Boş slot sırayla: ayrılmış/asgarisinin altındaki
+    şeride; sonra payının altındaki şeride; sonra payının ötesindeki kısa iş şeridine (Kullanıcı, Webhook, Yazma, Elle
+    Başlatılan Okuma, Sipariş, Durum, İade); en son toplu ve uzun şeritlere (Toplu İşler, Katalog, Arka Plan, İlk Çekim).
+    Aynı basamakta payının en az ötesinde çalışan şerit, eşitse tablo sırası. `LaneDispatcher` tek döngüdür ve **işleri tek
+    tek kiralar**; hangi işin kiralanacağı yine `JobLeaseService`'tedir (öncelik, mağazalar arası 15 dk öne alma, kilit
+    grupları, kota geri çekilmesi ve bekletmesi, pazaryeri sınırları, mağaza sınırı).
+  - **Mağaza sınırı** (`ConnectionCap` 2, `CappedLanes` = Katalog, Arka Plan, İlk Çekim): bir mağazanın bu üç şeritteki işleri
+    **birlikte** sayılır ve aynı anda en çok 2 slot kullanır. Sipariş, durum, iade, webhook, yazma, toplu ve kullanıcı işleri
+    sınıra girmez ve sayılmaz. Bedeli: mağazanın kendi uzun işleri sırasında diğer sınırlı işleri onları bekler (iki 8,5 dk'lık
+    referans okuması varken uzlaştırmaları ~500 sn; yeni mağazanın altı ilk çekim işi ikişer ikişer, sonuncusu ~21 dk sonra).
+    Replay'de sınır 3 her iki ölçülen akışta biraz daha iyi (bir mağazanın 50 işlik selinde arka plan p95 444 → 210 sn), sınırı
+    bütün şeritlere yaymak ise sipariş okumasını bozar (Tüm Ürünleri Çek'te p95 ~1,7 → 21 sn); `Worker:Dispatcher:ConnectionCap`
+    ile değiştirilebilir.
+  - **Erteleme** (`DeferStatusScans`, varsayılan açık): mağazanın kuyrukta koşulabilir bir sipariş okuması varken aynı kilit
+    grubundaki durum taraması ve arka plan işi (örneğin `ORDER_RECONCILIATION`) kiralanmaz; önce siparişler okunur. Sipariş
+    okuması geldiğinde zaten çalışan bir uzlaştırmayı bekler.
+  - **İşi nereden öğrenir**: NOTIFY yükü `job:<tip>:<öncelik>` o şeridi hazır yapar; vadesi gelen iş (due-time wake) ve kota
+    bekletmesinin bitişi de öyle. Kira boş dönerse tek bir "sayım" sorgusu her koşulabilir işi mağazasıyla ve onu tutan
+    mağazayla (`HeldBy`: o mağazanın aynı kilit grubundaki çalışan işi, mağaza sınırı, öndeki sipariş okuması ya da dolu bir
+    bölme sınıfının işini çalıştıran mağaza) listeler. Yalnız bir mağazaca tutulan şerit o mağazanın bir işi bitince yeniden
+    dener; nedeni adlandırılamayan şerit en çok saniyede bir denenir (bir iş bitişi her engelli şeridi sorgulatmaz); boş
+    şerit bildirim gelene kadar sorgulanmaz. Bildirim kaybolsa bile sayım her 15 sn'de (`SafetyTickSeconds`), Kullanıcı,
+    Webhook ya da Yazma bekliyorken her 5 sn'de bir okunur. Boşta işçi saniyede ~0,09 sorgu yapar (esnek modelde ~1,5).
+  - **Hatalar**: kira ya da sayım 10 sn'de dönmezse iptal edilir (`LeaseTimeoutSeconds`) ve şerit 1, 2, 4 ... 15 sn bekler;
+    döngünün bir turu hata verirse günlüğe (her hata türü dakikada bir kez) yazılır, 1 sn sonra döngü sürer. Worker'ın sağlık
+    dosyası son başarılı dağıtıcı turunu izler; tur durursa watchdog worker'ı yeniden başlatır. Kapanışta çalışan işler
+    bitirilir (yazma işi tamamlanır, okuma kuyruğa geri verilir), sonra döngü durur.
   - Ölçüm: denemenin `Lane` sütunu yeni şerit adını (`kullanici`, `siparis-okuma` ...), `Borrowed` "şeridin kendi payının
-    (ayrılmış + pay) dışında çalıştı" bilgisini, `WaitSlotMs` şeridin hiç boş slotunun olmadığı süreyi yazar.
+    (ayrılmış + pay) dışında çalıştı" bilgisini yazar. `WaitSlotMs` dağıtıcıda slot için beklemedir: bütün bekleme eksi kilit,
+    geri çekilme ve kota bekletmesi (sayım ve kira gecikmeleri, engelli şeridin yeniden deneme aralığı dahil; nedeni bilinmeyen
+    bekleme kalmaz).
+  - Kanıt: `QueueReplayTests` iki modeli aynı sahte saat ve kira modeliyle oynatır (5 tohum, ortanca ve en düşük-en yüksek
+    bant; canlı 27 Kas 13:33-19:43 penceresi esnek modelde canlının p95 ve maksına tolerans içinde oturur).
 - **Bildirimler** (bildirim merkezi; sahip kararı, 13 Kas 2026): zilin gösterdiği **her bildirim** sunucuda **7 gün** saklanır;
   zilden temizlenenler "Zilden Kaldırıldı" etiketiyle, hesap geneli uyarılar "Herkese" etiketiyle kalır. Yeniden eskiye, sayfada
   50 kayıt; kategori, önem, tarih, durum (Okunmuş/Okunmamış) ve arama süzgeçleri vardır; ilk sayfa 30 sn'de bir yenilenir.

@@ -102,16 +102,17 @@ geçirmez; her geçiş bir yayındır (iki dosyada değeri değiştir, commit et
 | Değer | Ne çalışır | Ne zaman |
 |---|---|---|
 | `flexible` | Bugünkü 11 şerit, 20 slot tek havuzda, şerit başına ödünç döngüleri (`LaneSlotPool`) | Bu yayındaki varsayılan |
-| `dispatcher` | Tek dağıtıcı, iş türüne göre 8 şerit (Kullanıcı, Acil, Sipariş Okuma, Durum Taraması, İade, Katalog, Arka Plan, İlk Çekim), mağaza başına sınır | Kanıttan sonra tek satırlık geçiş yayını |
+| `dispatcher` | Tek dağıtıcı, iş türüne göre 11 şerit (Kullanıcı, Webhook, Pazaryerine Yazma, Elle Başlatılan Okuma, Sipariş Okuma, Durum Taraması, İade, Toplu İşler, Katalog, Arka Plan, İlk Çekim), mağaza başına sınır | Kanıttan sonra tek satırlık geçiş yayını |
 | `legacy` | Her şerit yalnız kendi slotlarında | İkinci geri dönüş |
 
 Dağıtıcıdan geri dönmek: iki dosyada `flexible` yazıp yayınla. Worker yeniden açılınca bekleyen işler kaybolmaz (kuyruk
 veritabanında); açık dağıtıcı şeridi uyarıları ilk değerlendirmede kendiliğinden kapanır. Dağıtıcı ayarları
-(`Worker:Dispatcher:Reserved:<şerit>`, `Share:<şerit>`, `ConnectionCap`, `CappedLanes`, `SafetyTickSeconds`) yalnız
-`dispatcher` ile okunur; ayrıntı `docs/ISLEYIS-KILAVUZU.md` 6.10.
+(`Worker:Dispatcher:Reserved:<şerit>`, `Share:<şerit>`, `ConnectionCap`, `CappedLanes`, `SafetyTickSeconds`,
+`LeaseTimeoutSeconds`, `DeferStatusScans`) yalnız `dispatcher` ile okunur; ayrıntı `docs/ISLEYIS-KILAVUZU.md` (İşlem Takibi › Şerit
+modeli ve dağıtıcı).
 
-Kontrol: `.local-docs/kuyruk-faz2-verify.sql` (salt okunur) geçişten önce ve sonra şerit ve iş türü bekleme p50/p95/maks,
-hedef içinde başlama oranı, mağaza başına eşzamanlı iş ve boşta işlem hızını verir.
+Geçiş kontrol listesi, salt okunur doğrulama sorguları ve sayıyla yazılmış geri dönüş eşikleri:
+`docs/RUNBOOK-KUYRUK-DAGITICI.md`.
 
 ## 3. Veritabanını geri yükle (son çare)
 
