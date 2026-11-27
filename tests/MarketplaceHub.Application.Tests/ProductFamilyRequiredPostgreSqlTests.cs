@@ -11,8 +11,8 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// KATALOG-14 D5 step B1: catalog.products.FamilyId is NOT NULL (its model key stays ON DELETE SET NULL ("FamilyId"), which the
-// NOT NULL column refuses). A card without a model cannot be written and a model with a card cannot be deleted; the paths that open, re-code or delete cards (and the Marka
+// KATALOG-14 D5 step B1: catalog.products.FamilyId is NOT NULL (its model key is ON DELETE RESTRICT since
+// 20261127170948_ProductFamilyRestrict; before it, SET NULL ("FamilyId"), which the NOT NULL column refused). A card without a model cannot be written and a model with a card cannot be deleted; the paths that open, re-code or delete cards (and the Marka
 // Listesi reset) still work because a card always has its model before it is written and leaves a model before it goes; the
 // migration stops with the count, changing nothing, while a card without a model exists, and goes back and forth.
 [Collection("postgres-integration")]
@@ -358,8 +358,8 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
     }
 
     // B1 stage 2 (20261127111010_ProductFamilyRequired): the database itself refuses a card without a model, a link taken
-    // back to NULL and the delete of a model that still has a card (the key stays ON DELETE SET NULL ("FamilyId"), which the
-    // NOT NULL column refuses); the card keeps its model.
+    // back to NULL and the delete of a model that still has a card (the key is ON DELETE RESTRICT: refused on
+    // that key, SQLSTATE 23001 restrict_violation); the card keeps its model.
     [PostgreSqlFact]
     public async Task TheDatabase_RefusesACardWithoutAModel_AndTheDeleteOfAModelThatHasACard()
     {
@@ -384,7 +384,7 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
         await db.Database.ExecuteSqlRawAsync("ROLLBACK TO SAVEPOINT before_write");
 
         var delete = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_models WHERE "Id" = {model}"""));
-        Assert.Equal(Npgsql.PostgresErrorCodes.NotNullViolation, delete.SqlState);
+        Assert.Equal((Npgsql.PostgresErrorCodes.RestrictViolation, ProductModelLinks.ProductFamilyKeyName), (delete.SqlState, delete.ConstraintName));
         await db.Database.ExecuteSqlRawAsync("ROLLBACK TO SAVEPOINT before_write");
         Assert.Equal(model, (await LinksAsync(db, seed.Tenant.Id))[card.Id]);
         await transaction.RollbackAsync();
@@ -441,7 +441,7 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
 
     // The migration: Down makes the column nullable again; Up stops on a card without a model with its count, changing
     // nothing (no constraint left, the row untouched), then makes the column NOT NULL once no such card is left; a second
-    // run is a no-op. The model key keeps ON DELETE SET NULL throughout.
+    // run is a no-op. It never touches the model key (ON DELETE RESTRICT since 20261127170948_ProductFamilyRestrict).
     [PostgreSqlFact]
     public async Task TheMigration_StopsOnACardWithoutAModel_ChangingNothing_AndGoesBackAndForth()
     {
@@ -466,9 +466,9 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
                 FROM pg_attribute a WHERE a.attrelid = 'catalog.products'::regclass AND a.attname = 'FamilyId'
                 """).ToListAsync()).Select(x => (x.NotNull, x.OnDelete, x.Check)).Single();
 
-        Assert.Equal((true, "n", false), await SchemaAsync());
+        Assert.Equal((true, "r", false), await SchemaAsync());
         await RunAsync(migration.DownOperations);
-        Assert.Equal((false, "n", false), await SchemaAsync());
+        Assert.Equal((false, "r", false), await SchemaAsync());
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {card.Id}""");
 
         await db.Database.ExecuteSqlRawAsync("SAVEPOINT before_up");
@@ -477,14 +477,14 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
         Assert.Contains("modeli olmayan 1 urun karti", stopped.MessageText, StringComparison.Ordinal);
         Assert.Contains("Hicbir sey degistirilmedi", stopped.MessageText, StringComparison.Ordinal);
         await db.Database.ExecuteSqlRawAsync("ROLLBACK TO SAVEPOINT before_up");
-        Assert.Equal((false, "n", false), await SchemaAsync());
+        Assert.Equal((false, "r", false), await SchemaAsync());
         Assert.Equal(1, (await db.Database.SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM catalog.products WHERE "Id" = {card.Id} AND "FamilyId" IS NULL""").ToListAsync()).Single());
 
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = {model} WHERE "Id" = {card.Id}""");
         await RunAsync(migration.UpOperations);
-        Assert.Equal((true, "n", false), await SchemaAsync());
+        Assert.Equal((true, "r", false), await SchemaAsync());
         await RunAsync(migration.UpOperations);
-        Assert.Equal((true, "n", false), await SchemaAsync());
+        Assert.Equal((true, "r", false), await SchemaAsync());
         await transaction.RollbackAsync();
     }
 

@@ -598,7 +598,7 @@ public static class ProductModelLinks
                 // KATALOG-14 phase D5b review: a model left without a colour (its cards deleted or re-coded) is deleted, never
                 // reused: the cards that come to its brand and code open a new model from their own values.
                 if (current is not null && !linkedElsewhere.Any(x => x.FamilyId == current.Id)
-                    && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == current.Id && !db.Products.Any(product => product.TenantId == tenantId && product.FamilyId == x.Id)).ExecuteDeleteAsync(cancellationToken) == 1)
+                    && await DeleteModelsWithoutCardsAsync(db, db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == current.Id && !db.Products.Any(product => product.TenantId == tenantId && product.FamilyId == x.Id)), cancellationToken) == 1)
                 {
                     rekeyed.Add(current.Id);
                     target = null;
@@ -685,10 +685,9 @@ public static class ProductModelLinks
         // Faz 2: the pictures follow their card's model.
         await SyncMediaFamiliesAsync(db, tenantId, keyArray is null ? null : [.. desired.Keys], cancellationToken);
         // Models left without a card go.
-        await db.ProductModels.Where(x => x.TenantId == tenantId && (targetKeyArray.Contains(x.ModelCodeKey) || left.Contains(x.Id)) && !db.Products.Any(product => product.FamilyId == x.Id))
-            .ExecuteDeleteAsync(cancellationToken);
+        await DeleteModelsWithoutCardsAsync(db, db.ProductModels.Where(x => x.TenantId == tenantId && (targetKeyArray.Contains(x.ModelCodeKey) || left.Contains(x.Id)) && !db.Products.Any(product => product.FamilyId == x.Id)), cancellationToken);
         if (keyArray is null)
-            await db.ProductModels.Where(x => x.TenantId == tenantId && !db.Products.Any(product => product.FamilyId == x.Id)).ExecuteDeleteAsync(cancellationToken);
+            await DeleteModelsWithoutCardsAsync(db, db.ProductModels.Where(x => x.TenantId == tenantId && !db.Products.Any(product => product.FamilyId == x.Id)), cancellationToken);
         // Faz 2: a model link whose model no longer has a card holding a variant link on its connection goes.
         await MarketplaceModelLinks.RemoveOrphansAsync(db, tenantId, keyArray is null ? null : modelIds, cancellationToken);
         // KATALOG-14 phase D5b review: the model warnings of models this run (or an earlier delete) removed are settled.
@@ -960,6 +959,43 @@ public static class ProductModelLinks
             ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, openedColor), model.Description, model.BrandId, model.CategoryId,
             model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays);
     }
+
+    // KATALOG-14 D5 (B1 review): deletes the given models, which the query keeps to those without a colour card. The check
+    // reads READ COMMITTED, so a card another save adds to such a model and commits while the delete runs is not seen by it;
+    // the key products.FamilyId -> product_models is ON DELETE RESTRICT (20261127170948_ProductFamilyRestrict), so the
+    // database refuses that delete on this key (SQLSTATE 23001 restrict_violation, "violates RESTRICT setting of foreign key
+    // constraint"; 23503 foreign_key_violation is taken too, in case the key is ever NO ACTION) instead of nulling the NOT NULL
+    // link. The delete is then run again (its check now sees the committed card and keeps that model), inside a savepoint
+    // when the caller holds a transaction so the rest of its work stands. After three refusals the save stops with a
+    // Turkish message (ModelRuleException, 409).
+    internal static async Task<int> DeleteModelsWithoutCardsAsync(AppDbContext db, IQueryable<ProductModel> models, CancellationToken cancellationToken)
+    {
+        const int attempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            var transaction = db.Database.CurrentTransaction;
+            var savepoint = $"model_delete_{attempt}";
+            if (transaction is not null) await transaction.CreateSavepointAsync(savepoint, cancellationToken);
+            try
+            {
+                var deleted = await models.ExecuteDeleteAsync(cancellationToken);
+                if (transaction is not null) await transaction.ReleaseSavepointAsync(savepoint, cancellationToken);
+                return deleted;
+            }
+            catch (Exception exception) when (IsModelKeyRefusal(exception))
+            {
+                if (transaction is not null) await transaction.RollbackToSavepointAsync(savepoint, cancellationToken);
+                if (attempt == attempts) throw ModelRuleException.ModelGainedCard();
+            }
+        }
+    }
+
+    private static bool IsModelKeyRefusal(Exception exception) =>
+        (exception as PostgresException ?? exception.InnerException as PostgresException) is { SqlState: PostgresErrorCodes.RestrictViolation or PostgresErrorCodes.ForeignKeyViolation } refusal
+        && refusal.ConstraintName == ProductFamilyKeyName;
+
+    // The key of products.FamilyId (EF's name for the composite key (TenantId, FamilyId) -> product_models (TenantId, Id)).
+    public const string ProductFamilyKeyName = "FK_products_product_models_TenantId_FamilyId";
 
     // The record holds the owner's saved fields (the editor shows them): the editor saved them (FieldsSavedAt) after the
     // last change of every card and a card still holds the record's category. ProductModelValues leaves such fields as
