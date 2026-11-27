@@ -162,6 +162,7 @@ public static class PanelFactoryResetInventory
         K("integration.webhook_subscriptions", "bağlantının bildirim kaydı (bağlantı ayarı)"),
         K("integration.rate_limit_buckets", "sistem geneli kota kovası; kiracı sütunu yok"),
         K("integration.rate_limit_usage", "sistem geneli dakikalık kota sayacı; kiracı sütunu yok, kendi saklama süresiyle silinir"),
+        K("integration.rate_limit_bucket_connections", "hangi bağlantının hangi kota kovasını kullandığı (Pazaryeri Kotası kartı); kiracı sütunu yok, kendi saklama süresiyle silinir"),
 
         // logs
         D("ops.audit_logs", Logs, "işlem/etkinlik logu; tam sıfırlamanın tek satırı sonra yazılır"), D("ops.ai_usage_logs", Logs), D("ops.api_idempotency_records", Logs, "API istek kayıtları"),

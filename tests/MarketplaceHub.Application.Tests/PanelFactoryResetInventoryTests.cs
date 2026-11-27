@@ -11,7 +11,7 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class PanelFactoryResetInventoryTests
 {
     // The tables the migrations create with SQL, outside the EF model.
-    private static readonly string[] RawTables = ["integration.connection_backoffs", "integration.rate_limit_buckets", "integration.rate_limit_usage", "public.__EFMigrationsHistory"];
+    private static readonly string[] RawTables = ["integration.connection_backoffs", "integration.rate_limit_buckets", "integration.rate_limit_usage", "integration.rate_limit_bucket_connections", "public.__EFMigrationsHistory"];
 
     private static IModel Model()
     {

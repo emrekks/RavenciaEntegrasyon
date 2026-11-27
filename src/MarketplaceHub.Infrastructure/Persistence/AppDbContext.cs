@@ -663,6 +663,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             // A tenant's recent attempts (connection error history) read by time and joined to their job. It also
             // serves the tenant foreign key, so the former single-column TenantId index is gone.
             entity.HasIndex(x => new { x.TenantId, x.StartedAt }).IncludeProperties(x => x.JobId);
+            entity.Property(x => x.Lane).HasMaxLength(40);
             entity.HasOne<IntegrationJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

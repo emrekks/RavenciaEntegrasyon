@@ -358,6 +358,20 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         var limit = Math.Clamp(configuredLimit, 1, 10_000);
         var interval = configuredInterval <= TimeSpan.Zero ? TimeSpan.FromSeconds(1) : configuredInterval;
         var spacing = minimumSpacing is { } configuredSpacing && configuredSpacing > TimeSpan.Zero ? configuredSpacing : TimeSpan.Zero;
+        // Queue phase 0: an in-process wait (page spacing, or the fallback windows) counts as a token wait of the running job.
+        long? waitStarted = null;
+        try
+        {
+            await WaitForRateWindowCoreAsync(bucket, limit, interval, spacing, () => waitStarted ??= timeProvider.GetTimestamp(), cancellationToken);
+        }
+        finally
+        {
+            if (waitStarted is { } started) MarketplaceHub.Infrastructure.Jobs.JobQuotaScope.RecordTokenWait(timeProvider.GetElapsedTime(started));
+        }
+    }
+
+    private async Task WaitForRateWindowCoreAsync(string bucket, int limit, TimeSpan interval, TimeSpan spacing, Action waiting, CancellationToken cancellationToken)
+    {
         while (true)
         {
             TimeSpan delay;
@@ -385,6 +399,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 }
                 state.RateBucketWaiters[bucket] = state.RateBucketWaiters.GetValueOrDefault(bucket) + 1;
             }
+            waiting();
             try
             {
                 await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(10), timeProvider, cancellationToken);

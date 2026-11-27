@@ -53,12 +53,15 @@ public static class SharedRateLimits
     {
         Jobs.JobQuotaScope.Current?.Record(key);
         Jobs.QuotaPressure.Waiter? waiter = null;
+        // Queue phase 0: a request that had to wait adds its wait (until the token, or until it gave up) to the running job.
+        long? waitStarted = null;
         try
         {
             while (true)
             {
                 var wait = await limiter.TryTakeAsync(key, bucket.Capacity, bucket.TokensPerSecond, cancellationToken);
                 if (wait <= TimeSpan.Zero) return;
+                waitStarted ??= timeProvider.GetTimestamp();
                 waiter ??= pressure.BeginWait(key, timeProvider.GetUtcNow());
                 var bounded = wait < TimeSpan.FromMilliseconds(10) ? TimeSpan.FromMilliseconds(10) : wait > TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : wait;
                 await Task.Delay(bounded, timeProvider, cancellationToken);
@@ -67,6 +70,7 @@ public static class SharedRateLimits
         finally
         {
             waiter?.End(timeProvider.GetUtcNow());
+            if (waitStarted is { } started) Jobs.JobQuotaScope.RecordTokenWait(timeProvider.GetElapsedTime(started));
         }
     }
 }

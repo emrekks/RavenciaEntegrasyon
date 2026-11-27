@@ -92,7 +92,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         var dedup = $"webhook:{connection.Id}:{envelope.ExternalMessageId}";
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, externalMessageId, resourceType = envelope.ResourceType, rawJson = envelope.RawJson });
-        var inbox = new InboxMessage { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, Source = source, ExternalMessageId = externalMessageId, PayloadHash = envelope.PayloadHash, ReceivedAt = now };
+        var inbox = new InboxMessage { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, Source = source, ExternalMessageId = externalMessageId, PayloadHash = envelope.PayloadHash, ReceivedAt = now, EventAt = EventTime(connection.PlatformCode, envelope.RawJson, headers, now) };
         var job = IntegrationJobFactory.New(new IntegrationJobRequest(connection.TenantId, connection.Id, jobType, payload, dedup, correlationId, now) { TriggerType = "webhook", LockGroup = MarketplaceSyncExecutionLock.WebhookIngestGroup(envelope.ResourceType) });
         // Either answer is 200: a repeated delivery (Trendyol sends the same package twice, milliseconds apart) is already queued.
         await WebhookInboxWriter.InsertAsync(db, inbox, job, cancellationToken);
@@ -223,6 +223,40 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }
+    }
+
+    // Queue phase 0: when the marketplace says the delivered event happened, so the delay before the delivery reached us can
+    // be told from ours (InboxMessage.EventAt). Trendyol: the latest lastModifiedDate of the delivered packages (epoch ms in
+    // UTC; live 27 Nov 2026: 2-34 s before receipt, while orderDate is Turkey wall clock and is not read here). Shopify:
+    // X-Shopify-Triggered-At. Hepsiburada's bodies carry business dates only (orderDate, shippedDate, cancelDate in Istanbul
+    // time), not the delivery's own moment: null. A value that cannot be read, or lies more than a day off the receipt, is null.
+    internal static DateTimeOffset? EventTime(string platformCode, string rawJson, IReadOnlyDictionary<string, string> headers, DateTimeOffset? receivedAt = null)
+    {
+        var eventAt = platformCode switch
+        {
+            "TRENDYOL" => TrendyolLastModified(rawJson),
+            "SHOPIFY" => DateTimeOffset.TryParse(headers.FirstOrDefault(x => string.Equals(x.Key, "X-Shopify-Triggered-At", StringComparison.OrdinalIgnoreCase)).Value,
+                System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var triggered) ? triggered.ToUniversalTime() : (DateTimeOffset?)null,
+            _ => null
+        };
+        if (eventAt is { } value && receivedAt is { } received && (value - received).Duration() > TimeSpan.FromDays(1)) return null;
+        return eventAt;
+    }
+
+    private static DateTimeOffset? TrendyolLastModified(string pageJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(pageJson);
+            if (!document.RootElement.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) return null;
+            long? latest = null;
+            foreach (var package in content.EnumerateArray())
+                if (package.ValueKind == JsonValueKind.Object && package.TryGetProperty("lastModifiedDate", out var value)
+                    && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var epoch) && epoch > 0)
+                    latest = latest is { } known && known >= epoch ? known : epoch;
+            return latest is { } milliseconds ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : null;
+        }
+        catch (Exception exception) when (exception is JsonException or ArgumentOutOfRangeException) { return null; }
     }
 
     // The first merchant id in the body (at any depth up to a few levels: the root of a claim, each item of an order) that

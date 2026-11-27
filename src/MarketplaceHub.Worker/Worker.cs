@@ -38,6 +38,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // bulkhead classes take their isolation caps by default (what each dedicated lane's single slot gave).
     private readonly LaneModelSettings laneModel = LaneModelSettings.From(configuration);
     private readonly BulkheadSettings bulkheads = BulkheadSettings.From(configuration, LaneModelSettings.From(configuration).Flexible);
+    // Queue phase 0: what this process saw of lock groups, backoffs, quota holds and free slots, to say why a leased job waited
+    // (written with its attempt row). Measurement only.
+    private readonly MarketplaceHub.Infrastructure.Jobs.JobWaitLedger waitLedger = new(TimeProvider.System);
+    // Recording failures are logged once per kind, never raised.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> recordingFailures = new(StringComparer.Ordinal);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -68,6 +73,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // borrowing slots, which lease only while the pool lends them a free slot.
         var pool = laneModel.Flexible ? new LaneSlotPool(laneSlots, laneModel.ProtectedLanes, laneModel.BorrowLimits) : null;
         lanePool = pool;
+        ConfigureWaitLedger(lanes, pool);
         if (pool is not null)
         {
             wakeRouter.LaneNotified += pool.NoteWork;
@@ -119,6 +125,36 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled && configuration.GetValue("Worker:ReturnCardColumns:Enabled", true)) loops.Add(RunReturnCardColumnsRepairAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunProductWarrantyRepairAsync(stoppingToken));
         await Task.WhenAll(loops);
+    }
+
+    // Queue phase 0: the ledger learns the lanes a job can go to, the pool's full spells (none with legacy lanes: the slot
+    // figure stays unknown) and how the quota hold is set up.
+    private void ConfigureWaitLedger(IReadOnlyList<MarketplaceHub.Infrastructure.Jobs.WorkerLane> lanes, LaneSlotPool? pool)
+    {
+        waitLedger.LanesFor = (jobType, priority) => [.. lanes.Where(lane => lane.Takes(jobType, priority)).Select(lane => lane.Name)];
+        waitLedger.SlotSpells = pool is null
+            ? null
+            : (laneNames, from, to) => [.. pool.NoRoomSpells(laneNames, from, to).Select(spell => new MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.Span(spell.From, spell.To))];
+        waitLedger.QuotaHold = quotaAwareLeasing.Enabled
+            ? new MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.QuotaHoldShape(quotaAwareLeasing.MaximumHold, Math.Max(JobPriorityPolicy.BulkUserAction, hotPriorityCeiling))
+            : null;
+    }
+
+    // The attempt facts a lease slot hands the lease (lane, borrowed slot, wait causes). A failure to attribute is logged once.
+    internal JobAttemptStart AttemptStart(string? lane, bool? borrowed) => new(lane, borrowed, query =>
+    {
+        try { return waitLedger.Attribute(query); }
+        catch (Exception exception)
+        {
+            RecordingFailed("wait-attribution", exception);
+            return JobWaitBreakdown.Unknown;
+        }
+    });
+
+    private void RecordingFailed(string kind, Exception exception)
+    {
+        if (recordingFailures.TryAdd(kind, true))
+            logger.LogWarning(exception, "Queue measurement {Kind} failed; the value is left empty and the job is not affected (logged once per kind)", kind);
     }
 
     // The startup log names the mode, so a rollback (Worker__QuotaAwareLeasing__Enabled=false) shows in the logs.
@@ -365,7 +401,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     {
         await RunSlotAsync(laneWake, token => LeaseThroughPoolAsync(pool, laneName ?? lane, ownSlot, async () =>
         {
-            var job = await LeaseNextAsync(maximumPriority, minimumPriority, token, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes, bulkhead);
+            // Queue phase 0: the lane and whether this slot is borrowed (legacy lanes never borrow) go on the attempt row.
+            var job = await LeaseNextAsync(maximumPriority, minimumPriority, token, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes, bulkhead,
+                AttemptStart(laneName ?? LaneName(lane), pool is null ? false : !ownSlot));
             // Health is refreshed only after a successful lease database cycle.
             // A live process that cannot reach the database must not remain healthy.
             TouchHealthFile();
@@ -623,7 +661,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             """).SingleAsync(cancellationToken);
     }
 
-    private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null)
+    private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null,
+        JobAttemptStart? attemptStart = null)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
@@ -633,8 +672,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var hold = singleJobId.HasValue ? null : QuotaHoldNow(now);
         var fairness = singleJobId.HasValue ? null : FairnessNow();
         var job = await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes, hold,
-            fairness, singleJobId.HasValue ? null : bulkhead);
+            fairness, singleJobId.HasValue ? null : bulkhead, attemptStart ?? AttemptStart(null, null));
         if (job?.ConnectionId is { } connectionId) MarketplaceHub.Infrastructure.Jobs.ConnectionLeaseClock.Shared.Record(connectionId, now);
+        // Queue phase 0: while it runs, its connection's other jobs of its lock group wait for it.
+        if (job is not null) waitLedger.RunStarted(job.Id, job.ConnectionId, job.LockGroup, DateTimeOffset.UtcNow);
         return job;
     }
 
@@ -696,7 +737,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         JobExecutionResult? result = null;
 
         // The quota buckets this run takes tokens from, learned for quota-aware leasing (QuotaPressure).
-        using var quotaScope = MarketplaceHub.Infrastructure.Jobs.JobQuotaScope.Enter();
+        // Queue phase 0: the scope also names the job (an order it stores records it) and adds up its token waits.
+        using var quotaScope = MarketplaceHub.Infrastructure.Jobs.JobQuotaScope.Enter(job.Id);
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -717,6 +759,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             result = ExceptionResult(exception);
         }
         LearnQuotaBuckets(job, quotaScope.Keys);
+        var run = RunFacts(quotaScope);
 
         try
         {
@@ -751,7 +794,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 async token =>
                 {
                     await using var completionScope = scopeFactory.CreateAsyncScope();
-                    return await completionScope.ServiceProvider.GetRequiredService<IJobLeaseService>().CompleteAsync(job.Id, job.LeaseToken, result, token);
+                    return await completionScope.ServiceProvider.GetRequiredService<IJobLeaseService>().CompleteAsync(job.Id, job.LeaseToken, result, token, run);
                 },
                 () => heartbeat.IsCompleted && !heartbeat.Result,
                 (exception, attempt) => logger.LogWarning(exception, "Job {JobId} completion attempt {Attempt} failed; retrying while the lease is held", job.Id, attempt),
@@ -761,12 +804,41 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             else if (!completed.Value)
                 logger.LogError("Job {JobId} completion was fenced because the lease owner or expiry no longer matched", job.Id);
             else
+            {
                 logger.LogInformation("Job {JobId} ({JobType}) completed with {CompletionKind}; error {ErrorCode}", job.Id, job.JobType, result.Kind, result.ErrorCode ?? "none");
+                waitLedger.BackoffRecorded(job, result, DateTimeOffset.UtcNow);
+            }
         }
         finally
         {
             heartbeatStop.Cancel();
             await heartbeat;
+            waitLedger.RunEnded(job.Id, DateTimeOffset.UtcNow);
+            await RecordBucketOwnersAsync(job, quotaScope.Keys);
+        }
+    }
+
+    // Queue phase 0: the run's rate-limit token waits for its attempt row.
+    internal static JobAttemptRun RunFacts(MarketplaceHub.Infrastructure.Jobs.JobQuotaScope.Scope scope) =>
+        new(MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.Milliseconds(scope.TokenWait), scope.TokenWaits);
+
+    // Queue phase 0: which connection used which quota bucket (the quota card's tenant scope), written only for a pair not
+    // written in the last few hours. A failure is logged once and never touches the job.
+    private async Task RecordBucketOwnersAsync(LeasedJob job, IReadOnlyCollection<string> keys)
+    {
+        if (job.ConnectionId is not { } connectionId || keys.Count == 0) return;
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var due = MarketplaceHub.Infrastructure.Jobs.QuotaBucketOwners.Due(connectionId, keys, now);
+            if (due.Count == 0) return;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await using var scope = scopeFactory.CreateAsyncScope();
+            await MarketplaceHub.Infrastructure.Jobs.QuotaBucketOwners.RecordAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), connectionId, due, now, timeout.Token);
+        }
+        catch (Exception exception)
+        {
+            RecordingFailed("quota-bucket-owners", exception);
         }
     }
 

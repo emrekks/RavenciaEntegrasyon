@@ -2228,6 +2228,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("EventAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ExternalMessageId")
                         .IsRequired()
                         .HasColumnType("text");
@@ -3027,7 +3030,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("AttemptNumber")
                         .HasColumnType("integer");
 
+                    b.Property<bool?>("Borrowed")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("EligibleAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ErrorCode")
@@ -3039,6 +3048,19 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("JobId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Lane")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("NotDueMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("QuotaWaitMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("QuotaWaits")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3047,6 +3069,18 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("WaitBackoffMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("WaitLockMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("WaitQuotaHoldMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("WaitSlotMs")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -4524,6 +4558,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByJobId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Currency")
                         .IsRequired()

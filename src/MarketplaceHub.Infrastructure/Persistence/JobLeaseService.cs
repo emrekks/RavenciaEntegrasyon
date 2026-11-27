@@ -12,7 +12,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     private static readonly string[] LockGroupJobTypes = [.. MarketplaceJobTypes.ProcessorJobTypes];
     private static readonly string[] LockGroups = [.. MarketplaceJobTypes.ProcessorJobTypes.Select(MarketplaceSyncExecutionLock.GroupFor)];
 
-    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null)
+    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null)
     {
         var now = timeProvider.GetUtcNow();
         includedJobTypes ??= [];
@@ -222,6 +222,11 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var token = TokenHasher.NewToken();
         var firstLease = job.StartedAt is null;
         var queueWait = QueueWait(job, now);
+        // Queue phase 0: read before the job changes (the attempt count and error are those the job waited with).
+        var eligibleAt = EligibleAt(job);
+        var busyLockGroup = BusyLockGroupOf(job);
+        var waits = AttemptWaits(attemptStart, new JobWaitQuery(job.Id, job.ConnectionId, job.JobType, job.Priority, busyLockGroup, job.CreatedAt, eligibleAt, now,
+            Fresh: job.AttemptCount == 0 && job.LastErrorCode is null && job.RetriedAt is null));
         JobStateMachine.MoveTo(job, JobStatus.Leased);
         job.LeaseTokenHash = hasher.Hash(token);
         job.LeaseExpiresAt = now.Add(leaseDuration);
@@ -229,13 +234,45 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         job.StartedAt ??= now;
         job.AttemptCount++;
         job.Version++;
-        db.JobAttempts.Add(new JobAttempt { Id = Guid.NewGuid(), TenantId = job.TenantId, JobId = job.Id, AttemptNumber = job.AttemptCount, StartedAt = now });
+        db.JobAttempts.Add(new JobAttempt
+        {
+            Id = Guid.NewGuid(),
+            TenantId = job.TenantId,
+            JobId = job.Id,
+            AttemptNumber = job.AttemptCount,
+            StartedAt = now,
+            EligibleAt = eligibleAt,
+            Lane = attemptStart?.Lane is { Length: > 0 } lane ? lane[..Math.Min(lane.Length, 40)] : null,
+            Borrowed = attemptStart?.Borrowed,
+            NotDueMs = waits.NotDueMs,
+            WaitLockMs = waits.LockMs,
+            WaitBackoffMs = waits.BackoffMs,
+            WaitQuotaHoldMs = waits.QuotaHoldMs,
+            WaitSlotMs = waits.SlotMs
+        });
         // The panel learns that the job started, once: later leases of the same job (retries, slices of a long
         // run) would only make every open screen refetch its job list again.
         if (firstLease) AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token, queueWait);
+        return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token, queueWait, job.Priority, busyLockGroup, eligibleAt);
+    }
+
+    // Queue phase 0: when the job became runnable for the attempt being leased (the later of AvailableAt and CreatedAt, the
+    // moment QueueWait counts from), kept on the attempt row because the job's AvailableAt is overwritten by the next retry.
+    internal static DateTimeOffset EligibleAt(IntegrationJob job) => job.AvailableAt > job.CreatedAt ? job.AvailableAt : job.CreatedAt;
+
+    // The lock group the lease's busy check compares for this job: its stored group, else its job type's group when the type
+    // is a processor type (the SQL's unnest map), else none.
+    internal static string? BusyLockGroupOf(IntegrationJob job) =>
+        job.LockGroup ?? (LockGroupJobTypes.Contains(job.JobType, StringComparer.Ordinal) ? MarketplaceSyncExecutionLock.GroupFor(job.JobType) : null);
+
+    // The worker's wait attribution, guarded: a failure to attribute is recorded as unknown, never as a failed lease.
+    internal static JobWaitBreakdown AttemptWaits(JobAttemptStart? attemptStart, JobWaitQuery query)
+    {
+        if (attemptStart?.Waits is not { } waits) return JobWaitBreakdown.Unknown;
+        try { return waits(query) ?? JobWaitBreakdown.Unknown; }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { return JobWaitBreakdown.Unknown; }
     }
 
     internal const int CandidateLimit = 50;
@@ -253,11 +290,17 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     internal static string LockGroupOf(IntegrationJob job) =>
         string.IsNullOrWhiteSpace(job.LockGroup) ? MarketplaceSyncExecutionLock.GroupFor(job.JobType) : job.LockGroup;
 
-    private async Task RecordConnectionBackoffAsync(Guid connectionId, string lockGroup, DateTimeOffset now, JobExecutionResult result, CancellationToken cancellationToken)
+    // How long a quota backoff a result asks for holds its connection and lock group: its Retry-After, else 30 s, at most
+    // 15 minutes (the worker's wait attribution reads the same window).
+    internal static TimeSpan ConnectionBackoffWait(JobExecutionResult result)
     {
         var wait = result.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero ? retryAfter : TimeSpan.FromSeconds(30);
-        if (wait > TimeSpan.FromMinutes(15)) wait = TimeSpan.FromMinutes(15);
-        var until = now.Add(wait);
+        return wait > TimeSpan.FromMinutes(15) ? TimeSpan.FromMinutes(15) : wait;
+    }
+
+    private async Task RecordConnectionBackoffAsync(Guid connectionId, string lockGroup, DateTimeOffset now, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        var until = now.Add(ConnectionBackoffWait(result));
         var reason = result.ErrorCode is { Length: > 128 } code ? code[..128] : result.ErrorCode;
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO integration.connection_backoffs ("ConnectionId", "LockGroup", "Until", "Reason")
@@ -292,7 +335,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         return true;
     }
 
-    public async Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken)
+    public async Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken, JobAttemptRun? run = null)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken);
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
@@ -365,6 +408,12 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             ? result.ErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED"
             : result.ErrorCode;
         attempt.ErrorSummary = result.ErrorSummary;
+        // Queue phase 0: the run's rate-limit token waits, written with the completion (null when the caller measured none).
+        if (run is not null)
+        {
+            attempt.QuotaWaitMs = run.QuotaWaitMs;
+            attempt.QuotaWaits = run.QuotaWaits;
+        }
         if (kind == JobCompletionKind.Dead && result.Kind == JobCompletionKind.Retry)
         {
             job.LastErrorCode = attempt.ErrorCode;

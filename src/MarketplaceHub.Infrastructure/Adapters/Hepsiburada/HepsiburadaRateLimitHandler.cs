@@ -49,7 +49,13 @@ public sealed class HepsiburadaRateLimitHandler(
             if (!limited && bucket.Name == CatalogBucket)
             {
                 var wait = TakeFallbackCatalogSlot(timeProvider.GetUtcNow());
-                if (wait > TimeSpan.Zero) await Task.Delay(wait, timeProvider, cancellationToken);
+                if (wait > TimeSpan.Zero)
+                {
+                    // Queue phase 0: the in-process catalog spacing counts as a token wait of the running job.
+                    var waitStarted = timeProvider.GetTimestamp();
+                    try { await Task.Delay(wait, timeProvider, cancellationToken); }
+                    finally { Jobs.JobQuotaScope.RecordTokenWait(timeProvider.GetElapsedTime(waitStarted)); }
+                }
             }
         }
         // The circuit's half-open probe is claimed only now that the token is held (G11).
@@ -72,16 +78,28 @@ public sealed class HepsiburadaRateLimitHandler(
     internal static (string Name, int LimitPerMinute)? BucketFor(Uri? uri)
     {
         var host = uri?.Host ?? "";
-        if (host.StartsWith("oms-", StringComparison.OrdinalIgnoreCase)) return ("oms", 600);
-        if (host.StartsWith("mpop", StringComparison.OrdinalIgnoreCase)) return (CatalogBucket, CatalogLimitPerMinute);
-        if (host.StartsWith("listing-", StringComparison.OrdinalIgnoreCase)) return ("listing", 100);
+        string? name = null;
+        if (host.StartsWith("oms-", StringComparison.OrdinalIgnoreCase)) name = "oms";
+        else if (host.StartsWith("mpop", StringComparison.OrdinalIgnoreCase)) name = CatalogBucket;
+        else if (host.StartsWith("listing-", StringComparison.OrdinalIgnoreCase)) name = "listing";
         // C18: the ask-to-seller (questions) host had no bucket at all. Its quota is not documented, so a
         // conservative 60 a minute is shared by the API and every worker.
-        if (host.StartsWith("api-asktoseller", StringComparison.OrdinalIgnoreCase)) return ("asktoseller", 60);
+        else if (host.StartsWith("api-asktoseller", StringComparison.OrdinalIgnoreCase)) name = "asktoseller";
         // The finance (muhasebe) host documents no quota either: the same cautious bucket.
-        if (host.StartsWith("mpfinance", StringComparison.OrdinalIgnoreCase)) return ("finance", 60);
-        return null;
+        else if (host.StartsWith("mpfinance", StringComparison.OrdinalIgnoreCase)) name = "finance";
+        return name is not null && LimitPerMinute(name) is { } limit ? (name, limit) : null;
     }
+
+    // Each bucket's requests a minute (the quota card reads the same numbers).
+    internal static int? LimitPerMinute(string bucket) => bucket switch
+    {
+        "oms" => 600,
+        CatalogBucket => CatalogLimitPerMinute,
+        "listing" => 100,
+        "asktoseller" => 60,
+        "finance" => 60,
+        _ => null
+    };
 
     // The catalog bucket is one per egress IP (shared by every account); the others are one per account.
     internal static string QuotaKey(HttpRequestMessage request, string bucket) =>

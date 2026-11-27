@@ -17,14 +17,15 @@ internal static class WebhookInboxWriter
     public static async Task<Outcome> InsertAsync(AppDbContext db, InboxMessage inbox, IntegrationJob job, CancellationToken cancellationToken)
     {
         var receivedAt = inbox.ReceivedAt.ToUniversalTime();
+        var eventAt = inbox.EventAt?.ToUniversalTime();
         var availableAt = job.AvailableAt.ToUniversalTime();
         // Both rows or neither, as the single SaveChanges before.
         var ownTransaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
         try
         {
             var inboxRows = await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO integration.inbox_messages ("Id", "TenantId", "Source", "ExternalMessageId", "PayloadHash", "ReceivedAt")
-                VALUES ({inbox.Id}, {inbox.TenantId}, {inbox.Source}, {inbox.ExternalMessageId}, {inbox.PayloadHash}, {receivedAt})
+                INSERT INTO integration.inbox_messages ("Id", "TenantId", "Source", "ExternalMessageId", "PayloadHash", "ReceivedAt", "EventAt")
+                VALUES ({inbox.Id}, {inbox.TenantId}, {inbox.Source}, {inbox.ExternalMessageId}, {inbox.PayloadHash}, {receivedAt}, {eventAt})
                 ON CONFLICT ("TenantId", "Source", "ExternalMessageId") DO NOTHING
                 """, cancellationToken);
             // The columns the EF model would write for a new job; the counters and timestamps take their defaults.

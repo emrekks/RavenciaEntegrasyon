@@ -45,9 +45,9 @@ public sealed class CommittedPrivateFile(string relativePath) : IStagedPrivateFi
 
 public interface IJobLeaseService
 {
-    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null);
+    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null);
     Task<bool> HeartbeatAsync(Guid jobId, string leaseToken, TimeSpan extension, CancellationToken cancellationToken);
-    Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken);
+    Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken, JobAttemptRun? run = null);
     Task<int> ReapExpiredAsync(CancellationToken cancellationToken);
     /// <summary>Hands a leased job back to the queue (e.g. on worker shutdown) without consuming an attempt.</summary>
     Task<bool> ReleaseAsync(Guid jobId, string leaseToken, CancellationToken cancellationToken);
@@ -90,4 +90,25 @@ public sealed record JobBulkhead(IReadOnlyList<string> JobTypes, IReadOnlyList<s
 }
 
 // QueueWait: how long the job waited between becoming runnable and this lease (slot, lock group or backoff wait).
-public sealed record LeasedJob(Guid Id, Guid TenantId, Guid? ConnectionId, string JobType, string PayloadJson, string CorrelationId, string LeaseToken, TimeSpan? QueueWait = null);
+// Priority, LockGroup (the group the lease's busy check uses; null when the job has none) and EligibleAt (when it became
+// runnable for this attempt) let the worker record what held it (queue phase 0).
+public sealed record LeasedJob(Guid Id, Guid TenantId, Guid? ConnectionId, string JobType, string PayloadJson, string CorrelationId, string LeaseToken, TimeSpan? QueueWait = null,
+    int Priority = 0, string? LockGroup = null, DateTimeOffset? EligibleAt = null);
+
+// Queue phase 0 (27 Nov 2026), measurement only. What the leasing worker knows about the attempt it starts: its lane, whether
+// the slot was borrowed, and (Waits) why the job waited, asked once the job is picked and written with the attempt row in the
+// lease's own save. Nothing in it changes which job is leased or when. A null value is unknown, never a guess.
+public sealed record JobAttemptStart(string? Lane, bool? Borrowed, Func<JobWaitQuery, JobWaitBreakdown>? Waits = null);
+
+// The picked job as the wait attribution needs it. LockGroup is the group the lease's busy check compares (null: none).
+// Fresh: the job never ran, failed or was retried (its first lease after it was queued).
+public sealed record JobWaitQuery(Guid JobId, Guid? ConnectionId, string JobType, int Priority, string? LockGroup, DateTimeOffset CreatedAt, DateTimeOffset EligibleAt, DateTimeOffset LeasedAt, bool Fresh);
+
+// Milliseconds of the attempt's wait per known cause (JobAttempt.WaitLockMs ...), and NotDueMs before EligibleAt.
+public sealed record JobWaitBreakdown(int? NotDueMs, int? LockMs, int? BackoffMs, int? QuotaHoldMs, int? SlotMs)
+{
+    public static readonly JobWaitBreakdown Unknown = new(null, null, null, null, null);
+}
+
+// What the worker measured inside the run, written with the attempt's completion: rate-limit token waits.
+public sealed record JobAttemptRun(int? QuotaWaitMs, int? QuotaWaits);

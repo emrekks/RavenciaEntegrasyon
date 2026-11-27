@@ -46,7 +46,7 @@ public sealed class InvoiceInlineRunnerTests(PostgreSqlTenantIsolationFixture fi
     {
         private bool leased;
 
-        public Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null)
+        public Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null)
         {
             if (leased || onlyJobId != job.Id) return Task.FromResult<LeasedJob?>(null);
             leased = true;
@@ -54,7 +54,7 @@ public sealed class InvoiceInlineRunnerTests(PostgreSqlTenantIsolationFixture fi
             return Task.FromResult<LeasedJob?>(job);
         }
 
-        public Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken)
+        public Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken, JobAttemptRun? run = null)
         {
             events.Add($"complete:{result.Kind}");
             return Task.FromResult(true);

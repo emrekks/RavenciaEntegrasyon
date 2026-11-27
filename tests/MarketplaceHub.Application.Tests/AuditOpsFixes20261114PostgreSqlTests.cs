@@ -52,6 +52,32 @@ public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolati
         Assert.False(await verification.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.Status != IssueStatus.Resolved && (x.Code == OperationalIssueRetentionService.OrderNotImportedCode || x.Code == "PACKAGE_QUANTITY_INVARIANT_REJECTED")));
     }
 
+    // Queue phase 0: an order first stored inside a worker job's run names that job (Order.CreatedByJobId); one stored
+    // outside a job (an import, the API) names none, and a later read of the same order does not change it.
+    [PostgreSqlFact]
+    public async Task AnOrderNamesTheWorkerJobThatFirstStoredItAndNoneOutsideAJob()
+    {
+        var (tenant, connection) = await SeedAsync("PTTAVM");
+        const string inJob = "PTT-PHASE0001-271126";
+        const string outsideJob = "PTT-PHASE0002-271126";
+        var jobId = Guid.CreateVersion7();
+        async Task ReadAsync(string number)
+        {
+            await using var db = fixture.CreateContext();
+            var result = await Processor(db, new PttOrderPort([], _ => Renumbered(SampleOrder("PTT-ATEST0001-071024"), number))).ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PttAvmOrderSync,
+                JsonSerializer.Serialize(new { connectionId = connection.Id, externalOrderId = number }), "phase0-created-by", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+        using (MarketplaceHub.Infrastructure.Jobs.JobQuotaScope.Enter(jobId)) await ReadAsync(inJob);
+        await ReadAsync(outsideJob);
+        // Read again in another job: the first job stays.
+        using (MarketplaceHub.Infrastructure.Jobs.JobQuotaScope.Enter(Guid.CreateVersion7())) await ReadAsync(inJob);
+
+        await using var verification = fixture.CreateContext();
+        Assert.Equal(jobId, await verification.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ExternalOrderId == inJob).Select(x => x.CreatedByJobId).SingleAsync());
+        Assert.Null(await verification.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ExternalOrderId == outsideJob).Select(x => x.CreatedByJobId).SingleAsync());
+    }
+
     // Every marketplace, not only Trendyol: a new order the integrity check refuses joins the re-read list and leaves an
     // ORDER_NOT_IMPORTED notice that the stale pass does not close; the read that imports it closes both.
     [PostgreSqlFact]

@@ -57,7 +57,11 @@ public sealed class QuotaPressure
         {
             if (!buckets.TryGetValue(waiter.Key, out var bucket) || !bucket.Waiters.Remove(waiter)) return;
             // Any waiter of this busy spell that waited the saturation time made the bucket full (and may have held jobs).
-            if (now - waiter.Since >= Saturation) bucket.WasFull = true;
+            if (now - waiter.Since >= Saturation)
+            {
+                bucket.WasFull = true;
+                RememberFull(waiter.Key, waiter.Since + Saturation, now);
+            }
             if (bucket.Waiters.Count == 0)
             {
                 buckets.Remove(waiter.Key);
@@ -106,6 +110,44 @@ public sealed class QuotaPressure
         return connections.Count == 0 ? JobQuotaHold.None : new JobQuotaHold(connections, jobTypes, maximumHold, heldAbovePriority);
     }
 
+    // Queue phase 0: when each bucket was full (a waiter past the saturation time), for the last FullHistoryKept, so the worker
+    // can tell how long a leased job was held for its quota. Measurement only: Held above does not read it.
+    public static readonly TimeSpan FullHistoryKept = TimeSpan.FromHours(6);
+    private const int MaximumFullSpellsPerKey = 512;
+    private readonly Dictionary<string, List<(DateTimeOffset From, DateTimeOffset To)>> fullSpells = new(StringComparer.Ordinal);
+
+    // Called under the lock.
+    private void RememberFull(string key, DateTimeOffset from, DateTimeOffset to)
+    {
+        if (to <= from) return;
+        if (!fullSpells.TryGetValue(key, out var spells)) fullSpells[key] = spells = [];
+        spells.Add((from, to));
+        var keepAfter = to - FullHistoryKept;
+        spells.RemoveAll(spell => spell.To < keepAfter);
+        if (spells.Count > MaximumFullSpellsPerKey) spells.RemoveRange(0, spells.Count - MaximumFullSpellsPerKey);
+    }
+
+    // The spells in which any of the keys was full, between from and to (a waiter still past the saturation time counts up to now).
+    public IReadOnlyList<(DateTimeOffset From, DateTimeOffset To)> FullSpells(IReadOnlyCollection<string> keys, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
+    {
+        var result = new List<(DateTimeOffset From, DateTimeOffset To)>();
+        if (keys.Count == 0 || to <= from) return result;
+        lock (gate)
+            foreach (var key in keys)
+            {
+                if (fullSpells.TryGetValue(key, out var spells))
+                    result.AddRange(spells.Where(spell => spell.To > from && spell.From < to));
+                if (buckets.TryGetValue(key, out var bucket))
+                    foreach (var waiter in bucket.Waiters)
+                        if (now - waiter.Since >= Saturation && waiter.Since + Saturation < to) result.Add((waiter.Since + Saturation, now));
+            }
+        return result;
+    }
+
+    // The buckets a connection's job type learned from its last run (empty: none learned).
+    public IReadOnlyCollection<string> LearnedKeys(Guid connectionId, string jobType) =>
+        learned.TryGetValue((connectionId, jobType), out var value) ? value.Keys : [];
+
     private sealed class Bucket
     {
         public List<Waiter> Waiters { get; } = [];
@@ -140,34 +182,61 @@ public sealed class QuotaPressure
 }
 // The quota buckets one job run takes tokens from (QuotaPressure.Learn). The worker enters it around a job; the shared rate
 // limiter's wait records each bucket it is asked for while it is active. Outside a job (the API) nothing is recorded.
+// Queue phase 0 (27 Nov 2026): the scope also names the running job (an order it stores records it, Order.CreatedByJobId)
+// and adds up the run's rate-limit token waits (the shared limiter's and the adapters' in-process ones) for its attempt row.
 public static class JobQuotaScope
 {
     private static readonly AsyncLocal<Scope?> current = new();
 
     internal static Scope? Current => current.Value;
 
-    public static Scope Enter()
+    // The job whose run this is (null outside a worker job).
+    public static Guid? CurrentJobId => current.Value?.JobId;
+
+    public static Scope Enter(Guid? jobId = null)
     {
-        var scope = new Scope(current.Value);
+        var scope = new Scope(current.Value, jobId);
         current.Value = scope;
         return scope;
     }
+
+    // Adds one finished token wait to the running job's scope (nothing outside a job).
+    internal static void RecordTokenWait(TimeSpan waited) => current.Value?.AddTokenWait(waited);
 
     public sealed class Scope : IDisposable
     {
         private readonly Scope? previous;
         private readonly HashSet<string> keys = new(StringComparer.Ordinal);
+        private long tokenWaitTicks;
+        private int tokenWaits;
 
-        internal Scope(Scope? previous) => this.previous = previous;
+        internal Scope(Scope? previous, Guid? jobId = null)
+        {
+            this.previous = previous;
+            JobId = jobId;
+        }
+
+        public Guid? JobId { get; }
 
         public IReadOnlyCollection<string> Keys
         {
             get { lock (keys) return [.. keys]; }
         }
 
+        // Total time the run's requests waited for a rate-limit token, and how many requests had to wait.
+        public TimeSpan TokenWait => TimeSpan.FromTicks(Interlocked.Read(ref tokenWaitTicks));
+        public int TokenWaits => Volatile.Read(ref tokenWaits);
+
         internal void Record(string key)
         {
             lock (keys) keys.Add(key);
+        }
+
+        internal void AddTokenWait(TimeSpan waited)
+        {
+            if (waited <= TimeSpan.Zero) return;
+            Interlocked.Add(ref tokenWaitTicks, waited.Ticks);
+            Interlocked.Increment(ref tokenWaits);
         }
 
         public void Dispose() => current.Value = previous;

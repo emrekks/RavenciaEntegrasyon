@@ -107,6 +107,7 @@ public sealed class LaneSlotPool
             workNoticed.Remove(lane);
             wanting.Remove(lane);
             starved.Remove(lane);
+            TrackRoomLocked();
             if (!reserved.ContainsKey(lane)) return true;
             var now = clock.GetUtcNow();
             quietUntil[lane] = now + QuietFor;
@@ -139,6 +140,16 @@ public sealed class LaneSlotPool
     public bool TryClaim(string lane, bool ownSlot, bool polls = false)
     {
         lock (gate)
+        {
+            var claimed = TryClaimLocked(lane, ownSlot, polls);
+            TrackRoomLocked();
+            return claimed;
+        }
+    }
+
+    // Called under the lock.
+    private bool TryClaimLocked(string lane, bool ownSlot, bool polls)
+    {
         {
             if (!reserved.TryGetValue(lane, out var floor)) return false;
             if (ownSlot)
@@ -248,8 +259,83 @@ public sealed class LaneSlotPool
             }
             // Only the lanes woken now leave the starved set.
             starved.ExceptWith(lanes);
+            TrackRoomLocked();
         }
         if (lanes.Count > 0) SlotFreed?.Invoke(lanes);
+    }
+
+    // Queue phase 0 (27 Nov 2026), measurement only: when each lane had no free slot at all (its own slots all taken or kept,
+    // and no slot it may borrow), so a leased job's wait can say how long no slot was free for it. The quiet and polling
+    // refusals of a borrowing slot are not counted (they are poll timing, not a full pool). Nothing in the claims reads it.
+    private readonly Dictionary<string, DateTimeOffset> noRoomSince = [];
+    private readonly Dictionary<string, List<(DateTimeOffset From, DateTimeOffset To)>> noRoomSpells = [];
+    private static readonly TimeSpan NoRoomHistoryKept = TimeSpan.FromHours(6);
+    private const int MaximumNoRoomSpells = 1_024;
+
+    // Called under the lock after every change of the counts or of the lanes that want their slot.
+    private void TrackRoomLocked()
+    {
+        var now = clock.GetUtcNow();
+        foreach (var (lane, floor) in reserved)
+        {
+            var hasRoom = own.GetValueOrDefault(lane) < floor
+                ? running + Kept(lane, includeWanting: false) < Total
+                : (!borrowLimits.TryGetValue(lane, out var limit) || borrowed.GetValueOrDefault(lane) < limit) && running + Kept(lane, includeWanting: true) < Total;
+            if (!hasRoom)
+            {
+                noRoomSince.TryAdd(lane, now);
+                continue;
+            }
+            if (!noRoomSince.Remove(lane, out var since) || now <= since) continue;
+            if (!noRoomSpells.TryGetValue(lane, out var spells)) noRoomSpells[lane] = spells = [];
+            spells.Add((since, now));
+            spells.RemoveAll(spell => spell.To < now - NoRoomHistoryKept);
+            if (spells.Count > MaximumNoRoomSpells) spells.RemoveRange(0, spells.Count - MaximumNoRoomSpells);
+        }
+    }
+
+    // The spells between from and to in which none of the lanes had a free slot (a job those lanes lease waited for a slot).
+    public IReadOnlyList<(DateTimeOffset From, DateTimeOffset To)> NoRoomSpells(IReadOnlyList<string> lanes, DateTimeOffset from, DateTimeOffset to)
+    {
+        List<(DateTimeOffset From, DateTimeOffset To)>? common = null;
+        lock (gate)
+        {
+            var now = clock.GetUtcNow();
+            foreach (var lane in lanes)
+            {
+                var laneSpells = new List<(DateTimeOffset From, DateTimeOffset To)>();
+                if (noRoomSpells.TryGetValue(lane, out var spells)) laneSpells.AddRange(spells.Where(spell => spell.To > from && spell.From < to));
+                if (noRoomSince.TryGetValue(lane, out var since) && since < to) laneSpells.Add((since, now));
+                var merged = MergeSpells(laneSpells, from, to);
+                common = common is null ? merged : Intersect(common, merged);
+                if (common.Count == 0) break;
+            }
+        }
+        return common ?? [];
+    }
+
+    private static List<(DateTimeOffset From, DateTimeOffset To)> MergeSpells(IEnumerable<(DateTimeOffset From, DateTimeOffset To)> spells, DateTimeOffset from, DateTimeOffset to)
+    {
+        var merged = new List<(DateTimeOffset From, DateTimeOffset To)>();
+        foreach (var (start, end) in spells.Select(spell => (From: spell.From < from ? from : spell.From, To: spell.To > to ? to : spell.To)).Where(spell => spell.To > spell.From).OrderBy(spell => spell.From))
+        {
+            if (merged.Count > 0 && start <= merged[^1].To) merged[^1] = (merged[^1].From, end > merged[^1].To ? end : merged[^1].To);
+            else merged.Add((start, end));
+        }
+        return merged;
+    }
+
+    private static List<(DateTimeOffset From, DateTimeOffset To)> Intersect(List<(DateTimeOffset From, DateTimeOffset To)> a, List<(DateTimeOffset From, DateTimeOffset To)> b)
+    {
+        var result = new List<(DateTimeOffset From, DateTimeOffset To)>();
+        foreach (var left in a)
+            foreach (var right in b)
+            {
+                var start = left.From > right.From ? left.From : right.From;
+                var end = left.To < right.To ? left.To : right.To;
+                if (end > start) result.Add((start, end));
+            }
+        return result;
     }
 
     // The pool's invariants, checked under the lock (tests): null when they hold, else what broke.

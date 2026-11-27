@@ -25,7 +25,11 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
 {
     public const int BatchSize = 2_000;
     public static readonly TimeSpan DefaultGuardRetention = TimeSpan.FromDays(90);
-    public static readonly TimeSpan RateLimitUsageRetention = TimeSpan.FromDays(2);
+    // Queue phase 0 (27 Nov 2026): 30 days instead of 2, so a later phase can compare weeks. Live: ~5,100 per-minute rows a
+    // day over 30 keys (10,188 rows, 3 MB in 48 h), so about 150,000 rows and 45 MB at 30 days; the rows already are one per
+    // bucket and minute, nothing to aggregate. take_rate_token's own clean-up keeps the same 30 days (migration
+    // QueueVisibilityPhase0).
+    public static readonly TimeSpan RateLimitUsageRetention = TimeSpan.FromDays(30);
 
     private static readonly string[] KeptJobTypes =
     [
@@ -192,6 +196,20 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
                     LIMIT {BatchSize})
                 DELETE FROM integration.rate_limit_usage usage USING doomed
                 WHERE usage."Key" = doomed."Key" AND usage."Minute" = doomed."Minute"
+                """, cancellationToken);
+            deleted += count;
+            if (count < BatchSize) break;
+        }
+        // Which connection uses which bucket (the quota card's tenant scope): a pair not seen for the same period goes.
+        for (var batch = 0; batch < maximumBatches; batch++)
+        {
+            var count = await db.Database.ExecuteSqlInterpolatedAsync($"""
+                WITH doomed AS (
+                    SELECT "Key", "ConnectionId" FROM integration.rate_limit_bucket_connections
+                    WHERE "LastSeenAt" < {cutoff}
+                    LIMIT {BatchSize})
+                DELETE FROM integration.rate_limit_bucket_connections owner USING doomed
+                WHERE owner."Key" = doomed."Key" AND owner."ConnectionId" = doomed."ConnectionId"
                 """, cancellationToken);
             deleted += count;
             if (count < BatchSize) break;

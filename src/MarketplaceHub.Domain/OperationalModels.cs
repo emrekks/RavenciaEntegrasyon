@@ -67,6 +67,26 @@ public sealed class JobAttempt
     public bool Succeeded { get; set; }
     public string? ErrorCode { get; set; }
     public string? ErrorSummary { get; set; }
+    // Queue phase 0 (27 Nov 2026), measurement only: written with the attempt row, never read by scheduling. Null on rows of
+    // earlier releases and wherever the value is not known (never a guess).
+    // When the job became runnable for this attempt (the later of its AvailableAt and CreatedAt at the lease). Unlike the
+    // job's AvailableAt, which the next retry overwrites, it never changes, so StartedAt - EligibleAt is this attempt's wait.
+    public DateTimeOffset? EligibleAt { get; set; }
+    // The worker lane whose slot leased the job, and whether that slot was borrowed from another lane (flexible lanes).
+    public string? Lane { get; set; }
+    public bool? Borrowed { get; set; }
+    // How long the job was not due before EligibleAt (since it was queued, or since its previous run ended), in ms.
+    public int? NotDueMs { get; set; }
+    // The part of the wait (EligibleAt to StartedAt) the worker knows a cause for, in ms, each counted once in this order:
+    // its connection's lock group busy, its connection's quota backoff, a quota-aware lease hold, no free slot for its lanes.
+    // What is left of the wait has no known cause (a poll's latency, a bulkhead cap, another process's work).
+    public int? WaitLockMs { get; set; }
+    public int? WaitBackoffMs { get; set; }
+    public int? WaitQuotaHoldMs { get; set; }
+    public int? WaitSlotMs { get; set; }
+    // Inside the run: time spent waiting for marketplace rate-limit tokens and how many requests had to wait.
+    public int? QuotaWaitMs { get; set; }
+    public int? QuotaWaits { get; set; }
 }
 
 // A publication job's answer per variant (product create, update or approval check): which barcode it carried, what the
@@ -114,6 +134,9 @@ public sealed class InboxMessage
     public required string PayloadHash { get; set; }
     public DateTimeOffset ReceivedAt { get; set; }
     public DateTimeOffset? ProcessedAt { get; set; }
+    // Queue phase 0: when the marketplace says the event happened, where its delivery carries it (Trendyol: the packages'
+    // lastModifiedDate; Shopify: X-Shopify-Triggered-At). Null where it does not (Hepsiburada) or cannot be read.
+    public DateTimeOffset? EventAt { get; set; }
 }
 
 public sealed class ExternalEffectRecord

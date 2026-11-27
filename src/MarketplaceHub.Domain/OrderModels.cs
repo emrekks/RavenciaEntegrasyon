@@ -540,6 +540,10 @@ public sealed class Order
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+    // Queue phase 0 (27 Nov 2026), measurement only: the worker job whose run first stored the order (a webhook ingest or a
+    // read), so the time from order to panel can be split by how the order came. Null for orders stored outside a worker
+    // job (an import, the API) and for orders of earlier releases. No foreign key: jobs are purged after their retention.
+    public Guid? CreatedByJobId { get; set; }
 }
 
 public sealed class OrderLine

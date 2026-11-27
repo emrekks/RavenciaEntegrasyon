@@ -280,7 +280,8 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         db.InboxMessages.Add(new InboxMessage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Source = "TRENDYOL_WEBHOOK", ExternalMessageId = inboxKey, PayloadHash = "h", ReceivedAt = old });
         db.ExternalEffectRecords.AddRange(settledEffect, openEffect);
         await db.SaveChangesAsync();
-        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO integration.rate_limit_usage (\"Key\", \"Minute\", \"Requests\") VALUES ({usageKey}, {now.AddDays(-3)}, 4)");
+        // Queue phase 0: the quota usage keeps 30 days (a 3-day-old minute stays, a 31-day-old one goes).
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO integration.rate_limit_usage (\"Key\", \"Minute\", \"Requests\") VALUES ({usageKey}, {now.AddDays(-31)}, 4), ({usageKey}, {now.AddDays(-3)}, 2)");
         db.ChangeTracker.Clear();
 
         var retention = new JobRetentionService(db, fixture.TimeProvider);
@@ -292,7 +293,7 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         var remaining = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync();
         Assert.Equal(new[] { sentShipment.Id, supersededCreate.Id }.Order(), remaining.Order());
         Assert.False(await db.InboxMessages.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
-        Assert.Equal(0, await db.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM integration.rate_limit_usage WHERE \"Key\" = {usageKey}").SingleAsync());
+        Assert.Equal(2, await db.Database.SqlQuery<int>($"SELECT coalesce(sum(\"Requests\"), 0)::int AS \"Value\" FROM integration.rate_limit_usage WHERE \"Key\" = {usageKey}").SingleAsync());
         Assert.Equal([openEffect.Id], await db.ExternalEffectRecords.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync());
         await transaction.RollbackAsync();
     }
