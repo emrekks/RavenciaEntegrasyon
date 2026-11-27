@@ -54,6 +54,10 @@ services:
     build: null
     environment:
       <<: *production_environment
+      # Brand lists are written as the difference to the current list (ReferenceSyncService.BrandDiff, Kuyruk Faz 1B);
+      # MARKETPLACEHUB_REFERENCE_BRAND_DIFF_WRITES=false in production.env and `compose up -d worker` goes back to the
+      # full copy. Planned to be removed with the full-copy path two weeks after release.
+      References__BrandDiffWrites: "${MARKETPLACEHUB_REFERENCE_BRAND_DIFF_WRITES:-true}"
       # History table retention (docs/SAKLAMA-SURELERI.md): empty uses the table's default in code (HistoryRetentionPolicy),
       # 0 keeps the table forever, a whole number of days overrides the default (set in production.env, then redeploy).
       Worker__HistoryRetention__AuditLogDays: "${MARKETPLACEHUB_RETENTION_AUDIT_LOG_DAYS:-}"

@@ -51,7 +51,7 @@ internal sealed class JobRunServices(
 
     public ReturnReadService ReturnRead => returnRead ??= new(db, issues, cursors, returns, orders, configuration, timeProvider, OrderIngestion, ReturnIngestion, run);
 
-    public ReferenceSyncService ReferenceSync => referenceSync ??= new(db, references, timeProvider, OrderIngestion, run);
+    public ReferenceSyncService ReferenceSync => referenceSync ??= new(db, references, timeProvider, OrderIngestion, run, issues, ReferenceWriteSwitches.BrandDiffWrites(configuration));
 
     public CatalogAttributeService CatalogAttributes => catalogAttributes ??= new(db, timeProvider, ReferenceSync, run);
 

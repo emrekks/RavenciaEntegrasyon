@@ -239,8 +239,54 @@ internal sealed partial class ReferenceSyncService
         return true;
     }
 
+    // The whole brand list, page by page, each page's items once (an id met again on a later page is skipped, the first
+    // one kept). Every guard of the read throws, so a list read only in part never reaches its caller's last step: a
+    // failed page, a broken item, the item limit, a repeated or missing cursor, the page cap and a cancellation.
+    private async IAsyncEnumerable<List<RemoteReferenceItem>> ReadBrandPagesAsync(Guid tenantId, Guid connectionId, string correlationId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        var itemCount = 0;
+        var brandWalk = new PageWalk(BrandReferencePageGuard);
+        do
+        {
+            TrackRequest();
+            const int pageSize = 2000;
+            var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:BRANDS::{cursor}"), new("BRANDS", null), new(cursor, pageSize), cancellationToken);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            var pageItems = result.Value!.Items;
+            if (itemCount > MaxBrandReferenceItems - pageItems.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Trendyol marka referansı güvenli işleme sınırını aştı."));
+            var uniquePageItems = new List<RemoteReferenceItem>(pageItems.Count);
+            foreach (var item in pageItems)
+            {
+                TrackReceived();
+                if (!string.Equals(item.ResourceType, "BRANDS", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(item.ExternalId) || string.IsNullOrWhiteSpace(item.Name) || item.ParentExternalId is not null)
+                    throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Marka referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
+                if (seen.Add(item.ExternalId)) uniquePageItems.Add(item);
+            }
+            itemCount += uniquePageItems.Count;
+            yield return uniquePageItems;
+            // ISLEYICI-11: a next cursor equal to the one just read (its items are already seen, so the item limit never
+            // fills) or a list that never ends stops the read; the current brand list is kept.
+            switch (brandWalk.After(cursor, result.Value.HasMore ? result.Value.NextCursor : null))
+            {
+                case PagedReadStop.RepeatedCursor:
+                    throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci yinelendi."));
+                case PagedReadStop.PageCap:
+                    throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_PAGE_CAP", $"Marka listesi {BrandReferencePageCap} sayfayı aştı; okuma durduruldu, paneldeki mevcut liste korunuyor."));
+            }
+            cursor = result.Value.NextCursor;
+            if (!result.Value.HasMore) break;
+            if (string.IsNullOrWhiteSpace(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci eksik döndü."));
+        } while (!cancellationToken.IsCancellationRequested);
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
     private async Task<bool> SyncBrandReferences(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
+        // Kuyruk Faz 1B (27 Nov 2026): with the switch on (the default) a list read again changes the current snapshot in
+        // place, row by row (ReferenceSyncService.BrandDiff); the first list of a connection is still stored whole below.
+        if (brandDiffWrites && await SyncBrandReferencesByDiffAsync(tenantId, connectionId, correlationId, cancellationToken)) return true;
         var sourceVersion = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == MarketplaceCapabilities.ReferenceRead).Select(x => x.SourceVersion).SingleOrDefaultAsync(cancellationToken)
             ?? await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.ApiVersion).SingleAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -268,28 +314,11 @@ internal sealed partial class ReferenceSyncService
         }
         if (stored is null) await OpenStagingAsync(0);
 
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        string? cursor = null;
         var itemCount = 0;
-        var brandWalk = new PageWalk(BrandReferencePageGuard);
         try
         {
-            do
+            await foreach (var uniquePageItems in ReadBrandPagesAsync(tenantId, connectionId, correlationId, cancellationToken))
             {
-                TrackRequest();
-                const int pageSize = 2000;
-                var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:BRANDS::{cursor}"), new("BRANDS", null), new(cursor, pageSize), cancellationToken);
-                if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
-                var pageItems = result.Value!.Items;
-                if (itemCount > MaxBrandReferenceItems - pageItems.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Trendyol marka referansı güvenli işleme sınırını aştı."));
-                var uniquePageItems = new List<RemoteReferenceItem>(pageItems.Count);
-                foreach (var item in pageItems)
-                {
-                    TrackReceived();
-                    if (!string.Equals(item.ResourceType, "BRANDS", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(item.ExternalId) || string.IsNullOrWhiteSpace(item.Name) || item.ParentExternalId is not null)
-                        throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Marka referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
-                    if (seen.Add(item.ExternalId)) uniquePageItems.Add(item);
-                }
                 if (staging is null && stored is not null)
                     for (var index = 0; index < uniquePageItems.Count; index++)
                         if (!SameBrandRow(stored, itemCount + index, uniquePageItems[index]))
@@ -328,21 +357,8 @@ internal sealed partial class ReferenceSyncService
                     await db.SaveChangesAsync(cancellationToken);
                     db.ChangeTracker.Clear();
                 }
-                // ISLEYICI-11: a next cursor equal to the one just read (its items are already seen, so the item limit never
-                // fills) or a list that never ends stops the read; the current brand list is kept.
-                switch (brandWalk.After(cursor, result.Value.HasMore ? result.Value.NextCursor : null))
-                {
-                    case PagedReadStop.RepeatedCursor:
-                        throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci yinelendi."));
-                    case PagedReadStop.PageCap:
-                        throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_PAGE_CAP", $"Marka listesi {BrandReferencePageCap} sayfayı aştı; okuma durduruldu, paneldeki mevcut liste korunuyor."));
-                }
-                cursor = result.Value.NextCursor;
-                if (!result.Value.HasMore) break;
-                if (string.IsNullOrWhiteSpace(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci eksik döndü."));
-            } while (!cancellationToken.IsCancellationRequested);
+            }
 
-            cancellationToken.ThrowIfCancellationRequested();
             if (itemCount == 0) throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", "Trendyol BRANDS salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
             // Fewer items than the current snapshot holds: the list changed after all.
             if (staging is null && itemCount != stored!.Digests.Length) await OpenStagingAsync(itemCount);
