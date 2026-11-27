@@ -2265,20 +2265,24 @@ CrowdSec yeniden yüklenir), ardından `sudo cscli parsers inspect ravencia/pane
 
     | Şerit | Ne taşır | Ayrılmış / asgari | Pay | Neden |
     |---|---|---|---|---|
-    | Kullanıcı | Panelden tek tek başlatılan işler (öncelik -3 ve altı) | 1 | 1 | Kullanıcı bekler (hedef 5 sn); ikinci iş paydan |
+    | Kullanıcı | Panelden tek tek başlatılan işler (öncelik -3 ve altı): paket, iade, etiket, elle sipariş yenileme, fatura kesme ve iletme | 2 | 0 | Kullanıcı bekler (hedef 5 sn); iki slot pay değil garanti |
     | Webhook | Pazaryeri bildirimleri (öncelik 0 ve üstü) | 1 | 0 | Kısa işler; kendi slotu hiç dolmaz, hedef 5 sn |
-    | Pazaryerine Yazma | Otomatik yazmalar: fiyat-stok, ürün, paket, fatura iletimi (öncelik 0 ve üstü) | 1 | 1 | Bir yazma okumaların arkasında beklememeli |
+    | Pazaryerine Yazma | Yazmalar (öncelik 0 ve üstü); öncelik -3 olsa da fiyat-stok gönderimi (toplu fiyat yayınında ürün başına bir iş) ve otomatik geri okumalar (`INVOICE_RECONCILE`, `*ORDER_INVOICE_RECONCILIATION`, `EXTERNAL_EFFECT_RECONCILE`) | 1 | 1 | Bir yazma okumaların arkasında beklememeli; yüzlerce fiyat işi Kullanıcı slotunu tutmasın |
     | Elle Başlatılan Okuma | Diğer kısa okumalar (öncelik 0-2) | 0 | 0 | Az ve kısa; boş ortak slotu kullanır |
     | Sipariş Okuma | Bütün pazaryerlerinin yeni sipariş ve kurtarma okumaları | 3 asgari | 0 | Siparişler en önce okunur; asgari hiç ödünç verilmez |
     | Durum Taraması | Açık sipariş durumları | 2 asgari | 0 | Sipariş okumasıyla aynı kilit grubu; 3 asgari iadeyi yavaşlatıyordu (replay) |
     | İade | Yeni iade ve iade durumu okumaları | 0 | 2 | |
-    | Toplu İşler | Toplu fatura, toplu ürün güncelleme ve yayın (öncelik -2), dosyadan içe aktarma (`IMPORT_PREVIEW`, `IMPORT_APPLY`) | 0 | 2 | Yüzlerce iş tek kullanıcı işinin önüne geçmesin |
+    | Toplu İşler | Toplu fatura, toplu ürün güncelleme ve yayın (öncelik -2), dosyadan içe aktarma (`IMPORT_PREVIEW`, `IMPORT_APPLY`), panel ve bağlantı sıfırlaması (`PANEL_FACTORY_RESET`, `CONNECTION_FULL_RESET`, öncelik -3) | 0 | 2 | Yüzlerce iş ya da uzun bir sıfırlama tek kullanıcı işinin önüne geçmesin |
     | Katalog | Ürün çekme, yapı aktarımı, yayın doğrulaması | 0 | 2 | |
     | Arka Plan | Uzlaştırma, soru, finans, liste ve diğer zamanlanmış okumalar (öncelik 3 ve üstü) | 0 | 2 | |
     | İlk Çekim | Yeni mağazanın ilk çekimi (öncelik -1) | 0 | 2 | |
 
-    Ayrılmış 3 + asgari 5 = 8 slot başka şeride hiç verilmez; kalan 12 ortak slottan her şerit işi varken payı kadarını önce
-    alır, boşken başkası kullanır.
+    Ayrılmış 4 + asgari 5 = 9 slot başka şeride hiç verilmez; kalan 11 ortak slottan her şerit işi varken payı kadarını önce
+    alır, boşken başkası kullanır. Kullanıcı'nın ikinci ayrılmış slotu ortak slotlardan geldi (ikinci doğruluk incelemesi):
+    boşta beklediği için açılış dalgasında durum taraması p95 44 → 63 sn (hedef 300 sn), iade p95 62 → 70 sn olur. Slotu
+    Pazaryerine Yazma'nın ayrılmışından almak bunu geri getiriyordu ama o zaman yazmalar uzun arka plan okumalarının
+    arkasında ~15 dk bekledi (replay); yazmanın garantisi seçildi. Şerit eşlemesi yalnız dağıtıcınındır: işlerin öncelik değerleri değişmez, `flexible` ve
+    `legacy` modellerinde öncelik -3'ün hepsi yine kullanıcı şeridindedir (ikinci doğruluk incelemesi, 28 Kas).
   - **Karar tek yerde** (`DispatcherCore.Decide`, saf ve deterministik). Boş slot sırayla: ayrılmış/asgarisinin altındaki
     şeride; sonra payının altındaki şeride; sonra payının ötesindeki kısa iş şeridine (Kullanıcı, Webhook, Yazma, Elle
     Başlatılan Okuma, Sipariş, Durum, İade); en son toplu ve uzun şeritlere (Toplu İşler, Katalog, Arka Plan, İlk Çekim).
@@ -2293,8 +2297,11 @@ CrowdSec yeniden yüklenir), ardından `sudo cscli parsers inspect ravencia/pane
     kalır: iki yeni mağazanın altı ilk çekim işi üçer üçer çalışır, sonuncusu ~11 dk sonra başlar (bugün ~3 dk, sınır 2'de ~21
     dk). Sınırı bütün şeritlere yaymak sipariş okumasını bozar (Tüm Ürünleri Çek'te p95 ~1,7 → 21 sn).
     `Worker:Dispatcher:ConnectionCap` ile değiştirilebilir.
-  - **Erteleme** (`DeferStatusScans`, varsayılan açık): mağazanın kuyrukta koşulabilir bir sipariş okuması varken aynı kilit
-    grubundaki durum taraması ve arka plan işi (örneğin `ORDER_RECONCILIATION`) kiralanmaz; önce siparişler okunur. Sipariş
+  - **Erteleme** (`DeferStatusScans`, varsayılan açık): mağazanın aynı kilit grubunda **şu an kiralanabilecek bir yeni sipariş
+    okuması** (`*_ORDER_SYNC`, öncelik 0-2: kota bekletmesinin hiç tutmadığı aralık; vadesi gelmiş, geri çekilmede değil,
+    mağaza sınırında değil) varken durum taraması ve arka plan işi (örneğin `ORDER_RECONCILIATION`) kiralanmaz; önce siparişler
+    okunur. Kurtarma okuması (`*_ORDER_RECOVERY_SYNC`, öncelik 6, 15 dk'ya kadar kota bekletmesinde kalabilir) ve ilk çekimin
+    sipariş okuması (öncelik -1) erteletmez. Kira ve sayım aynı koşulu aynı parametrelerle uygular (`JobDeferral`). Sipariş
     okuması geldiğinde zaten çalışan bir uzlaştırmayı bekler.
   - **İşi nereden öğrenir**: NOTIFY yükü `job:<tip>:<öncelik>` o şeridi hazır yapar; vadesi gelen iş (due-time wake) ve kota
     bekletmesinin bitişi de öyle. Kira boş dönerse tek bir "sayım" sorgusu her koşulabilir işi mağazasıyla ve onu tutan
@@ -2303,9 +2310,13 @@ CrowdSec yeniden yüklenir), ardından `sudo cscli parsers inspect ravencia/pane
     dener; nedeni adlandırılamayan şerit en çok saniyede bir denenir (bir iş bitişi her engelli şeridi sorgulatmaz); boş
     şerit bildirim gelene kadar sorgulanmaz. Bildirim kaybolsa bile sayım her 15 sn'de (`SafetyTickSeconds`), Kullanıcı,
     Webhook ya da Yazma bekliyorken her 5 sn'de bir okunur. Boşta işçi saniyede ~0,09 sorgu yapar (esnek modelde ~1,5).
-  - **Hatalar**: kira ya da sayım 10 sn'de dönmezse iptal edilir (`LeaseTimeoutSeconds`) ve şerit 1, 2, 4 ... 15 sn bekler;
-    döngünün bir turu hata verirse günlüğe (her hata türü dakikada bir kez) yazılır, 1 sn sonra döngü sürer. Worker'ın sağlık
-    dosyası son başarılı dağıtıcı turunu izler; tur durursa watchdog worker'ı yeniden başlatır. Kapanışta çalışan işler
+  - **Hatalar**: kira ya da sayım 10 sn'de dönmezse iptal edilir (`LeaseTimeoutSeconds`) ve şerit 1, 2, 4 ... 15 sn bekler.
+    Zaman aşımı yalnız iş satırı kilitlenene kadar geçerlidir: satır kilitlendikten sonra kira kaydı ve COMMIT iptal edilmeden
+    tamamlanır (`JobAttemptStart.FinishOnceLocked`), yani iş yarım kirada kalıp reaper'ı beklemez ve bir deneme hakkı yanmaz.
+    Döngünün bir turu hata verirse günlüğe (her hata türü dakikada bir kez) yazılır, 1 sn sonra döngü sürer. Worker'ın sağlık
+    dosyası son başarılı dağıtıcı turunu izler; tur durursa watchdog worker'ı yeniden başlatır. `SafetyTickSeconds`,
+    `Worker:HealthStaleAfterSeconds` değerinden kısa değilse açılışta uyarı yazılır ve sayım aralığı onun üçte birine indirilir
+    (boştaki worker boşuna yeniden başlatılmasın). Kapanışta çalışan işler
     bitirilir (yazma işi tamamlanır, okuma kuyruğa geri verilir), sonra döngü durur.
   - Ölçüm: denemenin `Lane` sütunu yeni şerit adını (`kullanici`, `siparis-okuma` ...), `Borrowed` "şeridin kendi payının
     (ayrılmış + pay) dışında çalıştı" bilgisini yazar. `WaitSlotMs` dağıtıcıda slot için beklemedir: bütün bekleme eksi kilit,

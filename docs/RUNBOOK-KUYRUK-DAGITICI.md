@@ -203,7 +203,10 @@ ve `prod-logs` ile kontrol et; gerçekten başlamayan bir iş varsa geri dön.
 Bilinen ve eşik dışı sayılmayan farklar (replay, `QueueReplayTests`): bir mağazanın sınırlı işleri o mağazanın kendi uzun
 işlerini bekler (iki yeni mağazanın ilk çekiminde son iş ~11 dk sonra başlar, bugün ~3 dk); "Tüm Ürünleri Çek" sırasında bir
 sipariş okuması mağazanın o an çalışan uzlaştırmasını bekleyebilir (p95 ~8 sn, bugün ~2 sn; en kötüsü bugünkünden kısa) ve
-bir durum taraması mağazanın sipariş okumasını bekler (yeni tohumlarda p95 4,5 sn, bugün 3,0 sn; en kötüsü 31 sn, bugün 55 sn).
+bir durum taraması mağazanın sipariş okumasını bekler (yeni tohumlarda p95 7 sn, bugün 3,0 sn; en kötüsü 34 sn, bugün 55 sn).
+Kullanıcı'nın ikinci ayrılmış slotu kullanıcının olmadığı bir dalgada boş bekler: açılıştaki 300 işte durum taraması p95
+44 → 63 sn (en kötüsü 79 → 91 sn, hedef 300 sn), iade p95 62 → 70 sn; 300 faturalık toplu çalışmada toplu işlerin p50'si
+~4 sn uzar.
 
 ## 5. Kanıtın sınırları (replay, `QueueReplayTests`)
 
