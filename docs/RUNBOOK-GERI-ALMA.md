@@ -91,6 +91,27 @@ gerekirse yukarıdaki `rollback.sh` de olur; veritabanı değişikliği yoktur.
 
 Kontrol: `.local-docs/kuyruk-faz1a-verify.sql` (salt okunur, `prod-sql` ile) önce/sonra sayıları verir.
 
+### 2b. Şerit modeli: esnek, dağıtıcı, eski (Kuyruk Faz 2)
+
+`Worker:LaneModel` hangi şerit modelinin çalıştığını seçer; değer **iki dosyada aynı** yazılıdır:
+`src/MarketplaceHub.Worker/appsettings.json` (worker'ın çalıştırdığı model) ve `src/MarketplaceHub.Api/appsettings.json`
+(Kuyruk ve Kota sayfasının hangi şeritleri gösterdiği). Bir test ikisinin aynı olmasını ister. Compose dosyası bu değeri
+geçirmez; her geçiş bir yayındır (iki dosyada değeri değiştir, commit et, `ship`). Veritabanı değişikliği yoktur.
+
+| Değer | Ne çalışır | Ne zaman |
+|---|---|---|
+| `flexible` | Bugünkü 11 şerit, 20 slot tek havuzda, şerit başına ödünç döngüleri (`LaneSlotPool`) | Bu yayındaki varsayılan |
+| `dispatcher` | Tek dağıtıcı, iş türüne göre 8 şerit (Kullanıcı, Acil, Sipariş Okuma, Durum Taraması, İade, Katalog, Arka Plan, İlk Çekim), mağaza başına sınır | Kanıttan sonra tek satırlık geçiş yayını |
+| `legacy` | Her şerit yalnız kendi slotlarında | İkinci geri dönüş |
+
+Dağıtıcıdan geri dönmek: iki dosyada `flexible` yazıp yayınla. Worker yeniden açılınca bekleyen işler kaybolmaz (kuyruk
+veritabanında); açık dağıtıcı şeridi uyarıları ilk değerlendirmede kendiliğinden kapanır. Dağıtıcı ayarları
+(`Worker:Dispatcher:Reserved:<şerit>`, `Share:<şerit>`, `ConnectionCap`, `CappedLanes`, `SafetyTickSeconds`) yalnız
+`dispatcher` ile okunur; ayrıntı `docs/ISLEYIS-KILAVUZU.md` 6.10.
+
+Kontrol: `.local-docs/kuyruk-faz2-verify.sql` (salt okunur) geçişten önce ve sonra şerit ve iş türü bekleme p50/p95/maks,
+hedef içinde başlama oranı, mağaza başına eşzamanlı iş ve boşta işlem hızını verir.
+
 ## 3. Veritabanını geri yükle (son çare)
 
 Yedekler `marketplacehub_backup_staging` volume'ündedir (`<UTC zaman damgası>/database.dump`,

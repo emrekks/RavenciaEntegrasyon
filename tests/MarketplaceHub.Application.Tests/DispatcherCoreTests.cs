@@ -28,6 +28,41 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         Assert.Equal(11, core.SharedSlots);
     }
 
+    // Every job type at every priority belongs to exactly one dispatcher lane, the one LaneFor names, and the lease query's
+    // cap rule (JobConnectionCap.Caps) holds exactly the jobs of the capped lanes.
+    [Fact]
+    public void EveryJobHasExactlyOneLaneAndTheCapFollowsTheLanes()
+    {
+        var lanes = Infrastructure.Jobs.DispatcherLanes.All();
+        var settings = Infrastructure.Jobs.DispatcherSettings.Default;
+        var cap = Infrastructure.Jobs.DispatcherLanes.ConnectionCap(settings);
+        string[] types = [.. MarketplaceJobTypes.ProcessorJobTypes, InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceReconcile, PanelJobTypes.FactoryReset, "UNKNOWN_TYPE"];
+        foreach (var type in types)
+            for (var priority = -4; priority <= 7; priority++)
+            {
+                var taking = lanes.Where(lane => lane.Takes(type, priority)).Select(lane => lane.Name).ToList();
+                Assert.True(taking.Count == 1, $"{type}:{priority} -> {string.Join(",", taking)}");
+                var name = Infrastructure.Jobs.DispatcherLanes.LaneFor(type, priority);
+                Assert.Equal(taking[0], name);
+                Assert.Equal(settings.IsCapped(name), cap.Caps(type, priority));
+            }
+        Assert.Equal(["katalog", "arka-plan", "ilk-cekim"], settings.CappedLanes);
+    }
+
+    // The worker runs the model its settings name and the api shows that model's lanes: a switch changes both files (the
+    // production compose passes no override). This release ships the flexible lanes, named explicitly.
+    [Fact]
+    public void TheWorkerAndTheApiShipTheSameLaneModel()
+    {
+        static string? Model(string project)
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(TestRepository.Root(), "src", project, "appsettings.json")));
+            return document.RootElement.GetProperty("Worker").GetProperty("LaneModel").GetString();
+        }
+        Assert.Equal("flexible", Model("MarketplaceHub.Worker"));
+        Assert.Equal(Model("MarketplaceHub.Worker"), Model("MarketplaceHub.Api"));
+    }
+
     [Fact]
     public void ALaneUsesItsReservationFirstAndAnotherLaneNeverTakesIt()
     {
