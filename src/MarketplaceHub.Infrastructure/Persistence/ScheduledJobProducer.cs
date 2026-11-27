@@ -87,10 +87,15 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
     }
 
-    public async Task<int> EnqueueDueAsync(CancellationToken cancellationToken)
+    public Task<int> EnqueueDueAsync(CancellationToken cancellationToken) => EnqueueDueAsync(atStartup: false, cancellationToken);
+
+    // atStartup: the worker's startup pass (Worker.RecoverAtStartupAsync); its background reads are spread over the next
+    // minutes (StartupSpreadPolicy, Worker:StartupSpread:*).
+    public async Task<int> EnqueueDueAsync(bool atStartup, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var added = 0;
+        var timing = SchedulerTimingSettings.From(configuration);
         // A connection that has just become operational gets its policies at once instead of waiting
         // for the hourly defaults pass; the check is a single EXISTS query.
         if (await ConnectionsWithoutPoliciesExistAsync(cancellationToken)) await EnsureDefaultPoliciesAsync(cancellationToken);
@@ -163,13 +168,22 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 // within the last hour is not looked at again.
                 var isListingVerify = row.Policy.ResourceType == ListingVerificationPolicy.ResourceType;
                 if (isListingVerify && row.Policy.LastScheduledAt is { } verifyQueuedAt && now - verifyQueuedAt < ListingVerificationPolicy.RetrySpacing) return Task.FromResult<DuePolicy?>(null);
+                // The daily reference read of a connection has its own slot (Worker:ReferenceReads:Spread): not looked at
+                // again once queued since that slot.
+                DateTimeOffset? referenceSlot = row.Policy.ResourceType == "REFERENCE_DATA" && timing.ReferenceSpread
+                    ? ReferenceReadSchedulePolicy.LatestSlot(now, row.Connection.Id, timing.ReferenceWindowStart, timing.ReferenceWindowLength)
+                    : null;
                 var shortestInterval = row.Policy.ResourceType == "RETURNS" ? Math.Max(interval, ReturnCadencePolicy.BaseSeconds) : interval;
-                if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(shortestInterval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) return Task.FromResult<DuePolicy?>(null);
+                if (referenceSlot is { } slot)
+                {
+                    if (row.Policy.LastScheduledAt is { } referenceQueuedAt && referenceQueuedAt >= slot) return Task.FromResult<DuePolicy?>(null);
+                }
+                else if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(shortestInterval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) return Task.FromResult<DuePolicy?>(null);
                 // Questions are rare; a connection without a new question for a while is asked less often. Healthy order
                 // notifications make the order polls a slower safety net. Both thin out to the policy's idle interval and
                 // only while its idle rule is on (SyncCadencePolicy, set in the panel).
                 var idleKind = row.Policy.IdleBackoffEnabled ? SyncCadencePolicy.IdleKind(row.Connection.PlatformCode, row.Policy.ResourceType) : null;
-                return Task.FromResult<DuePolicy?>(new DuePolicy(row.Policy, row.Connection, definition.Value, interval, isHotOrder, jitterSeconds, isListingVerify, idleKind));
+                return Task.FromResult<DuePolicy?>(new DuePolicy(row.Policy, row.Connection, definition.Value, interval, isHotOrder, jitterSeconds, isListingVerify, idleKind, referenceSlot));
             }, exception => LogPolicyFailure(exception, row.Policy, row.Connection));
             if (!checkedRow) failedPolicies++;
             else if (due is not null) duePolicies.Add(due);
@@ -182,6 +196,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var returnPolicies = duePolicies.Where(due => due.IdleKind == SyncCadencePolicy.IdleReturns).ToList();
         var lastNewReturnAt = await LatestReturnAtAsync(returnPolicies, cancellationToken);
         var openReturnConnections = await OpenReturnClaimConnectionsAsync(returnPolicies.Concat(duePolicies.Where(due => due.Policy.ResourceType == "RETURN_LIFECYCLE")), cancellationToken);
+        // Queue phase 1A: the connections whose marketplace is failing right now (no new background poll for them) and the
+        // tenants already running a reference read (one at a time per tenant).
+        HashSet<Guid> failingConnections = [];
+        HashSet<(Guid ConnectionId, string LockGroup)> backedOffGroups = [];
+        if (timing.HoldPollsWhileFailing) (failingConnections, backedOffGroups) = await FailingConnectionsAsync(duePolicies, now, cancellationToken);
+        HashSet<Guid> referenceBusyTenants = timing.ReferenceOneAtATime && duePolicies.Any(due => due.Policy.ResourceType == "REFERENCE_DATA")
+            ? await ReferenceBusyTenantsAsync(cancellationToken)
+            : [];
 
         var plannedPolicies = new List<PlannedPolicy>();
         foreach (var due in duePolicies)
@@ -222,6 +244,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                     activeJobTypesByConnection[row.Connection.Id] = activeJobTypes;
                 }
                 var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.JobType);
+                // A connection whose marketplace is failing gets no new background poll; it stays due and is queued on the
+                // first pass after the failing job's retries end (Worker:HoldPollsWhileFailing:Enabled).
+                if (timing.HoldPollsWhileFailing
+                    && FailingConnectionPollPolicy.Holds(JobTypeRegistry.IsOrderReadSync(definition.JobType), IsWriteFlow(definition.JobType, row.Policy.ResourceType))
+                    && (failingConnections.Contains(row.Connection.Id) || backedOffGroups.Contains((row.Connection.Id, executionGroup)))) return null;
+                var isReference = row.Policy.ResourceType == "REFERENCE_DATA";
+                // One scheduled reference read per tenant at a time (Worker:ReferenceReads:OneAtATime).
+                if (isReference && timing.ReferenceOneAtATime && referenceBusyTenants.Contains(row.Policy.TenantId)) return null;
                 var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
                 var hotOrderAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderSync, StringComparer.Ordinal)
                     || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderSync, StringComparer.Ordinal)
@@ -245,7 +275,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 if (active && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !orderBackgroundMayQueue) return null;
                 // The policy remembers when its job was last queued; only a policy that has not queued since the
                 // column was added looks the time up in the job table.
-                var latest = row.Policy.LastScheduledAt ?? await db.IntegrationJobs.AsNoTracking()
+                // A reference read queued one list at a time goes by the policy's own mark only: its first list is a job of the
+                // same key series, which the job-table look-up would take for the whole read having been queued.
+                var latest = isReference && timing.ReferenceOneAtATime ? row.Policy.LastScheduledAt : row.Policy.LastScheduledAt ?? await db.IntegrationJobs.AsNoTracking()
                     .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.JobType && x.JobDedupKey.StartsWith(definition.DedupPrefix))
                     .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
                 if (row.IsListingVerify)
@@ -255,7 +287,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                     var (queuedRuns, blocked) = await ListingVerifyCycleAttemptsAsync(row.Policy.TenantId, row.Connection.Id, ListingVerificationPolicy.CycleStart(now), cancellationToken);
                     if (!ListingVerificationPolicy.MayQueueAgain(queuedRuns, blocked)) return null;
                 }
-                else if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) return null;
+                else if (row.ReferenceSlot is { } referenceSlot ? !ReferenceReadSchedulePolicy.IsDue(latest, referenceSlot, interval, now) : !isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) return null;
                 // An open-return scan with no open claim to follow has nothing to do and is not queued (a local check).
                 if (row.Policy.ResourceType == "RETURN_LIFECYCLE" && !openReturnConnections.Contains(row.Connection.Id)) return null;
                 // Likewise an order status scan with no open package to follow (live 10 Nov 2026: Pazarama's ran 27 times an hour
@@ -267,9 +299,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                     && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) return null;
 
                 // A verification run that did not complete is queued again within the same day, so its key changes hourly.
-                var bucket = now.ToUnixTimeSeconds() / (row.IsListingVerify ? 3600 : interval);
+                // A reference read with its own slot keys its jobs by the slot: one job per list and slot.
+                var bucket = row.ReferenceSlot is { } slotOfBucket ? ReferenceReadSchedulePolicy.Bucket(slotOfBucket) : now.ToUnixTimeSeconds() / (row.IsListingVerify ? 3600 : interval);
                 var jobs = new List<(string Dedup, string PayloadJson)>();
-                if (row.Policy.ResourceType == "REFERENCE_DATA")
+                if (isReference)
                 {
                     // The daily reference read refreshes the category tree and, where the marketplace keeps a brand list,
                     // the brand list; a list fetched within the day (by hand or at activation) is not read again.
@@ -279,14 +312,17 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                         .GroupBy(x => x.ResourceType)
                         .Select(group => new { ResourceType = group.Key, FetchedAt = group.Max(x => x.FetchedAt) })
                         .ToDictionaryAsync(x => x.ResourceType, x => x.FetchedAt, cancellationToken);
-                    foreach (var resource in StaleReferenceResources(resources, fetched, interval, jitterSeconds, now))
+                    var stale = row.ReferenceSlot is { } staleSlot
+                        ? ReferenceReadSchedulePolicy.StaleResources(resources, fetched, staleSlot, interval)
+                        : StaleReferenceResources(resources, fetched, interval, jitterSeconds, now);
+                    foreach (var resource in stale)
                         jobs.Add(resource == "CATEGORIES"
                             ? ($"{definition.DedupPrefix}:{bucket}", definition.PayloadJson)
                             : ($"{definition.DedupPrefix}:{resource.ToLowerInvariant()}:{bucket}", JsonSerializer.Serialize(new { connectionId = row.Connection.Id, resourceType = resource, parentExternalId = (string?)null })));
                 }
                 else jobs.Add(($"{definition.DedupPrefix}:{bucket}", definition.PayloadJson));
                 return new PlannedPolicy(row.Policy, row.Connection, definition.JobType, $"{row.Policy.TenantId:N}:{row.Connection.Id:N}:{executionGroup}",
-                    active, canQueueHotOrderBehindOrderLane || canQueueLifecycleBehindOrderLane, orderBackgroundMayQueue, jobs);
+                    active, canQueueHotOrderBehindOrderLane || canQueueLifecycleBehindOrderLane, orderBackgroundMayQueue, jobs, isReference && timing.ReferenceOneAtATime);
             }, exception => LogPolicyFailure(exception, row.Policy, row.Connection));
             if (!checkedRow) failedPolicies++;
             else if (planned is not null) plannedPolicies.Add(planned);
@@ -294,6 +330,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
         // One read for every key the planned jobs would take (any status: a key in use is the job, ReuseAnyWithKey).
         var takenKeys = await TakenDedupKeysAsync(plannedPolicies.SelectMany(planned => planned.Jobs.Select(job => (planned.Policy.TenantId, planned.JobType, job.Dedup))), cancellationToken);
+        var reservedReferenceTenants = new HashSet<Guid>();
         foreach (var planned in plannedPolicies)
         {
             // The jobs added during this pass are not visible to the AsNoTracking
@@ -305,11 +342,29 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var canQueueOrderBackgroundBehindOrderLane = planned.OrderBackgroundMayQueue && !backgroundOrderReservations.Contains(planned.Connection.Id);
             var mayQueueBehindOrderLane = planned.MayQueueBehindOrderLane || canQueueOrderBackgroundBehindOrderLane;
             if ((planned.Active || reservedExecutionGroups.Contains(planned.ReservationKey)) && !mayQueueBehindOrderLane) continue;
+            if (planned.OneAtATime)
+            {
+                // Queue phase 1A, item 1: the category tree and the brand list of a connection were queued in the same second and
+                // the second waited for the first in the "references" lock group (live 25 Nov 2026: 362 s). Now one list is
+                // queued (the category tree first, it takes seconds), the next on the first pass after it ended, and only one
+                // per tenant at a time. The policy is marked as scheduled once nothing is left to queue for this slot.
+                if (reservedReferenceTenants.Contains(planned.Policy.TenantId)) continue;
+                var open = planned.Jobs.Where(job => !takenKeys.Contains((planned.Policy.TenantId, planned.JobType, job.Dedup))).ToList();
+                if (open.Count > 0)
+                {
+                    JobEnqueuer.Add(db, NewJobRequest(planned.Policy.TenantId, planned.Connection.Id, planned.JobType, open[0].Dedup, open[0].PayloadJson, StartAt(now, atStartup, timing, planned.Connection.Id, planned.JobType), $"scheduler-{Guid.NewGuid():N}"));
+                    added++;
+                    reservedReferenceTenants.Add(planned.Policy.TenantId);
+                    reservedExecutionGroups.Add(planned.ReservationKey);
+                }
+                if (open.Count <= 1) scheduledPolicyIds.Add(planned.Policy.Id);
+                continue;
+            }
             var queuedCount = 0;
             foreach (var (dedup, payloadJson) in planned.Jobs)
             {
                 if (takenKeys.Contains((planned.Policy.TenantId, planned.JobType, dedup))) continue;
-                JobEnqueuer.Add(db, NewJobRequest(planned.Policy.TenantId, planned.Connection.Id, planned.JobType, dedup, payloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
+                JobEnqueuer.Add(db, NewJobRequest(planned.Policy.TenantId, planned.Connection.Id, planned.JobType, dedup, payloadJson, StartAt(now, atStartup, timing, planned.Connection.Id, planned.JobType), $"scheduler-{Guid.NewGuid():N}"));
                 queuedCount++;
             }
             if (queuedCount == 0) continue;
@@ -341,10 +396,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             added++;
         }
 
-        if (added == 0) return 0;
+        // A reference read with nothing left to queue for its slot is still marked as scheduled (OneAtATime above).
+        if (added == 0 && scheduledPolicyIds.Count == 0) return 0;
         // Another worker may win the unique dedup race for one of the rows: only that row is left out (scan 13 Nov 2026;
         // the whole pass used to be thrown away and every other due job waited for the next pass).
-        added = await SaveQueuedJobsAsync(cancellationToken);
+        if (added > 0) added = await SaveQueuedJobsAsync(cancellationToken);
         // When each policy last queued its job is written on its own, without the policy's version check: a
         // user saving a policy meanwhile no longer throws the whole pass away, and the save does not conflict
         // with this write either.
@@ -457,11 +513,56 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     // A policy that passed the checks made from its row alone (step 1 of EnqueueDueAsync).
     private sealed record DuePolicy(ConnectionSyncPolicy Policy, PlatformConnection Connection, (string JobType, string DedupPrefix, string PayloadJson) Definition,
-        int Interval, bool IsHotOrder, int JitterSeconds, bool IsListingVerify, string? IdleKind);
+        int Interval, bool IsHotOrder, int JitterSeconds, bool IsListingVerify, string? IdleKind, DateTimeOffset? ReferenceSlot);
 
     // A policy that is due, with the keys of the jobs it would queue and what its lane reservation depends on (step 3).
+    // OneAtATime: a reference read whose lists are queued one after the other (Worker:ReferenceReads:OneAtATime).
     private sealed record PlannedPolicy(ConnectionSyncPolicy Policy, PlatformConnection Connection, string JobType, string ReservationKey,
-        bool Active, bool MayQueueBehindOrderLane, bool OrderBackgroundMayQueue, IReadOnlyList<(string Dedup, string PayloadJson)> Jobs);
+        bool Active, bool MayQueueBehindOrderLane, bool OrderBackgroundMayQueue, IReadOnlyList<(string Dedup, string PayloadJson)> Jobs, bool OneAtATime);
+
+    // When a scheduled job becomes runnable: now, except a background read queued by the worker's startup pass, which is
+    // spread over the next minutes (StartupSpreadPolicy).
+    internal static DateTimeOffset StartAt(DateTimeOffset now, bool atStartup, SchedulerTimingSettings timing, Guid? connectionId, string jobType) =>
+        atStartup && timing.StartupSpread
+            && StartupSpreadPolicy.Spreads(jobType, Priority(jobType), timing.HotPriorityCeiling, JobTypeRegistry.IsOrderReadSync(jobType), JobTypeRegistry.WritingJobTypes.Contains(jobType))
+            ? now + StartupSpreadPolicy.Delay(connectionId, jobType, timing.StartupSpreadSeconds)
+            : now;
+
+    // A flow that writes to the marketplace (or the stock reconcile that prepares the writes): never held by the scheduler.
+    private static bool IsWriteFlow(string jobType, string resourceType) =>
+        JobTypeRegistry.WritingJobTypes.Contains(jobType) || IsStockReconcilePolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
+
+    // The connections of the due policies with a job waiting for its next try after a marketplace-side error, and the
+    // connection + lock group pairs in a quota backoff now (FailingConnectionPollPolicy).
+    private async Task<(HashSet<Guid> Failing, HashSet<(Guid ConnectionId, string LockGroup)> BackedOff)> FailingConnectionsAsync(IReadOnlyCollection<DuePolicy> duePolicies, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var failing = new HashSet<Guid>();
+        var backedOff = new HashSet<(Guid, string)>();
+        var connectionIds = duePolicies.Select(due => due.Connection.Id).Distinct().ToArray();
+        if (connectionIds.Length == 0) return (failing, backedOff);
+        var retrying = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.Status == JobStatus.RetryScheduled && x.ConnectionId != null && connectionIds.Contains(x.ConnectionId.Value))
+            .Select(x => new { ConnectionId = x.ConnectionId!.Value, x.LastErrorCode })
+            .ToListAsync(cancellationToken);
+        failing.UnionWith(retrying.Where(x => FailingConnectionPollPolicy.IsMarketplaceFailure(x.LastErrorCode)).Select(x => x.ConnectionId));
+        var utcNow = now.ToUniversalTime();
+        var backoffs = await db.Database.SqlQuery<BackoffRow>($"""SELECT "ConnectionId", "LockGroup" FROM integration.connection_backoffs WHERE "Until" > {utcNow}""").ToListAsync(cancellationToken);
+        backedOff.UnionWith(backoffs.Select(x => (x.ConnectionId, x.LockGroup)));
+        return (failing, backedOff);
+    }
+
+    private sealed record BackoffRow(Guid ConnectionId, string LockGroup);
+
+    // The tenants with a reference read queued or running (any trigger: a mapping's read, a backfill, a scheduled one).
+    private async Task<HashSet<Guid>> ReferenceBusyTenantsAsync(CancellationToken cancellationToken) =>
+        (await db.IntegrationJobs.AsNoTracking()
+            .Where(x => ReferenceJobTypes.Contains(x.JobType) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+            .Select(x => x.TenantId)
+            .Distinct()
+            .ToListAsync(cancellationToken)).ToHashSet();
+
+    private static readonly string[] ReferenceJobTypes =
+        [MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.N11ReferenceSync, MarketplaceJobTypes.PazaramaReferenceSync, MarketplaceJobTypes.PttAvmReferenceSync];
 
     // How many connections one batched read covers.
     private const int BatchedReadSize = 100;

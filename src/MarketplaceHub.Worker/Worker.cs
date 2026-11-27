@@ -121,6 +121,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunLaneWaitAlertsAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunExternalEffectSweepAsync(stoppingToken));
+        if (schedulerEnabled && configuration.GetValue("Worker:JobFailureAlerts:Enabled", true)) loops.Add(RunJobFailureAlertsAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ProductModelScan:Enabled", true)) loops.Add(RunProductModelScanAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ReturnCardColumns:Enabled", true)) loops.Add(RunReturnCardColumnsRepairAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunProductWarrantyRepairAsync(stoppingToken));
@@ -266,7 +267,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var reaped = await jobs.ReapExpiredAsync(cancellationToken);
             var producer = scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>();
             if (producer is ScheduledJobProducer maintenance) await maintenance.MaintainPoliciesAsync(includeDefaults: true, cancellationToken);
-            var scheduled = await producer.EnqueueDueAsync(cancellationToken);
+            // Queue phase 1A: the background reads due at startup are spread over the next minutes (Worker:StartupSpread:*);
+            // order reads, webhooks, user jobs, invoice jobs and writes start at once.
+            var scheduled = producer is ScheduledJobProducer startupProducer
+                ? await startupProducer.EnqueueDueAsync(atStartup: true, cancellationToken)
+                : await producer.EnqueueDueAsync(cancellationToken);
             TouchHealthFile();
             logger.LogInformation("Worker startup recovery completed; reaped {ReapedJobs} expired jobs and enqueued {ScheduledJobs} due jobs", reaped, scheduled);
         }
@@ -1181,6 +1186,22 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var changed = await scope.ServiceProvider.GetRequiredService<ExternalEffectSweep>().SweepAsync(token);
             if (changed > 0) logger.LogInformation("External effect sweep queued or closed {Count} open marketplace action(s)", changed);
         }, exception => logger.LogError(exception, "External effect sweep failed"), stoppingToken, "external-effect-sweep");
+
+    // Queue phase 1A, item 4: every minute the jobs that stopped (DEAD, MANUAL_REVIEW, BLOCKED for a day) raise one bell
+    // notification per connection, job type, error code and day (JobFailureAlerts). Worker:JobFailureAlerts:Enabled=false
+    // stops it; Worker:JobFailureAlerts:LookbackMinutes (default 360, 10..1440) is how far back a pass looks, so a worker
+    // that was down catches up.
+    private Task RunJobFailureAlertsAsync(CancellationToken stoppingToken)
+    {
+        var lookback = TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:JobFailureAlerts:LookbackMinutes", 360), 10, 1440));
+        return RunPeriodicAsync(TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1), async token =>
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var raised = await JobFailureAlerts.RaiseAsync(db, DateTimeOffset.UtcNow, lookback, token);
+            if (raised > 0) logger.LogInformation("Job failure alerts: {Raised} bell notification(s) raised", raised);
+        }, exception => logger.LogError(exception, "Job failure alert pass failed"), stoppingToken, "job-failure-alerts");
+    }
 
     // Holds one dedicated connection that LISTENs for runnable jobs and wakes the idle lanes.
     // Any failure only costs latency: the lanes keep polling while the listener reconnects.
