@@ -21,6 +21,8 @@ export const queueWindowOptions: Array<{ value: QueueWindow; label: string }> = 
 // Arka Plan (priority 3), only a scan started by hand runs in the platform's lane. The job-type table's Şerit column shows
 // where each type actually ran.
 // hint: the short line under the lane's name; detail: the full list, in its tooltip.
+const platformOrders = (platform: string, status: boolean) =>
+  `${platform} yeni sipariş okuması${status ? ' ve açık sipariş durum taraması' : ''}. Sipariş geçmişi taraması yalnız elle başlatılınca burada; zamanlanmış olanı Arka Plan’da çalışır.`
 const laneLabels: Record<string, { label: string; hint: string; detail?: string }> = {
   USER: { label: 'Kullanıcı İşlemleri', hint: 'Paket, iade, etiket, fatura ve elle sipariş yenileme.', detail: 'Kullanıcının beklediği işlemler: paket ve iade işlemleri, etiket, elle sipariş yenileme, fatura kesme ve iletme. Toplu fatura işleri de burada, tekil isteklerin arkasında sıraya girer.' },
   INITIAL: { label: 'İlk Çekim', hint: 'Yeni bağlanan mağazanın ilk veri çekimi.' },
@@ -28,9 +30,9 @@ const laneLabels: Record<string, { label: string; hint: string; detail?: string 
   RETURNS_READ: { label: 'İade Okuma', hint: 'Bütün pazaryerlerinin iadeleri ve iade durumları.', detail: 'Bütün pazaryerlerinin yeni iade okumaları ve açık iade durum kontrolleri.' },
   PRODUCT_CATALOG: { label: 'Ürün Kataloğu', hint: 'Ürün çekme, yayın doğrulaması, varyant arama.', detail: 'Ürün çekme, ürün yapısı aktarımı, gece yayın doğrulaması ve varyant arama.' },
   HEPSIBURADA_STATUS: { label: 'Hepsiburada Durum Taraması', hint: 'Hepsiburada açık sipariş durumları.' },
-  HEPSIBURADA_ORDERS: { label: 'Hepsiburada Siparişleri', hint: 'Yeni siparişler; geçmiş taraması Arka Plan’da.', detail: 'Hepsiburada yeni sipariş okuması. Sipariş geçmişi taraması yalnız elle başlatılınca burada; zamanlanmış olanı Arka Plan’da çalışır.' },
-  PAZARAMA_ORDERS: { label: 'Pazarama Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: 'Pazarama yeni sipariş okuması ve açık sipariş durum taraması. Sipariş geçmişi taraması yalnız elle başlatılınca burada; zamanlanmış olanı Arka Plan’da çalışır.' },
-  PTTAVM_ORDERS: { label: 'PTT AVM Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: 'PTT AVM yeni sipariş okuması ve açık sipariş durum taraması. Sipariş geçmişi taraması yalnız elle başlatılınca burada; zamanlanmış olanı Arka Plan’da çalışır.' },
+  HEPSIBURADA_ORDERS: { label: 'Hepsiburada Siparişleri', hint: 'Yeni siparişler; geçmiş taraması Arka Plan’da.', detail: platformOrders('Hepsiburada', false) },
+  PAZARAMA_ORDERS: { label: 'Pazarama Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: platformOrders('Pazarama', true) },
+  PTTAVM_ORDERS: { label: 'PTT AVM Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: platformOrders('PTT AVM', true) },
   HOT: { label: 'Öncelikli İşler', hint: 'Trendyol, N11, Shopify siparişleri; webhook, yazmalar.', detail: 'Trendyol, N11 ve Shopify yeni sipariş okumaları, anlık bildirimler (webhook), pazaryerine yazmalar (paket işlemi, fiyat ve stok, ürün) ve elle başlatılan diğer okumalar.' },
   BACKGROUND: { label: 'Arka Plan', hint: 'Geçmiş taramaları, uzlaştırma, soru, finans, listeler.', detail: 'Zamanlanmış diğer okumalar: sipariş geçmişi taramaları (Hepsiburada, Pazarama ve PTT AVM dahil), uzlaştırmalar, müşteri soruları, finans, kategori ve marka listeleri, fatura süre takibi.' }
 }
