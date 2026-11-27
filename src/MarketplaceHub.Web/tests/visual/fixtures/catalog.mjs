@@ -454,6 +454,20 @@ const laneMetrics = [
   { lane: 'INITIAL', attempts: 4, averageWaitSeconds: 12, p95WaitSeconds: 40, queued: 1, running: 0, slots: 3, ...laneWait(600) },
   { lane: 'HOT', attempts: 610, averageWaitSeconds: 3.1, p95WaitSeconds: 14, queued: 0, running: 1, slots: 3, ...laneWait(30, { attempts: 610, waitSeconds: 1891, lockSeconds: 1220, backoffSeconds: 0, quotaHoldSeconds: 0, slotSeconds: 12, unknownSeconds: 659 }) },
   { lane: 'BACKGROUND', attempts: 230, averageWaitSeconds: 48, p95WaitSeconds: 310, queued: 6, running: 0, slots: 2, ...laneWait(300, { attempts: 230, waitSeconds: 11040, lockSeconds: 7600, backoffSeconds: 120, quotaHoldSeconds: 2400, slotSeconds: 300, unknownSeconds: 620 }), waitStatus: 'OVER_TARGET' }
+].map(lane => ({ ...lane, reserved: null, share: null, platforms: lane.lane === 'HOT' ? [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }] : lane.lane === 'BACKGROUND' ? [{ platformCode: 'HEPSIBURADA', queued: 4, running: 0 }, { platformCode: 'N11', queued: 2, running: 0 }] : [], model: 'flexible' }))
+// Queue phase 2: the same tab when the worker runs the dispatcher (Worker:LaneModel=dispatcher): the eight work-type lanes
+// with their reserved slots, minimums and shares (invented values).
+const dispatcherLane = (lane, reserved, share, values, platforms = []) =>
+  ({ lane, slots: reserved + share, reserved, share, platforms, model: 'dispatcher', queued: platforms.reduce((sum, row) => sum + row.queued, 0), running: platforms.reduce((sum, row) => sum + row.running, 0), ...values })
+export const dispatcherLaneMetrics = [
+  dispatcherLane('KULLANICI', 2, 0, { attempts: 64, averageWaitSeconds: 0.4, p95WaitSeconds: 1.2, ...laneWait(5) }),
+  dispatcherLane('ACIL', 1, 0, { attempts: 180, averageWaitSeconds: 0.1, p95WaitSeconds: 0.6, ...laneWait(5) }, [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }]),
+  dispatcherLane('SIPARIS_OKUMA', 3, 0, { attempts: 1240, averageWaitSeconds: 0.2, p95WaitSeconds: 0.9, ...laneWait(60), borrowed: 1 }, [{ platformCode: 'TRENDYOL', queued: 0, running: 2 }, { platformCode: 'HEPSIBURADA', queued: 1, running: 1 }, { platformCode: 'N11', queued: 0, running: 1 }]),
+  dispatcherLane('DURUM_TARAMASI', 3, 0, { attempts: 1120, averageWaitSeconds: 0.3, p95WaitSeconds: 1.4, ...laneWait(300) }, [{ platformCode: 'HEPSIBURADA', queued: 0, running: 1 }]),
+  dispatcherLane('IADE', 0, 3, { attempts: 310, averageWaitSeconds: 0.5, p95WaitSeconds: 4, ...laneWait(300) }),
+  dispatcherLane('KATALOG', 0, 3, { attempts: 12, averageWaitSeconds: 18, p95WaitSeconds: 60, ...laneWait(60) }, [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }, { platformCode: 'PAZARAMA', queued: 2, running: 0 }]),
+  dispatcherLane('ARKA_PLAN', 0, 2, { attempts: 640, averageWaitSeconds: 9, p95WaitSeconds: 120, ...laneWait(600, { attempts: 640, waitSeconds: 5760, lockSeconds: 3100, backoffSeconds: 0, quotaHoldSeconds: 1800, slotSeconds: 400, unknownSeconds: 460 }) }, [{ platformCode: 'HEPSIBURADA', queued: 3, running: 1 }, { platformCode: '', queued: 1, running: 0 }]),
+  dispatcherLane('ILK_CEKIM', 0, 3, { attempts: 0, averageWaitSeconds: null, p95WaitSeconds: null, ...laneWait(120) })
 ]
 const bucket = (platformCode, storeName, code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, shared = false, baseLimit = false) =>
   ({ platformCode, storeName, bucket: code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, averagePerMinute: Math.round(lastHourRequests / 6) / 10, shared, baseLimit })

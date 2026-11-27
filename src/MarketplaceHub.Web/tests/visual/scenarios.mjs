@@ -1,3 +1,5 @@
+import { dispatcherLaneMetrics } from './fixtures/catalog.mjs'
+
 // The screens the visual check renders. Each scenario opens `path` (signed in unless `signedIn: false`), optionally
 // acts on the page (`act`, e.g. opens a window), and is captured at every width in `widths`.
 export const widths = [375, 768, 1280, 1920]
@@ -140,4 +142,13 @@ export const scenarios = [
     },
   },
   { name: 'promotions-plus', path: '/promotions?tab=plus', widths: [375, 1280] },
+  // Queue phase 2: İşlem Takibi › Kuyruk ve Kota with today's lanes and with the dispatcher's work-type lanes, both themes.
+  ...['flexible', 'dispatcher'].flatMap(model => ['dark', 'light'].map(theme => ({
+    name: `queue-${model}-${theme}`, path: '/jobs?sekme=kuyruk-kota', widths: [375, 1280],
+    api: model === 'dispatcher' ? [['GET /jobs/metrics/lanes', dispatcherLaneMetrics]] : [],
+    act: async page => {
+      if (theme === 'light') { await page.locator('.rv-topbar-theme').click(); await page.locator('html[data-theme="light"]').waitFor() }
+      await page.locator('.qq-table').first().waitFor()
+    },
+  }))),
 ]

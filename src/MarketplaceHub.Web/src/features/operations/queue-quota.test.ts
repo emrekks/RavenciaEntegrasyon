@@ -6,7 +6,7 @@ const metric = (jobType: string, queued: number, running: number, attempts: numb
   ({ jobType, queued, running, attempts, failed: 0, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: null, p95DurationSeconds: null, lanes: null })
 // A lane within its wait target (GET /jobs/metrics/lanes, worker lanes step 1).
 const withinTarget = (targetSeconds: number) =>
-  ({ targetSeconds, recentP95WaitSeconds: null, oldestWaitSeconds: null, waitStatus: 'OK', alertSince: null, borrowed: null, waitCauses: null })
+  ({ targetSeconds, recentP95WaitSeconds: null, oldestWaitSeconds: null, waitStatus: 'OK', alertSince: null, borrowed: null, waitCauses: null, reserved: null, share: null, platforms: null, model: 'flexible' })
 
 describe('Kuyruk ve Kota', () => {
   it('adds the lanes up and names them in plain words', () => {

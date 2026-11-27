@@ -34,7 +34,62 @@ const laneLabels: Record<string, { label: string; hint: string; detail?: string 
   PAZARAMA_ORDERS: { label: 'Pazarama Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: platformOrders('Pazarama', true) },
   PTTAVM_ORDERS: { label: 'PTT AVM Siparişleri', hint: 'Yeni siparişler, durumlar; geçmiş Arka Plan’da.', detail: platformOrders('PTT AVM', true) },
   HOT: { label: 'Öncelikli İşler', hint: 'Trendyol, N11, Shopify siparişleri; webhook, yazmalar.', detail: 'Trendyol, N11 ve Shopify yeni sipariş okumaları, anlık bildirimler (webhook), pazaryerine yazmalar (paket işlemi, fiyat ve stok, ürün) ve elle başlatılan diğer okumalar.' },
-  BACKGROUND: { label: 'Arka Plan', hint: 'Geçmiş taramaları, uzlaştırma, soru, finans, listeler.', detail: 'Zamanlanmış diğer okumalar: sipariş geçmişi taramaları (Hepsiburada, Pazarama ve PTT AVM dahil), uzlaştırmalar, müşteri soruları, finans, kategori ve marka listeleri, fatura süre takibi.' }
+  BACKGROUND: { label: 'Arka Plan', hint: 'Geçmiş taramaları, uzlaştırma, soru, finans, listeler.', detail: 'Zamanlanmış diğer okumalar: sipariş geçmişi taramaları (Hepsiburada, Pazarama ve PTT AVM dahil), uzlaştırmalar, müşteri soruları, finans, kategori ve marka listeleri, fatura süre takibi.' },
+  // Queue phase 2: the dispatcher's lanes, one per kind of work (DispatcherLanes on the server). Their codes differ from the
+  // earlier lanes' (job_attempts keeps both around a switch), and the Arka Plan code too.
+  KULLANICI: { label: 'Kullanıcı', hint: 'Panelden başlatılan işler; toplu işler de burada.', detail: 'Kullanıcının beklediği işlemler: paket ve iade işlemleri, etiket, elle sipariş yenileme, fatura kesme ve iletme. Toplu fatura işleri de burada, tekil isteklerin arkasında sıraya girer.' },
+  ACIL: { label: 'Acil', hint: 'Webhooklar ve pazaryerine yazmalar.', detail: 'Anlık bildirimler (webhook), pazaryerine yazmalar (paket işlemi, fiyat ve stok, ürün) ve elle başlatılan diğer kısa okumalar.' },
+  SIPARIS_OKUMA: { label: 'Sipariş Okuma', hint: 'Bütün pazaryerlerinin yeni sipariş ve geçmiş okumaları.', detail: 'Trendyol, Hepsiburada, N11, Pazarama, PTT AVM ve Shopify yeni sipariş okumaları ve sipariş geçmişi taramaları.' },
+  DURUM_TARAMASI: { label: 'Durum Taraması', hint: 'Bütün pazaryerlerinin açık sipariş durumları.', detail: 'Açık siparişlerin durumlarının yeniden okunması, bütün pazaryerleri.' },
+  IADE: { label: 'İade', hint: 'Bütün pazaryerlerinin iadeleri ve iade durumları.', detail: 'Bütün pazaryerlerinin yeni iade okumaları ve açık iade durum kontrolleri.' },
+  KATALOG: { label: 'Katalog', hint: 'Ürün çekme, yayın doğrulaması, varyant arama.', detail: 'Ürün çekme, ürün yapısı aktarımı, gece yayın doğrulaması ve varyant arama.' },
+  ARKA_PLAN: { label: 'Arka Plan', hint: 'Uzlaştırma, soru, finans, kategori ve marka listeleri.', detail: 'Zamanlanmış diğer okumalar: uzlaştırmalar, müşteri soruları, finans, kategori ve marka listeleri, fatura süre takibi.' },
+  ILK_CEKIM: { label: 'İlk Çekim', hint: 'Yeni bağlanan mağazanın ilk veri çekimi.' }
+}
+
+const dispatcherLaneCodes = new Set(['KULLANICI', 'ACIL', 'SIPARIS_OKUMA', 'DURUM_TARAMASI', 'IADE', 'KATALOG', 'ARKA_PLAN', 'ILK_CEKIM'])
+
+/** Whether the lane metrics come from the dispatcher (Worker:LaneModel=dispatcher). */
+export function isDispatcherModel(lanes: readonly LaneMetric[] | null | undefined) {
+  return (lanes ?? []).some(lane => lane.model === 'dispatcher')
+}
+
+/** A dispatcher lane's slots in words: reserved ("Ayrılmış 2": Kullanıcı, Acil), a minimum ("Asgari 3": Sipariş Okuma, Durum
+ * Taraması: the same rule, never lent) or a share of the shared slots ("Pay 3": served first on that many while it has work).
+ * Null with the earlier lane models (they do not send the figures). */
+export function laneSlotKind(lane: LaneMetric): { text: string; title: string } | null {
+  if (lane.model !== 'dispatcher') return null
+  const reserved = lane.reserved ?? 0
+  const share = lane.share ?? 0
+  if (reserved > 0) {
+    const minimum = lane.lane === 'SIPARIS_OKUMA' || lane.lane === 'DURUM_TARAMASI'
+    return {
+      text: `${minimum ? 'Asgari' : 'Ayrılmış'} ${reserved}`,
+      title: `${reserved} slot yalnız bu şeridindir, başka şeride verilmez. Bunlar doluysa ortak slotlardan biri boşsa onu alır.`
+    }
+  }
+  if (share > 0) return { text: `Pay ${share}`, title: `İşi varken ortak slotlardan ${share} tanesini diğer şeritlerden önce alır; boşken başka şeritler kullanır.` }
+  return { text: 'Ortak', title: 'Yalnız ortak slotları kullanır.' }
+}
+
+export type LanePlatform = NonNullable<LaneMetric['platforms']>[number]
+
+/** Marketplace tabs above the lane table: "Tümü", then the marketplaces with queued or running jobs in some lane. */
+export function lanePlatformTabs(lanes: readonly LaneMetric[]): JobPlatformTab[] {
+  const counts = new Map<string, number>()
+  for (const lane of lanes)
+    for (const row of lane.platforms ?? [])
+      if (row.platformCode && row.queued + row.running > 0) counts.set(row.platformCode, (counts.get(row.platformCode) ?? 0) + row.queued + row.running)
+  const tabs: JobPlatformTab[] = [{ value: 'ALL', label: 'Tümü', count: lanes.reduce((sum, lane) => sum + lane.queued + lane.running, 0) }]
+  for (const code of platformDisplayOrder) if (counts.has(code)) tabs.push({ value: code, label: platformDisplayName(code), count: counts.get(code)! })
+  return tabs
+}
+
+/** A lane's running and queued jobs for one marketplace tab ("ALL": the lane's own figures). */
+export function laneCountsFor(lane: LaneMetric, tab: string): { running: number; queued: number } {
+  if (tab === 'ALL') return { running: lane.running, queued: lane.queued }
+  const row = (lane.platforms ?? []).find(item => item.platformCode === tab)
+  return { running: row?.running ?? 0, queued: row?.queued ?? 0 }
 }
 
 /** The lane's full description (tooltip of its short line). */
@@ -49,7 +104,9 @@ export function jobLaneText(lanes: readonly JobTypeLane[] | null | undefined): {
   const list = lanes ?? []
   if (list.length === 0) return { text: '—', title: 'Bu aralıkta şerit kaydı yok (şerit 27 Kasım’dan beri kaydediliyor).' }
   const text = list.length === 1 ? laneLabel(list[0].lane) : `${laneLabel(list[0].lane)} +${list.length - 1}`
-  const title = list.map(lane => `${laneLabel(lane.lane)}: ${lane.attempts.toLocaleString('tr-TR')} deneme${lane.borrowed > 0 ? ` (${lane.borrowed.toLocaleString('tr-TR')} ödünç slotta)` : ''}`).join('\n')
+  // Borrowed: on another lane's idle slot (earlier lanes), or outside the lane's own share (the dispatcher's lanes).
+  const borrowedText = (lane: JobTypeLane) => dispatcherLaneCodes.has(lane.lane) ? 'payının dışında' : 'ödünç slotta'
+  const title = list.map(lane => `${laneLabel(lane.lane)}: ${lane.attempts.toLocaleString('tr-TR')} deneme${lane.borrowed > 0 ? ` (${lane.borrowed.toLocaleString('tr-TR')} ${borrowedText(lane)})` : ''}`).join('\n')
   return { text, title }
 }
 

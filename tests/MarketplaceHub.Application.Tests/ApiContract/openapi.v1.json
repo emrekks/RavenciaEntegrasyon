@@ -32707,6 +32707,56 @@
                 "$ref": "#/components/schemas/LaneWaitCausesView"
               }
             ]
+          },
+          "reserved": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "share": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "platforms": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/LanePlatformView"
+            }
+          },
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LanePlatformView": {
+        "required": [
+          "platformCode",
+          "queued",
+          "running"
+        ],
+        "type": "object",
+        "properties": {
+          "platformCode": {
+            "type": "string"
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

@@ -12,7 +12,7 @@ import { jobTitle } from './job-presentation'
 import { formatDateTime } from '../../shared/format-date'
 import { ChoiceField } from './filter-fields'
 import {
-  activeJobTypes, countsByStatus, filterByMarketplace, filterJobsByTab, generalJobTab, jobLaneText, jobPlatformTabs, formatSeconds, laneDetail, laneHint, laneWaitCauseLines, laneWaitState, laneLabel, laneTotals,
+  activeJobTypes, countsByStatus, filterByMarketplace, filterJobsByTab, generalJobTab, isDispatcherModel, jobLaneText, jobPlatformTabs, formatSeconds, laneCountsFor, laneDetail, laneHint, lanePlatformTabs, laneSlotKind, laneWaitCauseLines, laneWaitState, laneLabel, laneTotals,
   latencySeconds, latencySourceLabel, latencyState, marketplaceTabs, queueWindowOptions, quotaPeakText, usagePercent, usageTone, windowSince,
   type QueueWindow
 } from './queue-quota'
@@ -49,6 +49,7 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
   const [hours, setHours] = useState<QueueWindow>('24')
   const [platformTab, setPlatformTab] = useState('ALL')
   const [quotaTab, setQuotaTab] = useState('ALL')
+  const [laneTab, setLaneTab] = useState('ALL')
   const since = useMemo(() => windowSince(hours), [hours])
   const options = { placeholderData: keepPreviousData, refetchInterval: pollMs } as const
   const lanes = useQuery({ queryKey: queryKeys.queueQuota('lanes', hours), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsLanes'>>(`/jobs/metrics/lanes?hours=${hours}`, { signal }), ...options })
@@ -64,6 +65,9 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
   const shownQuota = filterByMarketplace(quotaRows, activeQuotaTab)
 
   const totals = lanes.data ? laneTotals(lanes.data) : null
+  const dispatcher = isDispatcherModel(lanes.data)
+  const laneTabs = lanePlatformTabs(lanes.data ?? [])
+  const activeLaneTab = laneTabs.some(tab => tab.value === laneTab) ? laneTab : 'ALL'
   const types = metrics.data ? activeJobTypes(metrics.data) : []
   const platformTabs = jobPlatformTabs(types)
   const activeTab = platformTabs.some(tab => tab.value === platformTab) ? platformTab : 'ALL'
@@ -95,19 +99,26 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
 
     <section className="qq-section" aria-labelledby="qq-lanes">
       <h2 id="qq-lanes">Şeritler ve Slot Kullanımı</h2>
-      {lanes.isLoading ? <Busy text="Şeritler yükleniyor…" /> : lanes.isError && !lanes.data ? <p role="alert" className="qq-error">Şerit ölçümleri alınamadı.</p> : <div className="qq-table-scroll"><table className="qq-table">
+      {dispatcher && <p className="qq-sub">Tek dağıtıcı boşalan slotu sıradaki işe verir. Kullanıcı ve Acil’in ayrılmış, Sipariş Okuma ve Durum Taraması’nın asgari slotları başka şeride verilmez; diğer şeritler ortak slotları payları kadar önce alır. Bir mağaza Katalog, Arka Plan ve İlk Çekim’de aynı anda en çok 2 iş çalıştırır.</p>}
+      {lanes.isLoading ? <Busy text="Şeritler yükleniyor…" /> : lanes.isError && !lanes.data ? <p role="alert" className="qq-error">Şerit ölçümleri alınamadı.</p> : <>
+        {laneTabs.length > 1 && <Tabs className="rv-view-tabs qq-platform-tabs" ariaLabel="Şerit pazaryeri" value={activeLaneTab} onChange={setLaneTab} items={laneTabs.map(tab => ({
+          value: tab.value, count: tab.count,
+          label: tab.value === 'ALL' ? tab.label : <><PlatformSquareMark code={tab.value} name={tab.label} size="sm" />{tab.label}</>
+        }))} />}
+        {activeLaneTab !== 'ALL' && <p className="qq-sub">Slot kullanımı ve bekleyen yalnız {platformDisplayName(activeLaneTab)} işleri; deneme ve bekleme süreleri şeridin tümü içindir.</p>}
+        <div className="qq-table-scroll"><table className="qq-table">
         <thead><tr><th className="qq-first">Şerit</th><th className="qq-usage-th">Slot Kullanımı</th><th className="is-num">Bekleyen</th><th className="is-num">Deneme</th><th className="is-num">Ort. Bekleme</th><th className="is-num">En Uzun %5 Bekleme</th><th className="is-num">Hedef</th><th>Durum</th></tr></thead>
-        <tbody>{(lanes.data ?? []).map(lane => <tr key={lane.lane}>
+        <tbody>{(lanes.data ?? []).map(lane => { const shown = laneCountsFor(lane, activeLaneTab); const kind = laneSlotKind(lane); return <tr key={lane.lane}>
           <td className="qq-first"><strong>{laneLabel(lane.lane)}</strong><small title={laneDetail(lane.lane)}>{laneHint(lane.lane)}</small></td>
-          <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={lane.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${lane.running} / ${lane.slots} slot`} /><span>{lane.running} / {lane.slots}</span></span></td>
-          <td className="is-num" data-label="Bekleyen">{lane.queued.toLocaleString('tr-TR')}</td>
+          <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={shown.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${shown.running} / ${lane.slots} slot`} /><span>{shown.running} / {lane.slots}</span>{kind && <small className="qq-no-limit" title={kind.title}>{kind.text}</small>}</span></td>
+          <td className="is-num" data-label="Bekleyen">{shown.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{lane.attempts.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Ort. Bekleme">{(() => { const causes = laneWaitCauseLines(lane.waitCauses); return causes.length > 0 ? <span className="qq-causes" title={causes.join('\n')}>{formatSeconds(lane.averageWaitSeconds)}</span> : formatSeconds(lane.averageWaitSeconds) })()}</td>
           <td className="is-num" data-label="En Uzun %5 Bekleme">{formatSeconds(lane.p95WaitSeconds)}</td>
           <td className="is-num" data-label="Hedef">{formatSeconds(lane.targetSeconds)}</td>
           <td data-label="Durum">{(() => { const state = laneWaitState(lane.waitStatus); return <span className={`qq-wait is-${state.tone}`} title={[`Son 5 dk en uzun %5 bekleme: ${formatSeconds(lane.recentP95WaitSeconds)}`, `Sıradaki en eski iş: ${formatSeconds(lane.oldestWaitSeconds)}`, lane.alertSince ? `Uyarı ${formatDateTime(lane.alertSince)} tarihinden beri açık` : ''].filter(Boolean).join('\n')}><i aria-hidden="true" />{state.label}</span> })()}</td>
-        </tr>)}</tbody>
-      </table></div>}
+        </tr> })}</tbody>
+      </table></div></>}
     </section>
 
     <section className="qq-section" aria-labelledby="qq-latency">
