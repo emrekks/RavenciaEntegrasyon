@@ -493,6 +493,8 @@ export const catalog = [
   ['GET /mappings/categories', categoryMappingList],
   ['GET /mappings/brands', brandMappingList],
   ['GET /reference-data/brands/summary', { ...referenceBrands, itemCount: referenceBrands.items.length }],
+  // A brand read refused for shrinking (Kuyruk Faz 1B): the card shows it with the owner's "Küçülmeyi Onayla".
+  ['GET /reference-data/brands/shrink', { connectionId: 'conn-trendyol', currentCount: 818545, lastSeenAt: '2026-11-27T14:01:00+03:00', summary: 'Marka listesi 818.545 kayıttan 600.112 kayda düştü (%27 eksik). Okuma güvenilir sayılmadı: hiçbir marka silinmedi, paneldeki liste korunuyor. Küçülme pazaryerinde gerçekse Eşleştirmeler › Marka Eşleme\'de «Küçülmeyi Onayla» ile sonraki okumanın bir kez uygulamasına izin verin (48 saat geçerli); değilse bir şey yapmanız gerekmez, sonraki planlı okuma yeniden dener.', approvedAt: null, approvalExpiresAt: null }],
   ['GET /reference-data/brands/unmapped', [{ externalId: '8803', name: 'Nova Jeans', occurrences: 14, lastSeenAt: '2026-10-19T22:15:00+03:00' }]],
   ['GET /reference-data/brands/lookup', ({ url }) => { const items = referenceBrands.items.filter(item => (url.searchParams.get('ids') ?? '').split(',').includes(item.externalId)); return { ...referenceBrands, itemCount: items.length, items } }],
   ['GET /catalog/categories', { items: categories, totalCount: categories.length, hasMore: false, nextCursor: null }],

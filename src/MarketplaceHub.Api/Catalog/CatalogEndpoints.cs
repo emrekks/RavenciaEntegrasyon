@@ -335,6 +335,8 @@ public static partial class CatalogEndpoints
     // No mapping yet is a JSON null, not an empty body: Results.Ok(null) writes nothing, and the panel read that as a
     // failed request ("Hepsiburada kategori bilgisi alınamadı") instead of "not mapped".
     public static IResult MappingOrNull(CatalogMappingView? mapping) => mapping is null ? Results.Content("null", "application/json") : Results.Ok(mapping);
+
+    public static IResult ShrinkOrNull(BrandListShrinkView? shrink) => shrink is null ? Results.Content("null", "application/json") : Results.Ok(shrink);
     // Fields: "Platformlarda Güncelle" picks (ProductUpdateFields codes); omitted on a publication and by older clients.
     // SendGroupId: set by the panel on every card of one family update (TrendyolUpdateGroups).
     public sealed record PublicationRequest(Guid ConnectionId, IReadOnlyList<string>? Fields = null, Guid? SendGroupId = null);

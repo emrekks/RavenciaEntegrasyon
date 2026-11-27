@@ -14,7 +14,9 @@ internal sealed partial class ReferenceSyncService(
     IReferenceDataPort references,
     TimeProvider timeProvider,
     OrderIngestionService orderIngestion,
-    JobRunContext run)
+    JobRunContext run,
+    IssueRecorder? issues = null,
+    bool brandDiffWrites = false)
 {
     private const int MaxReferenceItems = 500_000;
     private const int MaxBrandReferenceItems = 2_000_000;

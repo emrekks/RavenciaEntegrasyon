@@ -1,5 +1,27 @@
-import { describe, expect, it } from 'vitest'
-import { brandMappingReadState, brandPlatformConnectionId } from './brand-mapping-state'
+import { QueryClient } from '@tanstack/react-query'
+import { describe, expect, it, vi } from 'vitest'
+import { ApiRequestError } from '../../../shared/api'
+import { queryKeys } from '../../../shared/api/query-keys'
+import { brandListChangedMessage, brandMappingReadState, brandPlatformConnectionId, isBrandListChangedError, reloadAfterBrandListChange } from './brand-mapping-state'
+import { brandReferenceKey } from './brand-reference'
+
+describe('a save refused because the brand list changed', () => {
+  it('is the 409 REFERENCE_ITEM_CHANGED or the 412 of a mapping moved aside, not any other refusal', () => {
+    expect(isBrandListChangedError(new ApiRequestError('x', 409, 'REFERENCE_ITEM_CHANGED'))).toBe(true)
+    expect(isBrandListChangedError(new ApiRequestError('x', 412, 'CONCURRENCY_CONFLICT'))).toBe(true)
+    expect(isBrandListChangedError(new ApiRequestError('x', 409, 'MAPPING_EXISTS'))).toBe(false)
+    expect(isBrandListChangedError(new Error('x'))).toBe(false)
+    expect(brandListChangedMessage).toMatch(/^Marka Listesi Değişti, Yeniden Seçin/)
+  })
+
+  it('reads the brand list and the mappings of that connection again', async () => {
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    await reloadAfterBrandListChange(client, 'ty-1', 'brand-1')
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey))
+    expect(keys).toEqual([JSON.stringify(brandReferenceKey('ty-1')), JSON.stringify(queryKeys.brandMapping('brand-1', 'ty-1')), JSON.stringify(queryKeys.brandMappings('ty-1'))])
+  })
+})
 
 describe('brandPlatformConnectionId', () => {
   const pazarama = [{ id: 'pz-1' }, { id: 'pz-2' }]

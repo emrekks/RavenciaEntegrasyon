@@ -9,6 +9,7 @@ namespace MarketplaceHub.Application.Tests;
 
 // Speed plan item 9 (10 Nov 2026): a brand read that brings the current list again writes no row; a changed list is
 // stored as before (the agreeing rows before the first difference copied, the rest written), and so is a shorter one.
+// Kuyruk Faz 1B: this is the full-copy path (References:BrandDiffWrites=false); the diff path is in BrandReferenceDiff.
 public sealed partial class PostgreSqlTenantIsolationTests
 {
     [PostgreSqlFact]
@@ -30,7 +31,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var port = new ScriptedReferenceDataTestPort();
             port.Enqueue(new("BRANDS", null), items);
             await using var db = fixture.CreateContext();
-            var processor = new MarketplaceJobProcessor(db, null!, port, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var processor = new MarketplaceJobProcessor(db, null!, port, null!, null!, null!, null!, null!, null!, null!, null!, BrandWriteConfiguration(diff: false), fixture.TimeProvider);
             var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReferenceSync, """{"resourceType":"BRANDS"}""", "brand-stream", CancellationToken.None);
             Assert.True(result.Succeeded, result.ErrorSummary);
         }

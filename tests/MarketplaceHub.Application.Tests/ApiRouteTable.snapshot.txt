@@ -271,6 +271,8 @@ GET    /api/v1/questions/{id:guid}/customer-history | gate=SignedIn | sameOrigin
 POST   /api/v1/questions/{id:guid}/report | gate=Operations | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/reference-data/brands/lookup | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/reference-data/brands/search | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+GET    /api/v1/reference-data/brands/shrink | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+POST   /api/v1/reference-data/brands/shrink/approval | gate=Elevated | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
 GET    /api/v1/reference-data/brands/summary | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/reference-data/brands/unmapped | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/reference-data/categories | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR

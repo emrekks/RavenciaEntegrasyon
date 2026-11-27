@@ -8969,7 +8969,9 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
 
         var processor = new MarketplaceJobProcessor(
             db, null!, referencePort, null!, null!, null!, null!, null!, null!, null!, null!,
-            new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            // The brand step pins the full-copy path: a brand list moved to a new snapshot carries the mapping along (the diff
+            // path keeps the snapshot and the mapping where they are; PostgreSqlTenantIsolationTests.BrandReferenceDiff).
+            BrandWriteConfiguration(diff: false), fixture.TimeProvider);
         var brandSync = await processor.ProcessAsync(
             tenant.Id, connection.Id, MarketplaceJobTypes.ReferenceSync, "{\"resourceType\":\"BRANDS\"}", "reference-revalidation-brands", CancellationToken.None);
         Assert.True(brandSync.Succeeded, brandSync.ErrorSummary);

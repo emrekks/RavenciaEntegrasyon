@@ -556,3 +556,42 @@ api'yi tek kopya olarak yeniden yaratır ama adı `marketplacehub-api-2` gibi ka
 aradığından o durumda bir kez (birkaç saniyelik kesinti, bugünkü bir deploy kadar) Compose ile api'yi sıfıra indirip
 yeniden açın: `... up -d --no-build --no-deps --scale api=0 api`, ardından `... up -d --no-build --no-deps api`
 (`...` = `fast-deploy.sh`'daki `compose` dizisinin komutu); yeni konteyner `marketplacehub-api-1` olur.
+
+## 11. Marka listesi fark yazımı (Kuyruk Faz 1B, `References:BrandDiffWrites`)
+
+Günlük marka okuması (Trendyol, Pazarama) güncel listeyi yerinde, yalnız farkı yazarak günceller
+(`ReferenceSyncService.BrandDiff`). Eski yol (her farkta tüm listeyi yeni snapshot olarak yazmak) iki hafta yedek olarak
+kodda kalır.
+
+**Geri dönüş (eski tam kopya yoluna):** anahtar compose'tan geçmez; `production.env` yalnız compose'un `${...}`
+değerlerini doldurur, oraya yazılan `References__BrandDiffWrites=false` worker'a ulaşmaz. Geri dönüş bir sürümdür:
+`src/MarketplaceHub.Worker/appsettings.json` içinde `"References": { "BrandDiffWrites": false }` yapıp gönderin (tam
+deploy, worker yeniden başlar). Tablo iki yolda da aynı biçimde kalır; geçiş istenen anda güvenlidir. Eski yolun ilk
+okuması listeyi bir kez baştan yazar (fark yolundan sonra sıra numaraları ardışık değildir), sonrası eskisi gibidir.
+
+**Küçülme kuralı:** bir okuma güncel listeden en çok `max(50 kayıt, 100.000'e kadar: min(%20, 2.000 kayıt), daha büyük
+listelerde %2)` eksik olabilir (`ReferenceSyncService.AllowedBrandListDrop`; Trendyol ~820 bin markada ~16 bin, Pazarama
+~103 bin markada ~2 bin). Fazlası güvenilmez okumadır: hiçbir şey yazılmaz ve silinmez, iş `Blocked REFERENCE_LIST_SHRANK`
+olur, `reference-list-shrank:<bağlantı>:BRANDS` anahtarlı sorun açılır.
+
+**Gerçek büyük küçülme (sahibin adımı, sürüm gerekmez):** önce pazaryerinin panelinde marka sayısının gerçekten düştüğünü
+doğrulayın. Gerçekse Eşleştirmeler › Marka Eşleme'de o platformun kartındaki uyarıda **Küçülmeyi Onayla** (yalnız sahip ve
+yönetici; denetim kaydına `REFERENCE_LIST_SHRINK_APPROVED` yazılır). Onay 48 saat geçerlidir ve bağlantının bir sonraki
+marka okumasında bir kez kullanılır; beklemek istemezseniz aynı ekranda Senkronize Et. Kaybolan eşli markaların eşlemesi
+küçük bir `RETIRED-` snapshot'ta kalır, yeniden eşlenmeleri gerekir. Onayın süresi dolarsa uyarı yeniden açılır.
+
+**Ölçülen değerler (özel PG18, 27 Kas 2026, fsync kapalı):** 1 milyon satır, %0,1 değişiklik (400 ad, 300 yeni, 301
+kaybolan):
+
+| Yol | Süre | Eklenen / güncellenen / silinen | WAL |
+| --- | --- | --- | --- |
+| Eski, değişiklik yok | 1,9 s | 0 / 0 / 0 | 0 |
+| Eski, %0,1 değişiklik | 62,9 s | 999.999 / 0 / 0 (+ ertesi gün 1 M silme) | 1.454 MiB |
+| Yeni, değişiklik yok | 2,5 s | 0 / 0 / 0 | 0 |
+| Yeni, %0,1 değişiklik | 3,3 s (tüm çalışma) | 300 / 400 / 301 | 12,5 MiB |
+
+Uygulama sırasında arama beklemez: 60 bin satırda 30 bin değişiklik 1,0 s, en yavaş arama 23 ms; arama ya eski ya yeni
+listenin tamamını görür. Taze 993 bin satırlık tablo 530 MB (canlıda 1.067 MB); tablo artık büyümez.
+
+Canlı kontrol sorguları (salt okuma, boyut ve sayaçlar): `.local-docs/kuyruk-faz1b-verify.sql` (git dışı); boşalan
+alanın geri kazanılması (VACUUM FULL / pg_repack / REINDEX CONCURRENTLY, ~500 MB) sahibin ayrı kararıdır, otomatik yapılmaz.

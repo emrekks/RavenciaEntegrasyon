@@ -329,6 +329,15 @@ export type AuthorizeRequest = {
   settings?: null | SetupSettings
 }
 
+export type BrandListShrinkView = {
+  connectionId: string
+  currentCount: number
+  lastSeenAt: string
+  summary: string
+  approvedAt?: null | string
+  approvalExpiresAt?: null | string
+}
+
 export type BrandView = {
   id: string
   name: string
@@ -4867,6 +4876,7 @@ export type UpsertCatalogMappingCommand = {
   status: string
   role?: string
   updateTemplate?: boolean
+  externalName?: null | string
 }
 
 export type UpsertChannelOfferCommand = {
@@ -7200,6 +7210,19 @@ export interface ApiOperations {
     body: never
     status: 200
     response: ReferenceSliceView
+    errorStatus: 400 | 401 | 429 | 500
+  }
+  getReferenceDataBrandsShrink: {
+    method: "GET"
+    path: "/api/v1/reference-data/brands/shrink"
+    pathParams: Record<string, never>
+    query: {
+      connectionId: string
+    }
+    headers: Record<string, never>
+    body: never
+    status: 200
+    response: BrandListShrinkView | null
     errorStatus: 400 | 401 | 429 | 500
   }
   getReferenceDataBrandsSummary: {
@@ -9591,6 +9614,24 @@ export interface ApiOperations {
     body: QuestionSyncRequest
     status: 202
     response: QuestionSyncQueuedView
+    errorStatus: 400 | 401 | 403 | 409 | 422 | 429 | 500
+  }
+  postReferenceDataBrandsShrinkApproval: {
+    method: "POST"
+    path: "/api/v1/reference-data/brands/shrink/approval"
+    pathParams: Record<string, never>
+    query: {
+      connectionId: string
+    }
+    headers: {
+      /** The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks). */
+      "X-CSRF-TOKEN": string
+      /** Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters. */
+      "Idempotency-Key"?: string
+    }
+    body: never
+    status: 200
+    response: BrandListShrinkView
     errorStatus: 400 | 401 | 403 | 409 | 422 | 429 | 500
   }
   postReturnsByIdActions: {

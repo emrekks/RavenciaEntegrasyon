@@ -460,7 +460,12 @@ public sealed record ReferenceSliceView(Guid SnapshotId, string ResourceType, Da
 public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid SnapshotId, Guid LocalId, string ScopeExternalId, string ExternalId, string Status, DateTimeOffset? VerifiedAt, long Version, int? MissingRequiredAttributeCount = null, string? Source = null);
 // UpdateTemplate: also use this decision for the connection's other categories (the default);
 // false keeps it to this category only.
-public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE", bool UpdateTemplate = true);
+// ExternalName: the marketplace record's name as the user saw it when choosing it. A brand list is updated in place
+// (Kuyruk Faz 1B), so a brand mapping is refused (409 REFERENCE_ITEM_CHANGED) unless the current row still carries it.
+public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE", bool UpdateTemplate = true, string? ExternalName = null);
+// A refused shrinking brand list read: the current list size, the refusal (its summary names both counts), and whether the owner
+// approved it (ApprovedAt) for the next read, which then applies it once until ApprovalExpiresAt.
+public sealed record BrandListShrinkView(Guid ConnectionId, int CurrentCount, DateTimeOffset LastSeenAt, string Summary, DateTimeOffset? ApprovedAt, DateTimeOffset? ApprovalExpiresAt);
 // "Birebir Eşle" (Shopify): the panel categories mapped (or to be mapped) to the store product type of the same name, how
 // many unmapped ones have no such type, and how many match two of the store's types (left to the user).
 public sealed record ShopifyExactCategoryMatchView(int MatchCount, int WithoutTypeCount, int AmbiguousCount, bool Applied, IReadOnlyList<ShopifyExactCategoryMatchItem> Matches);
@@ -515,6 +520,10 @@ public interface IReferenceDataService
     Task<ServiceResult<ReferenceSliceView>> LookupBrandsAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<string> externalIds, CancellationToken cancellationToken);
     // The marketplace brands a catalog import met that no panel brand is mapped to on this connection (ImportedBrandRule).
     Task<ServiceResult<IReadOnlyList<UnmappedMarketplaceBrandView>>> UnmappedBrandsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    // Kuyruk Faz 1B: the brand list read that was refused for shrinking (REFERENCE_LIST_SHRANK), or null when none waits.
+    Task<ServiceResult<BrandListShrinkView?>> BrandListShrinkAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    // "Küçülmeyi Onayla": the next brand list read of the connection may apply that shrink once (within 48 hours); audited.
+    Task<ServiceResult<BrandListShrinkView>> ApproveBrandListShrinkAsync(Guid tenantId, Guid? actorUserId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
     // The panel values mapped in each field of one marketplace category, by the field's external id: the category
     // window's value progress in one read instead of one list per field.
