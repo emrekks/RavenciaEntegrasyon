@@ -13,18 +13,25 @@ namespace MarketplaceHub.Infrastructure.Jobs;
 // backoff, quota hold, slot. Each figure is time the process knows that cause held the job; the rest of the wait has no
 // known cause. The figures are null when the wait began before the process started or before the history it keeps
 // (HistoryKept), and the slot figure is null without a lane pool (legacy lanes). A run another process leased (the API's
-// inline invoice run, a second worker) is not seen here, so a figure can be low, never invented.
+// inline invoice run, a second worker) is not seen here, so a figure can be under-stated; it is never over-stated: the quota
+// hold figure is null when the job's learned buckets changed during its wait (the hold then used buckets no longer known).
+// Every collection is bounded (review of 27 Nov 2026): spans per connection and group MaximumSpellsPerKey, connection and
+// group keys MaximumKeys, run ends MaximumRunEnds (a time-ordered queue, O(1) amortised per call), running jobs
+// MaximumRunning (in practice the worker's slots); a store past its cap is trimmed to 80 % of it at once.
 public sealed class JobWaitLedger(TimeProvider clock)
 {
     public static readonly TimeSpan HistoryKept = TimeSpan.FromHours(6);
-    private const int MaximumSpellsPerKey = 1_024;
-    private const int MaximumRunEnds = 50_000;
+    internal const int MaximumSpellsPerKey = 1_024;
+    internal const int MaximumKeys = 20_000;
+    internal const int MaximumRunEnds = 50_000;
+    internal const int MaximumRunning = 4_096;
 
     private readonly object gate = new();
     private readonly Dictionary<(Guid ConnectionId, string LockGroup), List<Span>> busy = [];
     private readonly Dictionary<Guid, (Guid ConnectionId, string LockGroup, DateTimeOffset From)> running = [];
     private readonly Dictionary<(Guid ConnectionId, string LockGroup), List<Span>> backoffs = [];
     private readonly Dictionary<Guid, DateTimeOffset> runEnded = [];
+    private readonly Queue<(Guid JobId, DateTimeOffset At)> runEndOrder = new();
 
     public DateTimeOffset StartedAt { get; } = clock.GetUtcNow();
 
@@ -47,7 +54,14 @@ public sealed class JobWaitLedger(TimeProvider clock)
     public void RunStarted(Guid jobId, Guid? connectionId, string? lockGroup, DateTimeOffset at)
     {
         if (connectionId is not { } connection || string.IsNullOrEmpty(lockGroup)) return;
-        lock (gate) running[jobId] = (connection, lockGroup, at);
+        lock (gate)
+        {
+            running[jobId] = (connection, lockGroup, at);
+            // A run whose end never came (cannot happen: the worker ends every run in a finally) would otherwise stay.
+            if (running.Count > MaximumRunning)
+                foreach (var oldest in running.OrderBy(item => item.Value.From).Take(running.Count - (MaximumRunning * 4 / 5)).Select(item => item.Key).ToList())
+                    running.Remove(oldest);
+        }
     }
 
     // The job's run ended (its outcome written, or it was handed back): its group is free from now. The end is kept for the
@@ -58,14 +72,22 @@ public sealed class JobWaitLedger(TimeProvider clock)
         {
             if (running.Remove(jobId, out var run)) Add(busy, (run.ConnectionId, run.LockGroup), new Span(run.From, at));
             runEnded[jobId] = at;
-            if (runEnded.Count > MaximumRunEnds)
+            runEndOrder.Enqueue((jobId, at));
+            // Oldest first: past a day, or past the cap down to 80 % of it. An entry a later end of the same job replaced is
+            // only dropped from the queue.
+            var keepAfter = at - TimeSpan.FromHours(24);
+            var trimTo = runEndOrder.Count > MaximumRunEnds ? MaximumRunEnds * 4 / 5 : int.MaxValue;
+            while (runEndOrder.TryPeek(out var oldest) && (oldest.At < keepAfter || runEndOrder.Count > trimTo))
             {
-                var keepAfter = at - TimeSpan.FromHours(24);
-                foreach (var stale in runEnded.Where(item => item.Value < keepAfter).Select(item => item.Key).ToList()) runEnded.Remove(stale);
-                if (runEnded.Count > MaximumRunEnds)
-                    foreach (var oldest in runEnded.OrderBy(item => item.Value).Take(runEnded.Count - MaximumRunEnds).Select(item => item.Key).ToList()) runEnded.Remove(oldest);
+                runEndOrder.Dequeue();
+                if (runEnded.TryGetValue(oldest.JobId, out var stored) && stored == oldest.At) runEnded.Remove(oldest.JobId);
             }
         }
+    }
+
+    internal int RunEndCount
+    {
+        get { lock (gate) return runEnded.Count; }
     }
 
     // This process wrote a quota backoff for the connection and group (JobLeaseService.ConnectionBackoffWait).
@@ -85,14 +107,29 @@ public sealed class JobWaitLedger(TimeProvider clock)
         BackoffRecorded(connectionId, group, at, at + Persistence.JobLeaseService.ConnectionBackoffWait(result));
     }
 
+    // Called under the lock. Spans come in end order (a run's or a backoff's end), so the stale ones are a prefix.
     private static void Add(Dictionary<(Guid, string), List<Span>> store, (Guid, string) key, Span span)
     {
         if (span.To <= span.From) return;
-        if (!store.TryGetValue(key, out var spans)) store[key] = spans = [];
+        if (!store.TryGetValue(key, out var spans))
+        {
+            if (store.Count >= MaximumKeys) TrimKeys(store, span.To - HistoryKept);
+            store[key] = spans = [];
+        }
         spans.Add(span);
         var keepAfter = span.To - HistoryKept;
-        spans.RemoveAll(item => item.To < keepAfter);
-        if (spans.Count > MaximumSpellsPerKey) spans.RemoveRange(0, spans.Count - MaximumSpellsPerKey);
+        var stale = 0;
+        while (stale < spans.Count && spans[stale].To < keepAfter) stale++;
+        if (spans.Count - stale > MaximumSpellsPerKey) stale = spans.Count - (MaximumSpellsPerKey * 4 / 5);
+        if (stale > 0) spans.RemoveRange(0, stale);
+    }
+
+    // Keys whose history ended before keepAfter go; if that is not enough, the least recently used down to 80 % of the cap.
+    private static void TrimKeys(Dictionary<(Guid, string), List<Span>> store, DateTimeOffset keepAfter)
+    {
+        foreach (var stale in store.Where(item => item.Value.Count == 0 || item.Value[^1].To < keepAfter).Select(item => item.Key).ToList()) store.Remove(stale);
+        if (store.Count < MaximumKeys) return;
+        foreach (var oldest in store.OrderBy(item => item.Value[^1].To).Take(store.Count - (MaximumKeys * 4 / 5)).Select(item => item.Key).ToList()) store.Remove(oldest);
     }
 
     // The attempt's wait split by known cause (JobAttemptStart.Waits).
@@ -116,13 +153,16 @@ public sealed class JobWaitLedger(TimeProvider clock)
                 if (backoffs.TryGetValue(key, out var held)) backoffSpans.AddRange(held);
             }
 
+        // The quota hold: only above the hold's priority, only for MaximumHold after the job became runnable, and only from
+        // the buckets the pair had learned all through the wait. Buckets that changed during it make the figure unknown.
         List<Span> holdSpans = [];
+        var holdKnown = true;
         if (QuotaHold is { } hold && query.ConnectionId is { } holdConnection && query.Priority > hold.HeldAbovePriority && hold.MaximumHold > TimeSpan.Zero)
         {
-            // The lease holds a job only for MaximumHold after it became runnable.
             var holdTo = from + hold.MaximumHold < to ? from + hold.MaximumHold : to;
-            var keys = Pressure.LearnedKeys(holdConnection, query.JobType);
-            holdSpans.AddRange(Pressure.FullSpells(keys, from, holdTo, to).Select(spell => new Span(spell.From, spell.To < holdTo ? spell.To : holdTo)));
+            var (keys, changedAt) = Pressure.LearnedKeysSince(holdConnection, query.JobType);
+            if (changedAt is { } changed && changed > from) holdKnown = false;
+            else holdSpans.AddRange(Pressure.FullSpells(keys, from, holdTo, to).Select(spell => new Span(spell.From, spell.To < holdTo ? spell.To : holdTo)));
         }
 
         IReadOnlyList<Span>? slotSpans = null;
@@ -137,11 +177,11 @@ public sealed class JobWaitLedger(TimeProvider clock)
         var holdSet = Merge(holdSpans, from, to);
         var counted = lockSet;
         var backoff = Except(backoffSet, counted);
-        counted = Merge([.. counted, .. backoffSet], from, to);
-        var quotaHold = Except(holdSet, counted);
-        counted = Merge([.. counted, .. holdSet], from, to);
+        counted = Union(counted, backoffSet);
+        int? quotaHold = holdKnown ? Milliseconds(Except(holdSet, counted)) : null;
+        counted = Union(counted, holdSet);
         int? slot = slotSpans is null ? null : Milliseconds(Except(Merge(slotSpans, from, to), counted));
-        return new JobWaitBreakdown(notDue, Milliseconds(Length(lockSet)), Milliseconds(backoff), Milliseconds(quotaHold), slot);
+        return new JobWaitBreakdown(notDue, Milliseconds(Length(lockSet)), Milliseconds(backoff), quotaHold, slot);
     }
 
     // How long the job was not due before EligibleAt: since its previous run ended (seen by this process), or since it was
@@ -155,31 +195,63 @@ public sealed class JobWaitLedger(TimeProvider clock)
     }
 
     // The spans clipped to [from, to], sorted and merged.
+    // Spans arrive almost sorted (recorded in end order), so a sort is only done when one is out of place.
     internal static List<Span> Merge(IEnumerable<Span> spans, DateTimeOffset from, DateTimeOffset to)
     {
-        var merged = new List<Span>();
-        foreach (var span in spans.Select(item => new Span(item.From < from ? from : item.From, item.To > to ? to : item.To)).Where(item => item.To > item.From).OrderBy(item => item.From))
+        var clipped = new List<Span>();
+        var sorted = true;
+        foreach (var item in spans)
+        {
+            if (item.To <= from || item.From >= to) continue;
+            var span = new Span(item.From < from ? from : item.From, item.To > to ? to : item.To);
+            if (clipped.Count > 0 && span.From < clipped[^1].From) sorted = false;
+            clipped.Add(span);
+        }
+        if (!sorted) clipped.Sort((left, right) => left.From.CompareTo(right.From));
+        var merged = new List<Span>(clipped.Count);
+        foreach (var span in clipped)
         {
             if (merged.Count > 0 && span.From <= merged[^1].To)
-                merged[^1] = merged[^1] with { To = span.To > merged[^1].To ? span.To : merged[^1].To };
+            {
+                if (span.To > merged[^1].To) merged[^1] = merged[^1] with { To = span.To };
+            }
             else merged.Add(span);
         }
         return merged;
     }
 
+    // The union of two merged sets, merged (one pass over both).
+    internal static List<Span> Union(List<Span> a, List<Span> b)
+    {
+        var result = new List<Span>(a.Count + b.Count);
+        int i = 0, j = 0;
+        while (i < a.Count || j < b.Count)
+        {
+            var next = j >= b.Count || (i < a.Count && a[i].From <= b[j].From) ? a[i++] : b[j++];
+            if (result.Count > 0 && next.From <= result[^1].To)
+            {
+                if (next.To > result[^1].To) result[^1] = result[^1] with { To = next.To };
+            }
+            else result.Add(next);
+        }
+        return result;
+    }
+
     internal static TimeSpan Length(IEnumerable<Span> merged) => merged.Aggregate(TimeSpan.Zero, (total, span) => total + (span.To - span.From));
 
-    // The length of the merged set a that lies outside the merged set b.
+    // The length of the merged set a that lies outside the merged set b (both sorted and merged): one pass over both.
     internal static TimeSpan Except(List<Span> a, List<Span> b)
     {
         var total = TimeSpan.Zero;
+        var j = 0;
         foreach (var span in a)
         {
             var covered = TimeSpan.Zero;
-            foreach (var other in b)
+            while (j < b.Count && b[j].To <= span.From) j++;
+            for (var k = j; k < b.Count && b[k].From < span.To; k++)
             {
-                var start = other.From > span.From ? other.From : span.From;
-                var end = other.To < span.To ? other.To : span.To;
+                var start = b[k].From > span.From ? b[k].From : span.From;
+                var end = b[k].To < span.To ? b[k].To : span.To;
                 if (end > start) covered += end - start;
             }
             total += span.To - span.From - covered;

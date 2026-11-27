@@ -99,8 +99,11 @@ describe('queue phase 0', () => {
   it('lists a lane’s wait causes once any attempt recorded them', () => {
     expect(laneWaitCauseLines(null)).toEqual([])
     expect(laneWaitCauseLines({ attempts: 2, waitSeconds: 50, lockSeconds: 25, backoffSeconds: 4, quotaHoldSeconds: 0, slotSeconds: 5, unknownSeconds: 16 })).toEqual([
-      'Bekleme nedeni (2 deneme, toplam 50 sn)', 'Aynı bağlantının kilidi: 25 sn', 'Kota geri çekilmesi: 4 sn', 'Kota bekletmesi: 0 sn', 'Boş slot yok: 5 sn', 'Nedeni bilinmeyen: 16 sn'
+      'İlk denemelerde bekleme nedeni (2 deneme, toplam 50 sn)', 'Aynı bağlantının kilidi: 25 sn', 'Kota geri çekilmesi: 4 sn', 'Kota bekletmesi: 0 sn', 'Boş slot yok: 5 sn', 'Nedeni bilinmeyen: 16 sn'
     ])
+    // A reason no attempt knows (legacy lanes have no slot figure) reads "—", not 0.
+    expect(laneWaitCauseLines({ attempts: 1, waitSeconds: 9, lockSeconds: 3, backoffSeconds: 0, quotaHoldSeconds: null, slotSeconds: null, unknownSeconds: 6 }).slice(3, 5))
+      .toEqual(['Kota bekletmesi: —', 'Boş slot yok: —'])
   })
 })
 

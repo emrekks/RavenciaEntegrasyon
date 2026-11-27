@@ -32490,10 +32490,6 @@
         "required": [
           "attempts",
           "waitSeconds",
-          "lockSeconds",
-          "backoffSeconds",
-          "quotaHoldSeconds",
-          "slotSeconds",
           "unknownSeconds"
         ],
         "type": "object",
@@ -32507,19 +32503,31 @@
             "format": "double"
           },
           "lockSeconds": {
-            "type": "number",
+            "type": [
+              "null",
+              "number"
+            ],
             "format": "double"
           },
           "backoffSeconds": {
-            "type": "number",
+            "type": [
+              "null",
+              "number"
+            ],
             "format": "double"
           },
           "quotaHoldSeconds": {
-            "type": "number",
+            "type": [
+              "null",
+              "number"
+            ],
             "format": "double"
           },
           "slotSeconds": {
-            "type": "number",
+            "type": [
+              "null",
+              "number"
+            ],
             "format": "double"
           },
           "unknownSeconds": {

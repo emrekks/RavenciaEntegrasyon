@@ -297,9 +297,10 @@ public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWa
     double? TargetSeconds = null, double? RecentP95WaitSeconds = null, double? OldestWaitSeconds = null, string WaitStatus = LaneWaitStatus.Ok, DateTimeOffset? AlertSince = null,
     int? Borrowed = null, LaneWaitCausesView? WaitCauses = null);
 
-// Seconds summed over Attempts (every attempt of the lane in the window whose causes were recorded): their whole wait, and
-// the part held by the connection's lock group, a quota backoff, a quota hold, no free slot, and with no known cause.
-public sealed record LaneWaitCausesView(int Attempts, double WaitSeconds, double LockSeconds, double BackoffSeconds, double QuotaHoldSeconds, double SlotSeconds, double UnknownSeconds);
+// Seconds summed over Attempts (the lane's first attempts in the window whose causes were recorded: the same attempts its
+// average and p95 wait measure): their whole wait, and the part held by the connection's lock group, a quota backoff, a quota
+// hold, no free slot (null: no attempt knows that reason, e.g. the slot with legacy lanes), and with no known cause.
+public sealed record LaneWaitCausesView(int Attempts, double WaitSeconds, double? LockSeconds, double? BackoffSeconds, double? QuotaHoldSeconds, double? SlotSeconds, double UnknownSeconds);
 
 public static class LaneWaitStatus
 {

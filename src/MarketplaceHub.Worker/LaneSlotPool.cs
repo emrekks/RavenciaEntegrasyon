@@ -289,8 +289,12 @@ public sealed class LaneSlotPool
             if (!noRoomSince.Remove(lane, out var since) || now <= since) continue;
             if (!noRoomSpells.TryGetValue(lane, out var spells)) noRoomSpells[lane] = spells = [];
             spells.Add((since, now));
-            spells.RemoveAll(spell => spell.To < now - NoRoomHistoryKept);
-            if (spells.Count > MaximumNoRoomSpells) spells.RemoveRange(0, spells.Count - MaximumNoRoomSpells);
+            // Bounded per lane (one list per lane): spells end in time order, so the stale ones are a prefix; past the cap the
+            // list drops to 80 % of it at once (O(1) amortised).
+            var drop = 0;
+            while (drop < spells.Count && spells[drop].To < now - NoRoomHistoryKept) drop++;
+            if (spells.Count - drop > MaximumNoRoomSpells) drop = spells.Count - (MaximumNoRoomSpells * 4 / 5);
+            if (drop > 0) spells.RemoveRange(0, drop);
         }
     }
 
@@ -304,7 +308,7 @@ public sealed class LaneSlotPool
             foreach (var lane in lanes)
             {
                 var laneSpells = new List<(DateTimeOffset From, DateTimeOffset To)>();
-                if (noRoomSpells.TryGetValue(lane, out var spells)) laneSpells.AddRange(spells.Where(spell => spell.To > from && spell.From < to));
+                if (noRoomSpells.TryGetValue(lane, out var spells)) laneSpells.AddRange(spells);
                 if (noRoomSince.TryGetValue(lane, out var since) && since < to) laneSpells.Add((since, now));
                 var merged = MergeSpells(laneSpells, from, to);
                 common = common is null ? merged : Intersect(common, merged);
@@ -316,10 +320,21 @@ public sealed class LaneSlotPool
 
     private static List<(DateTimeOffset From, DateTimeOffset To)> MergeSpells(IEnumerable<(DateTimeOffset From, DateTimeOffset To)> spells, DateTimeOffset from, DateTimeOffset to)
     {
-        var merged = new List<(DateTimeOffset From, DateTimeOffset To)>();
-        foreach (var (start, end) in spells.Select(spell => (From: spell.From < from ? from : spell.From, To: spell.To > to ? to : spell.To)).Where(spell => spell.To > spell.From).OrderBy(spell => spell.From))
+        // The spells are recorded in time order: a sort only when one is out of place.
+        var clipped = new List<(DateTimeOffset From, DateTimeOffset To)>();
+        var sorted = true;
+        foreach (var spell in spells)
         {
-            if (merged.Count > 0 && start <= merged[^1].To) merged[^1] = (merged[^1].From, end > merged[^1].To ? end : merged[^1].To);
+            if (spell.To <= from || spell.From >= to) continue;
+            var item = (From: spell.From < from ? from : spell.From, To: spell.To > to ? to : spell.To);
+            if (clipped.Count > 0 && item.From < clipped[^1].From) sorted = false;
+            clipped.Add(item);
+        }
+        if (!sorted) clipped.Sort((left, right) => left.From.CompareTo(right.From));
+        var merged = new List<(DateTimeOffset From, DateTimeOffset To)>(clipped.Count);
+        foreach (var (start, end) in clipped)
+        {
+            if (merged.Count > 0 && start <= merged[^1].To) { if (end > merged[^1].To) merged[^1] = (merged[^1].From, end); }
             else merged.Add((start, end));
         }
         return merged;
@@ -327,14 +342,15 @@ public sealed class LaneSlotPool
 
     private static List<(DateTimeOffset From, DateTimeOffset To)> Intersect(List<(DateTimeOffset From, DateTimeOffset To)> a, List<(DateTimeOffset From, DateTimeOffset To)> b)
     {
+        // Both sorted and merged: one pass over both.
         var result = new List<(DateTimeOffset From, DateTimeOffset To)>();
-        foreach (var left in a)
-            foreach (var right in b)
-            {
-                var start = left.From > right.From ? left.From : right.From;
-                var end = left.To < right.To ? left.To : right.To;
-                if (end > start) result.Add((start, end));
-            }
+        for (int i = 0, j = 0; i < a.Count && j < b.Count;)
+        {
+            var start = a[i].From > b[j].From ? a[i].From : b[j].From;
+            var end = a[i].To < b[j].To ? a[i].To : b[j].To;
+            if (end > start) result.Add((start, end));
+            if (a[i].To < b[j].To) i++; else j++;
+        }
         return result;
     }
 

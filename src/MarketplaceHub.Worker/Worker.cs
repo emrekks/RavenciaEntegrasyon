@@ -814,7 +814,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             heartbeatStop.Cancel();
             await heartbeat;
             waitLedger.RunEnded(job.Id, DateTimeOffset.UtcNow);
-            await RecordBucketOwnersAsync(job, quotaScope.Keys);
+            RecordBucketOwnersInBackground(job, quotaScope.Keys, stoppingToken);
         }
     }
 
@@ -823,23 +823,44 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         new(MarketplaceHub.Infrastructure.Jobs.JobWaitLedger.Milliseconds(scope.TokenWait), scope.TokenWaits);
 
     // Queue phase 0: which connection used which quota bucket (the quota card's tenant scope), written only for a pair not
-    // written in the last few hours. A failure is logged once and never touches the job.
-    private async Task RecordBucketOwnersAsync(LeasedJob job, IReadOnlyCollection<string> keys)
+    // written in the last few hours. The write runs beside the slot, never in it: the slot is released at once whatever the
+    // database does (review of 27 Nov 2026). One write at a time; a pair whose write is skipped (another is running, or the
+    // worker is stopping) stays due and goes with a later job. A failure is logged once and never touches the job.
+    private readonly SemaphoreSlim bucketOwnerWrites = new(1, 1);
+
+    private void RecordBucketOwnersInBackground(LeasedJob job, IReadOnlyCollection<string> keys, CancellationToken stoppingToken)
     {
         if (job.ConnectionId is not { } connectionId || keys.Count == 0) return;
-        try
+        var now = DateTimeOffset.UtcNow;
+        IReadOnlyList<string> due;
+        try { due = MarketplaceHub.Infrastructure.Jobs.QuotaBucketOwners.Due(connectionId, keys, now); }
+        catch (Exception exception) { RecordingFailed("quota-bucket-owners", exception); return; }
+        if (due.Count == 0) return;
+        StartInBackground(bucketOwnerWrites, async token =>
         {
-            var now = DateTimeOffset.UtcNow;
-            var due = MarketplaceHub.Infrastructure.Jobs.QuotaBucketOwners.Due(connectionId, keys, now);
-            if (due.Count == 0) return;
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await using var scope = scopeFactory.CreateAsyncScope();
-            await MarketplaceHub.Infrastructure.Jobs.QuotaBucketOwners.RecordAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), connectionId, due, now, timeout.Token);
-        }
-        catch (Exception exception)
+            await MarketplaceHub.Infrastructure.Jobs.QuotaBucketOwners.RecordAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), connectionId, due, now, token);
+        }, exception => RecordingFailed("quota-bucket-owners", exception), stoppingToken);
+    }
+
+    // Starts the write without waiting for it, at most one at a time (gate), never while the worker stops, within 5 s.
+    // True when it started; false when it was skipped.
+    internal static bool StartInBackground(SemaphoreSlim gate, Func<CancellationToken, Task> write, Action<Exception> failed, CancellationToken stoppingToken)
+    {
+        if (stoppingToken.IsCancellationRequested || !gate.Wait(0)) return false;
+        _ = Task.Run(async () =>
         {
-            RecordingFailed("quota-bucket-owners", exception);
-        }
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                await write(timeout.Token);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception exception) { failed(exception); }
+            finally { gate.Release(); }
+        }, CancellationToken.None);
+        return true;
     }
 
     // A job that writes to a marketplace or the invoice provider (shutdown-protected) is never held for its quota: its path

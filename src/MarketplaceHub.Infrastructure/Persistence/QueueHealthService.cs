@@ -42,10 +42,10 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                    percentile_cont(0.95) WITHIN GROUP (ORDER BY wait.seconds) AS "P95WaitSeconds",
                    count(*) FILTER (WHERE causes.known)::int AS "CauseAttempts",
                    coalesce(sum(causes.wait_ms) FILTER (WHERE causes.known), 0)::double precision / 1000 AS "CauseWaitSeconds",
-                   coalesce(sum(attempt."WaitLockMs") FILTER (WHERE causes.known), 0)::double precision / 1000 AS "LockSeconds",
-                   coalesce(sum(attempt."WaitBackoffMs") FILTER (WHERE causes.known), 0)::double precision / 1000 AS "BackoffSeconds",
-                   coalesce(sum(attempt."WaitQuotaHoldMs") FILTER (WHERE causes.known), 0)::double precision / 1000 AS "QuotaHoldSeconds",
-                   coalesce(sum(attempt."WaitSlotMs") FILTER (WHERE causes.known), 0)::double precision / 1000 AS "SlotSeconds"
+                   sum(attempt."WaitLockMs") FILTER (WHERE causes.known)::double precision / 1000 AS "LockSeconds",
+                   sum(attempt."WaitBackoffMs") FILTER (WHERE causes.known)::double precision / 1000 AS "BackoffSeconds",
+                   sum(attempt."WaitQuotaHoldMs") FILTER (WHERE causes.known)::double precision / 1000 AS "QuotaHoldSeconds",
+                   sum(attempt."WaitSlotMs") FILTER (WHERE causes.known)::double precision / 1000 AS "SlotSeconds"
             FROM integration.job_attempts attempt
             JOIN integration.jobs job ON job."Id" = attempt."JobId"
             -- Queue phase 0: an attempt that recorded when its job became runnable (EligibleAt) is measured from it; an older
@@ -55,9 +55,11 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                     THEN greatest(0, EXTRACT(EPOCH FROM attempt."StartedAt" - attempt."EligibleAt"))::double precision
                 WHEN attempt."AttemptNumber" = 1 AND attempt."EligibleAt" IS NULL AND job."AttemptCount" <= 1 AND job."AvailableAt" <= attempt."StartedAt"
                     THEN EXTRACT(EPOCH FROM attempt."StartedAt" - job."AvailableAt")::double precision END AS seconds) wait
-            -- Why the lane's jobs waited: every attempt (any number) whose causes were recorded (the lock figure is null only
-            -- when none of them is known).
-            CROSS JOIN LATERAL (SELECT attempt."EligibleAt" IS NOT NULL AND attempt."WaitLockMs" IS NOT NULL AS known,
+            -- Why the lane's jobs waited: the same first attempts the average and p95 measure, those whose causes were recorded
+            -- (the lock figure is null only when none is known). A reason no attempt carries a value for stays null (unknown,
+            -- e.g. the slot figure with legacy lanes); a reason one attempt left null leaves that attempt's time unknown, never
+            -- in another reason.
+            CROSS JOIN LATERAL (SELECT attempt."AttemptNumber" = 1 AND attempt."EligibleAt" IS NOT NULL AND attempt."WaitLockMs" IS NOT NULL AS known,
                 greatest(0, EXTRACT(EPOCH FROM attempt."StartedAt" - attempt."EligibleAt") * 1000)::double precision AS wait_ms) causes
             WHERE attempt."TenantId" = @tenant AND attempt."StartedAt" >= @since
             GROUP BY 1
@@ -100,9 +102,9 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
     private static LaneWaitCausesView? Causes(LaneAttemptRow? row)
     {
         if (row is not { CauseAttempts: > 0 }) return null;
-        var known = row.LockSeconds + row.BackoffSeconds + row.QuotaHoldSeconds + row.SlotSeconds;
-        return new LaneWaitCausesView(row.CauseAttempts, Math.Round(row.CauseWaitSeconds, 1), Math.Round(row.LockSeconds, 1), Math.Round(row.BackoffSeconds, 1),
-            Math.Round(row.QuotaHoldSeconds, 1), Math.Round(row.SlotSeconds, 1), Math.Round(Math.Max(0, row.CauseWaitSeconds - known), 1));
+        var known = (row.LockSeconds ?? 0) + (row.BackoffSeconds ?? 0) + (row.QuotaHoldSeconds ?? 0) + (row.SlotSeconds ?? 0);
+        return new LaneWaitCausesView(row.CauseAttempts, Math.Round(row.CauseWaitSeconds, 1), Round(row.LockSeconds), Round(row.BackoffSeconds),
+            Round(row.QuotaHoldSeconds), Round(row.SlotSeconds), Math.Round(Math.Max(0, row.CauseWaitSeconds - known), 1));
     }
 
     // Running jobs and the queued jobs a slot could take now, per job type, priority and connection. A runnable
@@ -191,10 +193,26 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
     public async Task<IReadOnlyList<QuotaUsageView>> QuotaAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var since = QuotaWindowStart(timeProvider.GetUtcNow());
+        // Trendyol's seller buckets name the seller id (the connection's ExternalStoreId) and the API host, so they are known
+        // without a recorded owner (review of 27 Nov 2026: right after the deploy the owner table is empty): those with
+        // requests in the hour join the recorded ones. Keys are built and compared whole, never with LIKE.
+        var options = trendyolOptions.Value;
+        string[] hosts = [.. new[] { options.ProductionBaseAddress.Host, options.StageBaseAddress.Host }.Distinct(StringComparer.OrdinalIgnoreCase)];
         var rows = await db.Database.SqlQuery<QuotaRow>($"""
+            WITH derived AS (
+                SELECT 'trendyol:' || kind.bucket || ':' || host.name || ':' || connection."ExternalStoreId" || kind.suffix AS "Key", connection."Id" AS "ConnectionId"
+                FROM integration.platform_connections connection
+                CROSS JOIN unnest({hosts}::text[]) AS host(name)
+                CROSS JOIN (VALUES ('orders', ':fg'), ('orders', ':bg'), ('orders', ':spacing'), ('orders', ':spacing:start'), ('finance', ''), ('claim-actions', '')) AS kind(bucket, suffix)
+                WHERE connection."TenantId" = {tenantId} AND connection."PlatformCode" = 'TRENDYOL' AND connection."ExternalStoreId" <> ''),
+            owners AS (
+                SELECT recorded."Key", recorded."ConnectionId" FROM integration.rate_limit_bucket_connections recorded
+                UNION
+                SELECT derived."Key", derived."ConnectionId" FROM derived
+                WHERE EXISTS (SELECT 1 FROM integration.rate_limit_usage used WHERE used."Key" = derived."Key" AND used."Minute" >= {since}))
             SELECT owner."ConnectionId" AS "ConnectionId", connection."DisplayName" AS "StoreName", owner."Key" AS "Key",
                    coalesce(sum(usage."Requests"), 0)::int AS "Requests", coalesce(max(usage."Requests"), 0)::int AS "Peak"
-            FROM integration.rate_limit_bucket_connections owner
+            FROM owners owner
             JOIN integration.platform_connections connection ON connection."Id" = owner."ConnectionId"
             LEFT JOIN integration.rate_limit_usage usage ON usage."Key" = owner."Key" AND usage."Minute" >= {since}
             WHERE connection."TenantId" = {tenantId}
@@ -278,7 +296,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
 
     private static double? Round(double? value) => value is { } number ? Math.Round(number, 1) : null;
     private sealed record LaneAttemptRow(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds,
-        int CauseAttempts, double CauseWaitSeconds, double LockSeconds, double BackoffSeconds, double QuotaHoldSeconds, double SlotSeconds);
+        int CauseAttempts, double CauseWaitSeconds, double? LockSeconds, double? BackoffSeconds, double? QuotaHoldSeconds, double? SlotSeconds);
     private sealed record QuotaRow(Guid ConnectionId, string StoreName, string Key, int Requests, int Peak);
     private sealed record LatencyRow(string PlatformCode, string? Source, int Orders, double? P50, double? P95, double? NoticeP50, double? NoticeP95, double? ProcessingP50, double? ProcessingP95);
     private sealed record RunningRow(string JobType, int Priority, int Count);

@@ -1758,10 +1758,10 @@ export type LaneMetricView = {
 export type LaneWaitCausesView = {
   attempts: number
   waitSeconds: number
-  lockSeconds: number
-  backoffSeconds: number
-  quotaHoldSeconds: number
-  slotSeconds: number
+  lockSeconds?: null | number
+  backoffSeconds?: null | number
+  quotaHoldSeconds?: null | number
+  slotSeconds?: null | number
   unknownSeconds: number
 }
 

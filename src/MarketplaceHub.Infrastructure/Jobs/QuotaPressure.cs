@@ -79,10 +79,16 @@ public sealed class QuotaPressure
 
     // The buckets a connection's job type took tokens from in its last run; an empty run (no marketplace request) leaves the
     // last known set in place. Past MaximumLearnedPairs the least recently learned tenth is dropped.
-    public void Learn(Guid connectionId, string jobType, IReadOnlyCollection<string> keys)
+    public void Learn(Guid connectionId, string jobType, IReadOnlyCollection<string> keys, DateTimeOffset? now = null)
     {
         if (keys.Count == 0) return;
-        learned[(connectionId, jobType)] = new Learned([.. keys.Take(MaximumKeysPerPair)], Interlocked.Increment(ref learnSequence));
+        string[] kept = [.. keys.Take(MaximumKeysPerPair)];
+        // Queue phase 0: when the pair's buckets last changed (the same buckets learned again keep their moment), so a wait
+        // during which they changed is not attributed to the quota hold with buckets the hold did not use.
+        var changedAt = learned.TryGetValue((connectionId, jobType), out var previous) && previous.Keys.Order(StringComparer.Ordinal).SequenceEqual(kept.Order(StringComparer.Ordinal), StringComparer.Ordinal)
+            ? previous.ChangedAt
+            : now ?? DateTimeOffset.UtcNow;
+        learned[(connectionId, jobType)] = new Learned(kept, Interlocked.Increment(ref learnSequence), changedAt);
         if (learned.Count <= MaximumLearnedPairs) return;
         var oldest = learned.OrderBy(entry => entry.Value.Sequence).Take(MaximumLearnedPairs / 10).Select(entry => entry.Key).ToList();
         var dropped = oldest.Count(pair => learned.TryRemove(pair, out _));
@@ -120,12 +126,27 @@ public sealed class QuotaPressure
     private void RememberFull(string key, DateTimeOffset from, DateTimeOffset to)
     {
         if (to <= from) return;
-        if (!fullSpells.TryGetValue(key, out var spells)) fullSpells[key] = spells = [];
-        spells.Add((from, to));
         var keepAfter = to - FullHistoryKept;
-        spells.RemoveAll(spell => spell.To < keepAfter);
-        if (spells.Count > MaximumFullSpellsPerKey) spells.RemoveRange(0, spells.Count - MaximumFullSpellsPerKey);
+        if (!fullSpells.TryGetValue(key, out var spells))
+        {
+            // At most MaximumFullSpellKeys buckets: past it the stale ones go, then the least recently full down to 80 %.
+            if (fullSpells.Count >= MaximumFullSpellKeys)
+            {
+                foreach (var stale in fullSpells.Where(item => item.Value.Count == 0 || item.Value[^1].To < keepAfter).Select(item => item.Key).ToList()) fullSpells.Remove(stale);
+                if (fullSpells.Count >= MaximumFullSpellKeys)
+                    foreach (var oldest in fullSpells.OrderBy(item => item.Value[^1].To).Take(fullSpells.Count - (MaximumFullSpellKeys * 4 / 5)).Select(item => item.Key).ToList()) fullSpells.Remove(oldest);
+            }
+            fullSpells[key] = spells = [];
+        }
+        spells.Add((from, to));
+        // Spells come in end order: the stale ones are a prefix; past the cap down to 80 % of it.
+        var drop = 0;
+        while (drop < spells.Count && spells[drop].To < keepAfter) drop++;
+        if (spells.Count - drop > MaximumFullSpellsPerKey) drop = spells.Count - (MaximumFullSpellsPerKey * 4 / 5);
+        if (drop > 0) spells.RemoveRange(0, drop);
     }
+
+    private const int MaximumFullSpellKeys = 10_000;
 
     // The spells in which any of the keys was full, between from and to (a waiter still past the saturation time counts up to now).
     public IReadOnlyList<(DateTimeOffset From, DateTimeOffset To)> FullSpells(IReadOnlyCollection<string> keys, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
@@ -148,13 +169,17 @@ public sealed class QuotaPressure
     public IReadOnlyCollection<string> LearnedKeys(Guid connectionId, string jobType) =>
         learned.TryGetValue((connectionId, jobType), out var value) ? value.Keys : [];
 
+    // The same, with the moment those buckets were first learned as they are (null: none learned).
+    public (IReadOnlyCollection<string> Keys, DateTimeOffset? ChangedAt) LearnedKeysSince(Guid connectionId, string jobType) =>
+        learned.TryGetValue((connectionId, jobType), out var value) ? (value.Keys, value.ChangedAt) : ([], null);
+
     private sealed class Bucket
     {
         public List<Waiter> Waiters { get; } = [];
         public bool WasFull { get; set; }
     }
 
-    private sealed record Learned(string[] Keys, long Sequence);
+    private sealed record Learned(string[] Keys, long Sequence, DateTimeOffset ChangedAt);
 
     // One request waiting for a token of one bucket; disposing it ends the wait.
     public sealed class Waiter : IDisposable

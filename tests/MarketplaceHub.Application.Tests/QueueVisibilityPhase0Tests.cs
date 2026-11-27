@@ -50,7 +50,7 @@ public sealed class QueueVisibilityPhase0Tests(ITestOutputHelper output)
         ledger.RunStarted(other, connection, "orders", T0.AddSeconds(10));
         ledger.RunEnded(other, T0.AddSeconds(30));
         ledger.BackoffRecorded(connection, "orders", T0.AddSeconds(25), T0.AddSeconds(45));
-        pressure.Learn(connection, "TEST_JOB", ["bucket-a"]);
+        pressure.Learn(connection, "TEST_JOB", ["bucket-a"], now: T0);
         pressure.Saturation = TimeSpan.FromSeconds(10);
         var waiter = pressure.BeginWait("bucket-a", T0.AddSeconds(30));
         waiter.End(T0.AddSeconds(60));
@@ -217,6 +217,105 @@ public sealed class QueueVisibilityPhase0Tests(ITestOutputHelper output)
         Assert.Null(QueueHealthService.LatencyStatus(null, QueueHealthService.PollingTargetSeconds));
     }
 
+    // Review 27 Nov 2026 (4): the hold figure uses the buckets the pair had learned; buckets that changed during the wait
+    // (learned after it began) make it unknown, so it is never over-stated. Unchanged buckets learned again keep their moment.
+    [Fact]
+    public void TheQuotaHoldIsUnknownWhenTheLearnedBucketsChangedDuringTheWait()
+    {
+        var pressure = new QuotaPressure { Saturation = TimeSpan.FromSeconds(10) };
+        var ledger = new JobWaitLedger(new ManualClock(T0)) { Pressure = pressure, QuotaHold = new JobWaitLedger.QuotaHoldShape(TimeSpan.FromMinutes(15), 2) };
+        var connection = Guid.NewGuid();
+        pressure.Learn(connection, "TEST_JOB", ["a"], now: T0);
+        pressure.BeginWait("a", T0.AddSeconds(20)).End(T0.AddSeconds(50));
+        Assert.Equal(20_000, ledger.Attribute(Query(connection, null, T0.AddSeconds(10), T0.AddSeconds(60))).QuotaHoldMs);
+        // The same bucket learned again later: still known.
+        pressure.Learn(connection, "TEST_JOB", ["a"], now: T0.AddSeconds(40));
+        Assert.Equal(20_000, ledger.Attribute(Query(connection, null, T0.AddSeconds(10), T0.AddSeconds(60))).QuotaHoldMs);
+        // Other buckets learned during the wait: unknown, and the lock and slot figures stay known.
+        pressure.Learn(connection, "TEST_JOB", ["b"], now: T0.AddSeconds(40));
+        var changed = ledger.Attribute(Query(connection, null, T0.AddSeconds(10), T0.AddSeconds(60)));
+        Assert.Null(changed.QuotaHoldMs);
+        Assert.Equal(0, changed.LockMs);
+        // A wait that began after the change is known again.
+        Assert.Equal(0, ledger.Attribute(Query(connection, null, T0.AddSeconds(45), T0.AddSeconds(60))).QuotaHoldMs);
+    }
+
+    // Review 27 Nov 2026 (1): the bucket-owner write runs beside the slot: a write that hangs does not hold the slot's release,
+    // a second one is skipped while it runs, and none starts once the worker stops.
+    [Fact]
+    public async Task AHangingBucketOwnerWriteNeverDelaysTheSlotRelease()
+    {
+        var gate = new SemaphoreSlim(1, 1);
+        var hang = new TaskCompletionSource();
+        var failures = new List<Exception>();
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["background"] = 1 }, []);
+        var started = false;
+        var run = await MarketplaceHub.Worker.Worker.LeaseThroughPoolAsync(pool, "background", ownSlot: true,
+            () => Task.FromResult<MarketplaceHub.Application.LeasedJob?>(new(Guid.NewGuid(), Guid.NewGuid(), null, "T", "{}", "c", "t")),
+            _ => { started = MarketplaceHub.Worker.Worker.StartInBackground(gate, _ => hang.Task, failures.Add, CancellationToken.None); return Task.CompletedTask; });
+        Assert.NotNull(run);
+        var finished = run!();
+        Assert.True(await Task.WhenAny(finished, Task.Delay(TimeSpan.FromSeconds(5))) == finished, "the slot waited for the write");
+        Assert.True(started);
+        Assert.Equal(0, pool.Running);
+        Assert.False(MarketplaceHub.Worker.Worker.StartInBackground(gate, _ => Task.CompletedTask, failures.Add, CancellationToken.None));
+        hang.SetResult();
+        for (var waited = 0; waited < 50 && gate.CurrentCount == 0; waited++) await Task.Delay(20);
+        Assert.Equal(1, gate.CurrentCount);
+        using var stopping = new CancellationTokenSource();
+        stopping.Cancel();
+        Assert.False(MarketplaceHub.Worker.Worker.StartInBackground(gate, _ => Task.CompletedTask, failures.Add, stopping.Token));
+        Assert.Empty(failures);
+    }
+
+    // Review 27 Nov 2026 (2): the worst case the caps allow (6 h of history, 1024 spans per group, 512 full spells per bucket,
+    // 1024 no-room spells per lane, 60 000 run ends) stays far below a database round trip per call, and the run ends stay capped.
+    [Fact]
+    public void TheLedgerAtItsCapsStaysCheapPerCall()
+    {
+        var clock = new ManualClock(T0);
+        var pressure = new QuotaPressure { Saturation = TimeSpan.FromSeconds(1) };
+        var ledger = new JobWaitLedger(new ManualClock(T0)) { Pressure = pressure, QuotaHold = new JobWaitLedger.QuotaHoldShape(TimeSpan.FromHours(6), 2), LanesFor = (_, _) => ["a", "b"] };
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["a"] = 1, ["b"] = 1 }, [], clock: clock);
+        ledger.SlotSpells = (names, from, to) => [.. pool.NoRoomSpells(names, from, to).Select(spell => new JobWaitLedger.Span(spell.From, spell.To))];
+        var connection = Guid.NewGuid();
+        pressure.Learn(connection, "TEST_JOB", ["k"], now: T0);
+        for (var index = 0; index < 1_300; index++)
+        {
+            var start = T0.AddSeconds(index * 19);
+            var job = Guid.NewGuid();
+            ledger.RunStarted(job, connection, "orders", start);
+            ledger.RunEnded(job, start.AddSeconds(9));
+            ledger.BackoffRecorded(connection, "orders", start.AddSeconds(10), start.AddSeconds(12));
+            pressure.BeginWait("k", start).End(start.AddSeconds(4));
+            clock.Now = start;
+            pool.TryClaim("a", ownSlot: true);
+            pool.TryClaim("b", ownSlot: true);
+            clock.Now = start.AddSeconds(5);
+            pool.Release("b", ownSlot: true);
+            pool.Release("a", ownSlot: true);
+        }
+        var end = T0.AddSeconds(1_300 * 19);
+        clock.Now = end;
+        var query = Query(connection, "orders", end.AddHours(-5.9), end);
+        for (var warm = 0; warm < 20; warm++) ledger.Attribute(query);
+        var watch = Stopwatch.StartNew();
+        const int calls = 200;
+        for (var index = 0; index < calls; index++) ledger.Attribute(query);
+        var attribute = watch.Elapsed.TotalMilliseconds / calls;
+        var waits = ledger.Attribute(query);
+        Assert.True(waits.LockMs > 0 && waits.QuotaHoldMs is not null && waits.SlotMs is not null);
+        watch.Restart();
+        const int ends = 60_000;
+        for (var index = 0; index < ends; index++) ledger.RunEnded(Guid.NewGuid(), end.AddMilliseconds(index));
+        var runEnded = watch.Elapsed.TotalMilliseconds / ends;
+        output.WriteLine($"worst case: Attribute {attribute * 1000:F0} µs, RunEnded {runEnded * 1000:F2} µs");
+        // ~0.7 ms in a Debug test run on a laptop at every cap at once (live: a few µs); 5 ms keeps CI machines from flaking.
+        Assert.True(attribute < 5, $"Attribute {attribute} ms");
+        Assert.True(runEnded < 1, $"RunEnded {runEnded} ms");
+        Assert.True(ledger.RunEndCount <= JobWaitLedger.MaximumRunEnds);
+    }
+
     // The attribution runs inside the lease's transaction for every leased job: with a busy hour of history it must stay
     // far below a database round trip (the number is printed for the report).
     [Fact]
@@ -236,7 +335,7 @@ public sealed class QueueVisibilityPhase0Tests(ITestOutputHelper output)
             ledger.RunStarted(job, connections[index % 7], $"group-{index % 4}", start);
             ledger.RunEnded(job, start.AddSeconds(1 + (index % 30)));
         }
-        pressure.Learn(connections[0], "TEST_JOB", ["k"]);
+        pressure.Learn(connections[0], "TEST_JOB", ["k"], now: T0);
         var watch = Stopwatch.StartNew();
         const int calls = 20_000;
         for (var index = 0; index < calls; index++)
@@ -483,6 +582,44 @@ public sealed class QueueVisibilityPhase0PostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
+    // Review 27 Nov 2026 (5): before any owner is recorded (right after the deploy) a Trendyol seller bucket with requests in
+    // the hour is shown from its key; one without requests is not, and another tenant's seller never.
+    [PostgreSqlFact]
+    public async Task TrendyolSellerBucketsShowFromTheirKeyBeforeAnyOwnerIsRecorded()
+    {
+        var (tenant, _) = await TenantAsync("phase0-derived");
+        var (other, _) = await TenantAsync("phase0-derived-other");
+        var keys = new List<string>();
+        try
+        {
+            var trendyol = await ConnectionAsync(tenant.Id, "TRENDYOL", "TY Mağaza");
+            var otherTrendyol = await ConnectionAsync(other.Id, "TRENDYOL", "Başka");
+            var host = new TrendyolOptions().ProductionBaseAddress.Host;
+            var background = $"trendyol:orders:{host}:{trendyol.ExternalStoreId}:bg";
+            var finance = $"trendyol:finance:{host}:{trendyol.ExternalStoreId}";
+            var foreign = $"trendyol:orders:{host}:{otherTrendyol.ExternalStoreId}:bg";
+            keys.AddRange([background, finance, foreign]);
+            var now = DateTimeOffset.UtcNow;
+            var minute = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, TimeSpan.Zero);
+            await using (var seed = fixture.CreateContext())
+                await seed.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO integration.rate_limit_usage ("Key", "Minute", "Requests") VALUES
+                    ({background}, {minute.AddMinutes(-2)}, 17), ({finance}, {minute.AddHours(-2)}, 80), ({foreign}, {minute.AddMinutes(-1)}, 9)
+                    """);
+            await using var db = fixture.CreateContext();
+            var quota = await new QueueHealthService(db, Options.Create(new TrendyolOptions()), TimeProvider.System).QuotaAsync(tenant.Id, CancellationToken.None);
+            var row = Assert.Single(quota);
+            Assert.Equal(("TRENDYOL:ORDERS_BG", "TY Mağaza", 17, 17), (row.Bucket, row.StoreName, row.LastHourRequests, row.PeakMinuteRequests));
+        }
+        finally
+        {
+            await using (var cleanup = fixture.CreateContext())
+                await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_usage WHERE \"Key\" = ANY({keys.ToArray()})");
+            await CleanupAsync(tenant.Id);
+            await CleanupAsync(other.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task ABucketOwnerIsWrittenOnceInItsRefreshTimeAndTheRetentionDropsOldPairs()
     {
@@ -613,9 +750,14 @@ public sealed class QueueVisibilityPhase0PostgreSqlTests(PostgreSqlTenantIsolati
             job.AvailableAt = now.AddMinutes(5);
             job.AttemptCount = 2;
             job.Status = JobStatus.RetryScheduled;
+            // A hot job leased under legacy lanes: its slot figure is unknown, and so is the quota hold (buckets changed).
+            var hot = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.ForPlatform("TRENDYOL", MarketplaceJobTypes.WebhookIngest), now.AddSeconds(-20), priority: 0);
+            hot.AttemptCount = 1;
+            hot.Status = JobStatus.Succeeded;
             await using (var seed = fixture.CreateContext())
             {
-                seed.IntegrationJobs.Add(job);
+                seed.IntegrationJobs.AddRange(job, hot);
+                seed.JobAttempts.Add(new JobAttempt { Id = Guid.NewGuid(), TenantId = tenant.Id, JobId = hot.Id, AttemptNumber = 1, StartedAt = now, CompletedAt = now.AddSeconds(1), Succeeded = true, EligibleAt = now.AddSeconds(-9), Lane = "hot", Borrowed = false, WaitLockMs = 3_000, WaitBackoffMs = 0, WaitQuotaHoldMs = null, WaitSlotMs = null });
                 seed.JobAttempts.AddRange(
                     new JobAttempt { Id = Guid.NewGuid(), TenantId = tenant.Id, JobId = job.Id, AttemptNumber = 1, StartedAt = now, CompletedAt = now.AddSeconds(1), EligibleAt = now.AddSeconds(-40), Lane = "returns-read", Borrowed = false, WaitLockMs = 25_000, WaitBackoffMs = 0, WaitQuotaHoldMs = 0, WaitSlotMs = 5_000 },
                     new JobAttempt { Id = Guid.NewGuid(), TenantId = tenant.Id, JobId = job.Id, AttemptNumber = 2, StartedAt = now.AddMinutes(1), EligibleAt = now.AddMinutes(1).AddSeconds(-10), Lane = "returns-read", Borrowed = false, WaitLockMs = 0, WaitBackoffMs = 4_000, WaitQuotaHoldMs = 0, WaitSlotMs = null });
@@ -623,10 +765,13 @@ public sealed class QueueVisibilityPhase0PostgreSqlTests(PostgreSqlTenantIsolati
             }
             await using var db = fixture.CreateContext();
             var lanes = await new QueueHealthService(db, Options.Create(new TrendyolOptions()), TimeProvider.System).LanesAsync(tenant.Id, TimeSpan.FromHours(1), CancellationToken.None);
+            // Unknown stays unknown (null), never 0, and its time is in the unknown part, not in another reason.
+            Assert.Equal(new LaneWaitCausesView(1, 9, 3, 0, null, null, 6), Assert.Single(lanes, row => row.Lane == "HOT").WaitCauses);
             var returns = Assert.Single(lanes, row => row.Lane == "RETURNS_READ");
             Assert.Equal((2, 40d, 40d), (returns.Attempts, returns.AverageWaitSeconds!.Value, returns.P95WaitSeconds!.Value));
-            Assert.Equal(new LaneWaitCausesView(2, 50, 25, 4, 0, 5, 16), returns.WaitCauses);
-            Assert.All(lanes.Where(row => row.Lane != "RETURNS_READ"), row => Assert.Null(row.WaitCauses));
+            // The causes cover the same first attempts as the average (the retry's backoff is not in them).
+            Assert.Equal(new LaneWaitCausesView(1, 40, 25, 0, 0, 5, 10), returns.WaitCauses);
+            Assert.All(lanes.Where(row => row.Lane is not ("RETURNS_READ" or "HOT")), row => Assert.Null(row.WaitCauses));
         }
         finally { await CleanupAsync(tenant.Id); }
     }

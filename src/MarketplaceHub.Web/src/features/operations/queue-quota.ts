@@ -82,12 +82,13 @@ export function latencyState(status: string | null | undefined): { label: string
   return null
 }
 
-/** The lane's recorded wait causes as tooltip lines; nothing while no attempt recorded them. */
+/** The lane's recorded wait causes as tooltip lines, over the same first attempts as "Ort. Bekleme"; nothing while no
+ * attempt recorded them. A reason no attempt knows (e.g. the slot with legacy lanes) reads "—", never 0. */
 export function laneWaitCauseLines(causes: LaneWaitCauses | null | undefined): string[] {
   if (!causes || causes.attempts === 0) return []
-  const part = (label: string, seconds: number) => `${label}: ${formatSeconds(seconds)}`
+  const part = (label: string, seconds: number | null | undefined) => `${label}: ${formatSeconds(seconds)}`
   return [
-    `Bekleme nedeni (${causes.attempts.toLocaleString('tr-TR')} deneme, toplam ${formatSeconds(causes.waitSeconds)})`,
+    `İlk denemelerde bekleme nedeni (${causes.attempts.toLocaleString('tr-TR')} deneme, toplam ${formatSeconds(causes.waitSeconds)})`,
     part('Aynı bağlantının kilidi', causes.lockSeconds),
     part('Kota geri çekilmesi', causes.backoffSeconds),
     part('Kota bekletmesi', causes.quotaHoldSeconds),
