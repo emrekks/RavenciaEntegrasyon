@@ -344,8 +344,16 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         var seed = await SeedAsync(live: false, siyahGalleryHoldsBordo: false);
         var haki = seed.Cards["Haki"].Id;
         await using (var db = fixture.CreateContext())
-            // Haki leaves the model for a card of its own under the other brand, its variants keeping the model code.
-            await db.Products.Where(x => x.Id == haki).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, seed.OtherBrandId).SetProperty(x => x.FamilyId, (Guid?)null));
+        {
+            // Haki leaves the model for a model of its own under the other brand (FamilyId is NOT NULL, KATALOG-14 D5 B1), its
+            // variants keeping the model code.
+            var own = Guid.CreateVersion7();
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "Description", "CreatedAt", "UpdatedAt", "Version")
+                VALUES ({own}, {seed.Tenant.Id}, {seed.OtherBrandId}, '', {ProductModelLinks.OwnModelKeyPrefix + haki.ToString("N")}, 'Haki', '', {DateTimeOffset.UtcNow}, {DateTimeOffset.UtcNow}, 1)
+                """);
+            await db.Products.Where(x => x.Id == haki).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, seed.OtherBrandId).SetProperty(x => x.FamilyId, own));
+        }
         await using var read = fixture.CreateContext();
         var page = await Catalog(read).ListProductsAsync(seed.Tenant.Id, 100, null, null, null, null, null, null, CancellationToken.None);
         var family = page.Items.Where(item => seed.Cards.Values.Any(card => card.Id == item.Id)).ToList();

@@ -25,10 +25,13 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Brand>().WithMany().HasForeignKey(x => new { x.TenantId, x.BrandId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
-            // A deleted model only unlinks its cards (they fall back to the model-code rule). KATALOG-15: the key carries the
-            // tenant, so a card can only be linked to a model of its own tenant; in the database it is ON DELETE SET NULL
-            // ("FamilyId") (PostgreSQL 15+ column list, written by hand in the migration in place of EF's all-column SET NULL)
-            // so the card's tenant stays.
+            // KATALOG-14 D5 step B1 stage 2: every card belongs to a model (its brand's model of its code, or its own "#<card id>"),
+            // so FamilyId is NOT NULL in the database (20261127111010_ProductFamilyRequired). A save gives a new card its model
+            // before the insert (ProductModelLinks.GiveNewCardsModels) and every delete removes the cards before their model.
+            // KATALOG-15: the key carries the tenant, so a card can only be linked to a model of its own tenant; in the database
+            // it stays ON DELETE SET NULL ("FamilyId") (PostgreSQL 15+ column list, written by hand in place of EF's all-column
+            // SET NULL): with the column NOT NULL, deleting a model that still has a card is refused (not_null_violation).
+            entity.Property(x => x.FamilyId).IsRequired();
             entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.FamilyId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(x => x.FamilyId);
         });

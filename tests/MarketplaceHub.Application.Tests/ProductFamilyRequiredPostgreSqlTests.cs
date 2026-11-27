@@ -11,8 +11,8 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// KATALOG-14 D5 step B1: catalog.products.FamilyId is NOT NULL and its model key ON DELETE RESTRICT. A card without a model
-// cannot be written and a model with a card cannot be deleted; the paths that open, re-code or delete cards (and the Marka
+// KATALOG-14 D5 step B1: catalog.products.FamilyId is NOT NULL (its model key stays ON DELETE SET NULL ("FamilyId"), which the
+// NOT NULL column refuses). A card without a model cannot be written and a model with a card cannot be deleted; the paths that open, re-code or delete cards (and the Marka
 // Listesi reset) still work because a card always has its model before it is written and leaves a model before it goes; the
 // migration stops with the count, changing nothing, while a card without a model exists, and goes back and forth.
 [Collection("postgres-integration")]
@@ -356,6 +356,139 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
         Assert.Equal(("MZ070", "Kadın Siyah Etek", "Siyah", (int?)3), (model.ModelCodeKey, model.Title, model.TitleColor, model.DeliveryDays));
         await transaction.RollbackAsync();
     }
+
+    // B1 stage 2 (20261127111010_ProductFamilyRequired): the database itself refuses a card without a model, a link taken
+    // back to NULL and the delete of a model that still has a card (the key stays ON DELETE SET NULL ("FamilyId"), which the
+    // NOT NULL column refuses); the card keeps its model.
+    [PostgreSqlFact]
+    public async Task TheDatabase_RefusesACardWithoutAModel_AndTheDeleteOfAModelThatHasACard()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        AddSeed(db, seed);
+        var card = AddCard(db, seed, seed.Ravencia, "MZ080", "Siyah", "Kadın Siyah Etek");
+        await db.SaveChangesAsync();
+        var model = (await LinksAsync(db, seed.Tenant.Id))[card.Id]!.Value;
+
+        await db.Database.ExecuteSqlRawAsync("SAVEPOINT before_write");
+        var insert = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO catalog.products ("Id", "TenantId", "Title", "Description", "Status", "SourcePolicyVersion", "CreatedAt", "UpdatedAt", "Version")
+            VALUES ({Guid.CreateVersion7()}, {seed.Tenant.Id}, 'Modelsiz', '', 'Draft', 1, {DateTimeOffset.UtcNow}, {DateTimeOffset.UtcNow}, 1)
+            """));
+        Assert.Equal((Npgsql.PostgresErrorCodes.NotNullViolation, "FamilyId"), (insert.SqlState, insert.ColumnName));
+        await db.Database.ExecuteSqlRawAsync("ROLLBACK TO SAVEPOINT before_write");
+
+        var unlink = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {card.Id}"""));
+        Assert.Equal(Npgsql.PostgresErrorCodes.NotNullViolation, unlink.SqlState);
+        await db.Database.ExecuteSqlRawAsync("ROLLBACK TO SAVEPOINT before_write");
+
+        var delete = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_models WHERE "Id" = {model}"""));
+        Assert.Equal(Npgsql.PostgresErrorCodes.NotNullViolation, delete.SqlState);
+        await db.Database.ExecuteSqlRawAsync("ROLLBACK TO SAVEPOINT before_write");
+        Assert.Equal(model, (await LinksAsync(db, seed.Tenant.Id))[card.Id]);
+        await transaction.RollbackAsync();
+    }
+
+    // The owner's rule "drafts may be incomplete": Yeni Ürün saves a draft without a brand and without a model code; it is
+    // written with a model of its own in the same save and stays on it.
+    [PostgreSqlFact]
+    public async Task ADraftWithoutBrandOrModelCode_IsSavedWithAModelOfItsOwn()
+    {
+        var seed = NewSeed();
+        await using (var db = fixture.CreateContext())
+        {
+            AddSeed(db, seed);
+            await db.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var created = await Service(db).CreateProductAsync(seed.Tenant.Id,
+                new CreateProductCommand("Taslak Etek", "", null, null, [new CreateVariantCommand($"TSL-{Guid.NewGuid():N}"[..20], null, null)], Status: "Draft"), CancellationToken.None);
+            Assert.True(created.Succeeded, created.Error?.Message);
+            var card = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
+            Assert.Equal(ProductStatus.Draft, card.Status);
+            var model = (await ModelsAsync(db, seed.Tenant.Id)).Single();
+            Assert.Equal((OwnKey(card.Id), (Guid?)null, model.Id), (model.ModelCodeKey, model.BrandId, card.FamilyId!.Value));
+        }
+    }
+
+    // Tam Sıfırlama: every card goes before its model, so the NOT NULL link never stops it; nothing of the tenant's catalog
+    // is left.
+    [PostgreSqlFact]
+    public async Task TheFullReset_RemovesTheCardsBeforeTheirModels()
+    {
+        var seed = NewSeed();
+        await using (var db = fixture.CreateContext())
+        {
+            AddSeed(db, seed);
+            AddCard(db, seed, seed.Ravencia, "MZ090", "Siyah", "Kadın Siyah Etek");
+            AddCard(db, seed, seed.Ravencia, "MZ090", "Mavi", "Kadın Mavi Etek");
+            AddCard(db, seed, seed.Lavian, null, "Bej", "Kadın Bej Etek");
+            await db.SaveChangesAsync();
+            Assert.Equal(2, (await ModelsAsync(db, seed.Tenant.Id)).Count);
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new PanelFactoryResetService(db, fixture.TimeProvider, new NoDashboard(), NullLogger<PanelFactoryResetService>.Instance);
+            var payload = JsonSerializer.Serialize(new { KeepSessionId = (Guid?)null, ActorUserId = Guid.Empty, Categories = (string[]?)null });
+            var result = await service.RunAsync(seed.Tenant.Id, Guid.CreateVersion7(), payload, CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+            Assert.False(await db.Products.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Empty(await ModelsAsync(db, seed.Tenant.Id));
+        }
+    }
+
+    // The migration: Down makes the column nullable again; Up stops on a card without a model with its count, changing
+    // nothing (no constraint left, the row untouched), then makes the column NOT NULL once no such card is left; a second
+    // run is a no-op. The model key keeps ON DELETE SET NULL throughout.
+    [PostgreSqlFact]
+    public async Task TheMigration_StopsOnACardWithoutAModel_ChangingNothing_AndGoesBackAndForth()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        AddSeed(db, seed);
+        var card = AddCard(db, seed, seed.Ravencia, "MZ095", "Siyah", "Kadın Siyah Etek");
+        await db.SaveChangesAsync();
+        var model = (await LinksAsync(db, seed.Tenant.Id))[card.Id]!.Value;
+        var migration = new MarketplaceHub.Infrastructure.Persistence.Migrations.ProductFamilyRequired();
+        Assert.All(migration.UpOperations.Concat(migration.DownOperations), operation => Assert.IsType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>(operation));
+        async Task RunAsync(IEnumerable<Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation> operations)
+        {
+            foreach (var operation in operations.Cast<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>()) await db.Database.ExecuteSqlRawAsync(operation.Sql);
+        }
+        async Task<(bool NotNull, string OnDelete, bool Check)> SchemaAsync() =>
+            (await db.Database.SqlQueryRaw<SchemaRow>("""
+                SELECT a.attnotnull AS "NotNull",
+                       (SELECT k.confdeltype::text FROM pg_constraint k WHERE k.conrelid = 'catalog.products'::regclass AND k.conname = 'FK_products_product_models_TenantId_FamilyId') AS "OnDelete",
+                       EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conrelid = 'catalog.products'::regclass AND k.conname = 'CK_products_FamilyId_NotNull') AS "Check"
+                FROM pg_attribute a WHERE a.attrelid = 'catalog.products'::regclass AND a.attname = 'FamilyId'
+                """).ToListAsync()).Select(x => (x.NotNull, x.OnDelete, x.Check)).Single();
+
+        Assert.Equal((true, "n", false), await SchemaAsync());
+        await RunAsync(migration.DownOperations);
+        Assert.Equal((false, "n", false), await SchemaAsync());
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {card.Id}""");
+
+        await db.Database.ExecuteSqlRawAsync("SAVEPOINT before_up");
+        var stopped = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => RunAsync(migration.UpOperations));
+        Assert.Equal(Npgsql.PostgresErrorCodes.CheckViolation, stopped.SqlState);
+        Assert.Contains("modeli olmayan 1 urun karti", stopped.MessageText, StringComparison.Ordinal);
+        Assert.Contains("Hicbir sey degistirilmedi", stopped.MessageText, StringComparison.Ordinal);
+        await db.Database.ExecuteSqlRawAsync("ROLLBACK TO SAVEPOINT before_up");
+        Assert.Equal((false, "n", false), await SchemaAsync());
+        Assert.Equal(1, (await db.Database.SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM catalog.products WHERE "Id" = {card.Id} AND "FamilyId" IS NULL""").ToListAsync()).Single());
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = {model} WHERE "Id" = {card.Id}""");
+        await RunAsync(migration.UpOperations);
+        Assert.Equal((true, "n", false), await SchemaAsync());
+        await RunAsync(migration.UpOperations);
+        Assert.Equal((true, "n", false), await SchemaAsync());
+        await transaction.RollbackAsync();
+    }
+
+    private sealed record SchemaRow(bool NotNull, string OnDelete, bool Check);
 
     private sealed class NoDashboard : IDashboardReadService
     {
