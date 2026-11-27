@@ -272,7 +272,7 @@ public sealed class QueueVisibilityPhase0Tests(ITestOutputHelper output)
     }
 
     // Review 27 Nov 2026 (2): the worst case the caps allow (6 h of history, 1024 spans per group, 512 full spells per bucket,
-    // 1024 no-room spells per lane, 60 000 run ends) stays far below a database round trip per call, and the run ends stay capped.
+    // 1024 no-room spells per lane, 60 000 run ends) reads no more spans per call than the caps allow, and the run ends stay capped.
     [Fact]
     public void TheLedgerAtItsCapsStaysCheapPerCall()
     {
@@ -301,21 +301,15 @@ public sealed class QueueVisibilityPhase0Tests(ITestOutputHelper output)
         var end = T0.AddSeconds(1_300 * 19);
         clock.Now = end;
         var query = Query(connection, "orders", end.AddHours(-5.9), end);
-        for (var warm = 0; warm < 20; warm++) ledger.Attribute(query);
-        var watch = Stopwatch.StartNew();
-        const int calls = 200;
-        for (var index = 0; index < calls; index++) ledger.Attribute(query);
-        var attribute = watch.Elapsed.TotalMilliseconds / calls;
         var waits = ledger.Attribute(query);
         Assert.True(waits.LockMs > 0 && waits.QuotaHoldMs is not null && waits.SlotMs is not null);
-        watch.Restart();
+        // Review of 27 Nov (C4): counted work instead of wall-clock time (a timed assertion flaked on a busy machine). An
+        // Attribute call reads at most the capped spans: 1 024 lock and 1 024 backoff spans of the group, 512 full spells of the
+        // one bucket, 1 024 no-room spells of each of the two lanes; every step after the read is linear in them.
+        output.WriteLine($"worst case: Attribute read {ledger.LastSpanCount} spans");
+        Assert.InRange(ledger.LastSpanCount, 1, JobWaitLedger.MaximumSpellsPerKey * 2 + 512 + (1_024 * 2));
         const int ends = 60_000;
         for (var index = 0; index < ends; index++) ledger.RunEnded(Guid.NewGuid(), end.AddMilliseconds(index));
-        var runEnded = watch.Elapsed.TotalMilliseconds / ends;
-        output.WriteLine($"worst case: Attribute {attribute * 1000:F0} µs, RunEnded {runEnded * 1000:F2} µs");
-        // ~0.7 ms in a Debug test run on a laptop at every cap at once (live: a few µs); 5 ms keeps CI machines from flaking.
-        Assert.True(attribute < 5, $"Attribute {attribute} ms");
-        Assert.True(runEnded < 1, $"RunEnded {runEnded} ms");
         Assert.True(ledger.RunEndCount <= JobWaitLedger.MaximumRunEnds);
     }
 

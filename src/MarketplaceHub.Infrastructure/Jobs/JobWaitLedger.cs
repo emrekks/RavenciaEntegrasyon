@@ -133,6 +133,9 @@ public sealed class JobWaitLedger(TimeProvider clock)
     }
 
     // The attempt's wait split by known cause (JobAttemptStart.Waits).
+    // The spans the last Attribute call read (its work is linear in them, a sort aside): a test measures the caps by it.
+    internal int LastSpanCount { get; private set; }
+
     public JobWaitBreakdown Attribute(JobWaitQuery query)
     {
         var notDue = NotDue(query);
@@ -172,6 +175,7 @@ public sealed class JobWaitLedger(TimeProvider clock)
             slotSpans = lanes.Count == 0 ? [] : slots(lanes, from, to);
         }
 
+        LastSpanCount = lockSpans.Count + backoffSpans.Count + holdSpans.Count + (slotSpans?.Count ?? 0);
         var lockSet = Merge(lockSpans, from, to);
         var backoffSet = Merge(backoffSpans, from, to);
         var holdSet = Merge(holdSpans, from, to);
