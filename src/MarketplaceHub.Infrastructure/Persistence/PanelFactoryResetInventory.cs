@@ -200,8 +200,8 @@ public static class PanelFactoryResetInventory
         new("catalog.product_attribute_assignments", "catalog.attribute_values", """DELETE FROM catalog.product_attribute_assignments WHERE "TenantId" = @tenant"""),
         new("catalog.products", "catalog.categories", """UPDATE catalog.products SET "CategoryId" = NULL WHERE "TenantId" = @tenant AND "CategoryId" IS NOT NULL"""),
         // KATALOG-14 D5 step B1: a model goes with its brand (ON DELETE CASCADE) but a card cannot lose its model any more
-        // (products.FamilyId NOT NULL; its key is ON DELETE SET NULL ("FamilyId"), which the NOT NULL column refuses with
-        // not_null_violation while the model still has a card). Before the brands go:
+        // (products.FamilyId NOT NULL; its key is ON DELETE RESTRICT since 20261127170948_ProductFamilyRestrict, which refuses
+        // the delete with restrict_violation while the model still has a card). Before the brands go:
         // - a model of its own ("#<card id>") and a model whose code no other model holds just drop their brand: the model, its
         //   fields (name, colour word, saved values), attributes and marketplace model links stay, its cards stay on it
         //   (review, 18 Nov 2026; before B1 such a model went with its brand and was opened again from its cards);

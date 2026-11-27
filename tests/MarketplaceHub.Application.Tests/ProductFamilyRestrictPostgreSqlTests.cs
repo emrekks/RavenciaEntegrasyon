@@ -139,6 +139,24 @@ public sealed class ProductFamilyRestrictPostgreSqlTests(PostgreSqlTenantIsolati
         await RunAsync(migration.UpOperations);
         Assert.Equal(restrict, await KeysAsync());
         Assert.Equal(rows, await RowsAsync());
+
+        // Half-runs (migration review): a Down stopped after its first step leaves a SET NULL key under the temporary name;
+        // Up drops it instead of validating and renaming it, and ends RESTRICT under the EF name. And the other way round.
+        var temporary = $"{ProductModelLinks.ProductFamilyKeyName}_restrict";
+        await RunAsync(migration.DownOperations.Take(2));
+        Assert.Equal($"{restrict},{temporary}:n:false:{setNull.Split(':')[^1]}", await KeysAsync());
+        await RunAsync(migration.UpOperations);
+        Assert.Equal(restrict, await KeysAsync());
+
+        await RunAsync(migration.DownOperations);
+        Assert.Equal(setNull, await KeysAsync());
+        await RunAsync(migration.UpOperations.Take(2));
+        Assert.Equal($"{setNull},{temporary}:r:false:", await KeysAsync());
+        await RunAsync(migration.DownOperations);
+        Assert.Equal(setNull, await KeysAsync());
+        await RunAsync(migration.UpOperations);
+        Assert.Equal(restrict, await KeysAsync());
+        Assert.Equal(rows, await RowsAsync());
         await transaction.RollbackAsync();
 
         async Task<string> RowsAsync() => string.Join(",", (await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.TenantId).Select(x => new { x.Id, x.FamilyId, x.Version }).ToListAsync()).Select(x => $"{x.Id}:{x.FamilyId}:{x.Version}"));

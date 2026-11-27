@@ -33,56 +33,36 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
         private const string NewKey = "FK_products_product_models_TenantId_FamilyId_restrict";
 
         /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.Sql("SET lock_timeout = '5s'", suppressTransaction: true);
-            migrationBuilder.Sql($$"""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{Key}}' AND contype = 'f' AND confdeltype = 'r')
-                       AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}') THEN
-                        ALTER TABLE catalog.products ADD CONSTRAINT "{{NewKey}}" FOREIGN KEY ("TenantId", "FamilyId") REFERENCES catalog.product_models ("TenantId", "Id") ON DELETE RESTRICT NOT VALID;
-                    END IF;
-                END $$
-                """, suppressTransaction: true);
-            migrationBuilder.Sql($$"""
-                DO $$
-                BEGIN
-                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}' AND NOT convalidated) THEN
-                        ALTER TABLE catalog.products VALIDATE CONSTRAINT "{{NewKey}}";
-                    END IF;
-                END $$
-                """, suppressTransaction: true);
-            migrationBuilder.Sql($$"""
-                DO $$
-                BEGIN
-                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}') THEN
-                        ALTER TABLE catalog.products DROP CONSTRAINT IF EXISTS "{{Key}}";
-                        ALTER TABLE catalog.products RENAME CONSTRAINT "{{NewKey}}" TO "{{Key}}";
-                    END IF;
-                END $$
-                """, suppressTransaction: true);
-            migrationBuilder.Sql("RESET lock_timeout", suppressTransaction: true);
-        }
+        protected override void Up(MigrationBuilder migrationBuilder) =>
+            SwapKey(migrationBuilder, 'r', "ON DELETE RESTRICT");
 
         // Back to ON DELETE SET NULL ("FamilyId"), the same three steps. No row changes.
         /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
+        protected override void Down(MigrationBuilder migrationBuilder) =>
+            SwapKey(migrationBuilder, 'n', "ON DELETE SET NULL (\"FamilyId\")");
+
+        // deleteRule is pg_constraint.confdeltype (r restrict, n set null). Every step checks the rule, not only the name: a
+        // temporary key left by a half-run of the other direction (Down after Up, or the reverse) holds the other rule and is
+        // dropped first, so it is never validated and renamed as if it were this direction's (migration review, 27 Nov 2026).
+        private static void SwapKey(MigrationBuilder migrationBuilder, char deleteRule, string onDelete)
         {
             migrationBuilder.Sql("SET lock_timeout = '5s'", suppressTransaction: true);
             migrationBuilder.Sql($$"""
                 DO $$
                 BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{Key}}' AND contype = 'f' AND confdeltype = 'n')
+                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}' AND confdeltype <> '{{deleteRule}}') THEN
+                        ALTER TABLE catalog.products DROP CONSTRAINT "{{NewKey}}";
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{Key}}' AND contype = 'f' AND confdeltype = '{{deleteRule}}')
                        AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}') THEN
-                        ALTER TABLE catalog.products ADD CONSTRAINT "{{NewKey}}" FOREIGN KEY ("TenantId", "FamilyId") REFERENCES catalog.product_models ("TenantId", "Id") ON DELETE SET NULL ("FamilyId") NOT VALID;
+                        ALTER TABLE catalog.products ADD CONSTRAINT "{{NewKey}}" FOREIGN KEY ("TenantId", "FamilyId") REFERENCES catalog.product_models ("TenantId", "Id") {{onDelete}} NOT VALID;
                     END IF;
                 END $$
                 """, suppressTransaction: true);
             migrationBuilder.Sql($$"""
                 DO $$
                 BEGIN
-                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}' AND NOT convalidated) THEN
+                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}' AND confdeltype = '{{deleteRule}}' AND NOT convalidated) THEN
                         ALTER TABLE catalog.products VALIDATE CONSTRAINT "{{NewKey}}";
                     END IF;
                 END $$
@@ -90,7 +70,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
             migrationBuilder.Sql($$"""
                 DO $$
                 BEGIN
-                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}') THEN
+                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'catalog.products'::regclass AND conname = '{{NewKey}}' AND confdeltype = '{{deleteRule}}' AND convalidated) THEN
                         ALTER TABLE catalog.products DROP CONSTRAINT IF EXISTS "{{Key}}";
                         ALTER TABLE catalog.products RENAME CONSTRAINT "{{NewKey}}" TO "{{Key}}";
                     END IF;

@@ -59,6 +59,13 @@ public static class ProductImportFailureReasonPolicy
             return new("postgres-reference-missing", "Bağlı kayıt bulunamadı", "Ürün kaydı eklenirken bağlı olması gereken bir kategori, özellik veya başka bir kayıt bulunamadı. Ayrıntıdaki tablo ve kısıt adı eksik bağlantıyı gösterir.", technicalDetail);
         }
 
+        // KATALOG-14 D5 (B1 review): products.FamilyId -> product_models is ON DELETE RESTRICT; a model that still has a colour
+        // card is refused (23001 restrict_violation), e.g. when another save added a card to it while the import removed it.
+        if (technicalDetail.Contains("sqlState=23001", StringComparison.OrdinalIgnoreCase))
+        {
+            return new("postgres-restrict-violation", "Kartı olan model silinemedi", "Ürün çekimi kartı kalmadığını düşündüğü bir modeli silmek istedi, ancak o sırada modele başka bir işlemle renk kartı eklendi; model korundu. Ürün çekimini yeniden çalıştırın. Ayrıntıdaki kısıt adı modeli bağlayan alanı gösterir.", technicalDetail);
+        }
+
         if (technicalDetail.Contains("sqlState=23502", StringComparison.OrdinalIgnoreCase))
         {
             return new("postgres-required-value-missing", "Zorunlu alan boş geldi", "Ürün çekiminde veritabanının zorunlu tuttuğu bir değer boş kaldı. Teknik ayrıntı eksik alanı gösterir.", technicalDetail);
