@@ -101,9 +101,10 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
             var opened = (await service.GetProductAsync(tenant.Id, card.Id, CancellationToken.None)).Value!;
             Assert.Equal(($"Kadın {colour} Yeni {Name}", "Model kaydının açıklaması"), (opened.Title, opened.Description));
         }
-        // A card changed after the model was saved: the cards' own values again.
+        // A card changed after the model was saved: KATALOG-14 D5 step B2a reads the description from the model whatever the
+        // cards' copies hold, so the record's text stays.
         await db.Products.Where(x => x.Id == zumrut.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAt, record.FieldsSavedAt!.Value.AddMinutes(1)));
-        Assert.Equal("Model açıklaması", (await service.GetProductAsync(tenant.Id, gri.Id, CancellationToken.None)).Value!.Description);
+        Assert.Equal("Model kaydının açıklaması", (await service.GetProductAsync(tenant.Id, gri.Id, CancellationToken.None)).Value!.Description);
         await transaction.RollbackAsync();
 
         async Task AssertCards(Func<string, string> title)
