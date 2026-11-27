@@ -626,7 +626,7 @@ export function JobsPage({ me }: { me: Me }) {
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key === 'ALL' || tab.key === category || categoryCounts.get(tab.key) !== 0).map(tab => ({ value: tab.key, label: tab.label, title: tab.title, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
         : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} onOpenJob={jobId => { setJobOverDialog(true); setSelectedId(jobId) }} /></Suspense>
-        : mainTab === 'queue' ? <Suspense fallback={<Busy text="Kuyruk ölçümleri yükleniyor…" />}><QueueQuotaView /></Suspense>
+        : mainTab === 'queue' ? <Suspense fallback={<Busy text="Kuyruk ölçümleri yükleniyor…" />}><QueueQuotaView onOpenJob={jobId => { setJobOverDialog(true); setSelectedId(jobId) }} /></Suspense>
         : mainTab === 'notifications' ? <Suspense fallback={<Busy text="Bildirimler yükleniyor…" />}><NotificationCenter /></Suspense> : <>
       <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
         <SearchField label="İşlem Ara" ariaLabel="Correlation ID ile işlem ara" placeholder="Correlation ID, iş numarası veya hata kodu" value={search} onChange={setSearch} />
