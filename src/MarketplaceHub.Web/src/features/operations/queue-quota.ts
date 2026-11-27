@@ -37,10 +37,10 @@ const laneLabels: Record<string, { label: string; hint: string; detail?: string 
   BACKGROUND: { label: 'Arka Plan', hint: 'Geçmiş taramaları, uzlaştırma, soru, finans, listeler.', detail: 'Zamanlanmış diğer okumalar: sipariş geçmişi taramaları (Hepsiburada, Pazarama ve PTT AVM dahil), uzlaştırmalar, müşteri soruları, finans, kategori ve marka listeleri, fatura süre takibi.' },
   // Queue phase 2: the dispatcher's lanes, one per kind of work (DispatcherLanes on the server). Their codes differ from the
   // earlier lanes' (job_attempts keeps both around a switch), and the Arka Plan code too.
-  KULLANICI: { label: 'Kullanıcı', hint: 'Panelden başlatılan tekil işler.', detail: 'Kullanıcının beklediği tekil işlemler: paket ve iade işlemleri, etiket, elle sipariş yenileme, fatura kesme ve iletme. Toplu işler Toplu İşler şeridinde çalışır.' },
+  KULLANICI: { label: 'Kullanıcı', hint: 'Panelden başlatılan tekil işler.', detail: 'Kullanıcının beklediği tekil işlemler: paket ve iade işlemleri, etiket, elle sipariş yenileme, fatura kesme ve iletme; iki slotu yalnız bunlarındır. Fiyat ve stok gönderimleri ile otomatik fatura durum kontrolleri Pazaryerine Yazma, sıfırlamalar ve toplu işler Toplu İşler şeridinde çalışır.' },
   WEBHOOK: { label: 'Webhook', hint: 'Pazaryerlerinden gelen anlık bildirimler.', detail: 'Pazaryerlerinin gönderdiği anlık bildirimler (webhook): kısa işler, kendi ayrılmış slotunda bekletilmez.' },
-  YAZMA: { label: 'Pazaryerine Yazma', hint: 'Fiyat ve stok, ürün, paket ve fatura iletimi.', detail: 'Otomatik pazaryerine yazmalar: fiyat ve stok gönderimi, ürün açma ve güncelleme, paket işlemleri, fatura kesme ve iletme. Panelden tek tek başlatılanlar Kullanıcı şeridinde.' },
-  TOPLU: { label: 'Toplu İşler', hint: 'Toplu fatura, toplu ürün güncelleme, dosya aktarımı.', detail: 'Panelden toplu başlatılan işler (toplu fatura, toplu ürün güncelleme ve yayın) ve dosyadan içe aktarma: payı kadar slotu önce alır, tekil kullanıcı işlerinin önüne geçmez.' },
+  YAZMA: { label: 'Pazaryerine Yazma', hint: 'Fiyat ve stok, ürün, paket ve fatura iletimi.', detail: 'Pazaryerine yazmalar: fiyat ve stok gönderimi (panelden toplu yayınlananlar dahil), ürün açma ve güncelleme, otomatik paket ve fatura işlemleri, fatura ve sipariş durumunun geri okunması. Panelden tek tek başlatılan paket ve fatura işlemleri Kullanıcı şeridinde.' },
+  TOPLU: { label: 'Toplu İşler', hint: 'Toplu fatura ve ürün işleri, dosya aktarımı, sıfırlama.', detail: 'Panelden toplu başlatılan işler (toplu fatura, toplu ürün güncelleme ve yayın), dosyadan içe aktarma, panel ve bağlantı sıfırlaması: payı kadar slotu önce alır, tekil kullanıcı işlerinin önüne geçmez.' },
   ACIL: { label: 'Elle Başlatılan Okuma', hint: 'Elle başlatılan kısa okumalar.', detail: 'Panelden elle başlatılan diğer kısa okumalar (sipariş geçmişi taraması, ürün veya iade yenileme gibi). Webhooklar ve pazaryerine yazmalar kendi şeritlerinde.' },
   SIPARIS_OKUMA: { label: 'Sipariş Okuma', hint: 'Bütün pazaryerlerinin yeni sipariş ve geçmiş okumaları.', detail: 'Trendyol, Hepsiburada, N11, Pazarama, PTT AVM ve Shopify yeni sipariş okumaları ve sipariş geçmişi taramaları.' },
   DURUM_TARAMASI: { label: 'Durum Taraması', hint: 'Bütün pazaryerlerinin açık sipariş durumları.', detail: 'Açık siparişlerin durumlarının yeniden okunması, bütün pazaryerleri.' },
@@ -57,7 +57,7 @@ export function isDispatcherModel(lanes: readonly LaneMetric[] | null | undefine
   return (lanes ?? []).some(lane => lane.model === 'dispatcher')
 }
 
-/** A dispatcher lane's slots in words: reserved ("Ayrılmış 1": Kullanıcı, Webhook, Pazaryerine Yazma), a minimum ("Asgari 3":
+/** A dispatcher lane's slots in words: reserved ("Ayrılmış 2": Kullanıcı; "Ayrılmış 1": Webhook, Pazaryerine Yazma), a minimum ("Asgari 3":
  * Sipariş Okuma, Durum Taraması: the same rule, never lent), a share of the shared slots ("Pay 2": served first on that many
  * while it has work) or both ("Ayrılmış 1 · Pay 1"). Null with the earlier lane models (they do not send the figures). */
 export function laneSlotKind(lane: LaneMetric): { text: string; title: string; stacked?: boolean } | null {

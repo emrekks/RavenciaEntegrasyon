@@ -460,7 +460,7 @@ const laneMetrics = [
 const dispatcherLane = (lane, reserved, share, values, platforms = []) =>
   ({ lane, slots: reserved + share, reserved, share, platforms, model: 'dispatcher', queued: platforms.reduce((sum, row) => sum + row.queued, 0), running: platforms.reduce((sum, row) => sum + row.running, 0), ...values })
 export const dispatcherLaneMetrics = [
-  dispatcherLane('KULLANICI', 1, 1, { attempts: 64, averageWaitSeconds: 0.4, p95WaitSeconds: 1.2, ...laneWait(5) }),
+  dispatcherLane('KULLANICI', 2, 0, { attempts: 64, averageWaitSeconds: 0.4, p95WaitSeconds: 1.2, ...laneWait(5) }),
   dispatcherLane('WEBHOOK', 1, 0, { attempts: 150, averageWaitSeconds: 0.1, p95WaitSeconds: 0.4, ...laneWait(5) }, [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }]),
   dispatcherLane('YAZMA', 1, 1, { attempts: 90, averageWaitSeconds: 0.3, p95WaitSeconds: 2.1, ...laneWait(60) }),
   dispatcherLane('ACIL', 0, 0, { attempts: 30, averageWaitSeconds: 0.2, p95WaitSeconds: 0.8, ...laneWait(60) }),
