@@ -709,9 +709,15 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
   Excel ve editör aynı çıktıyı verir (`StaleCardCopyReadersPostgreSqlTests`).
 
 **Model kaydı aşamaları (KATALOG-14)**: D1–D4, D5 A ve D5 B canlıda (`a9b91498e`; model tek kaynak, kopyalar ayna). Kalanlar
-plandır, yapılmadı: **B1** kartta `FamilyId` NOT NULL (migration hazır, derlenmiyor:
-`Persistence/MigrationsPrepared/ProductFamilyRequired.cs.txt`), **B2** kopyaların yazılmasını durdurmak, **C** kart
-sütunlarını düşürmek. C geri alınamaz ve sahibin ayrı onayını ister.
+plandır, yapılmadı: **B2** kopyaların yazılmasını durdurmak, **C** kart sütunlarını düşürmek. C geri alınamaz ve sahibin
+ayrı onayını ister.
+**B1 (her kartın bir modeli var)**: kart kodlu ise markasının o koddaki modeline, kodsuzsa (taslak dahil) kendi modeline
+(`#<kart kimliği>`) bağlıdır. Yeni kart kaydedilirken modeli aynı kayıtta, karttan önce yazılır; kodu silinen kart doğrudan
+kendi modeline geçer (`ProductModelLinks.GiveNewCardsModels`, `GiveOwnModelsAsync`). Veritabanında
+`catalog.products.FamilyId` NOT NULL (`20261127111010_ProductFamilyRequired`); model bağı `ON DELETE SET NULL ("FamilyId")`
+olarak kaldı, yani kartı olan bir model silinemez. Ürün silme, Bağlantıyı Sil, Tam Sıfırlama ve Ürünler sıfırlaması önce
+kartları siler; Marka Listesi sıfırlaması kartları önce modelden ayırır (`PanelFactoryResetInventory.Detaches`). Migration
+modelsiz kart bulursa sayısını yazıp hiçbir şeyi değiştirmeden durur (`RUNBOOK-GERI-ALMA.md`).
 **B2 sırası**: B2a (okuyucular modele, yukarıda) önce tek başına canlıya çıkar; B2b (yazmayı bırakmak) ancak B2a canlıda
 oturduktan sonra gelir, çünkü B2b geri alınırsa dönülen sürüm kopyalardan okumamalıdır. B2b'nin işi: bugün kart sütunu
 modele giden **yazma kanalıdır** (yazıcı kart sütununu değiştirir, `ProductModelLinks` kaydetme kancası değişikliği okuyup

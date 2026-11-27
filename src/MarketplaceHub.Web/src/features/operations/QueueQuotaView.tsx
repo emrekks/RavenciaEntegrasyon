@@ -1,6 +1,6 @@
 import type { ApiAnswer } from '../../shared/api/api-answer'
 import { cardCountText } from '../../shared/metric-value'
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
 import { UiIcon } from '../../shared/components'
@@ -23,6 +23,8 @@ import { queryKeys } from '../../shared/api/query-keys'
 // slot), the jobs of the window by state and by type, and how much of each store's marketplace quota the last hour
 // used. Read-only; polled every 30 seconds while open.
 const pollMs = 30_000
+// The Hata window loads on its first open (its own chunk), so the view stays light.
+const QueueFailuresDialog = lazy(() => import('./QueueFailuresDialog').then(module => ({ default: module.QueueFailuresDialog })))
 
 function UsageBar({ used, limit, label }: { used: number; limit: number; label: string }) {
   const percent = usagePercent(used, limit)
@@ -31,7 +33,7 @@ function UsageBar({ used, limit, label }: { used: number; limit: number; label: 
   </span>
 }
 
-export function QueueQuotaView() {
+export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => void } = {}) {
   const [hours, setHours] = useState<QueueWindow>('24')
   const [platformTab, setPlatformTab] = useState('ALL')
   const since = useMemo(() => windowSince(hours), [hours])
@@ -51,6 +53,9 @@ export function QueueQuotaView() {
   const states = counts.data ? countsByStatus(counts.data) : []
   const windowLabel = queueWindowOptions.find(option => option.value === hours)?.label ?? ''
   const number = (value: number | undefined) => cardCountText(value)
+  // The Hata window reads the attempts now; the table is read again with it, so the number and the window's total agree.
+  const [failuresOf, setFailuresOf] = useState<string | null>(null)
+  const openFailures = (jobType: string) => { setFailuresOf(jobType); void metrics.refetch() }
 
   return <div className="qq">
     <div className="jobs-reference-toolbar qq-toolbar">
@@ -122,12 +127,15 @@ export function QueueQuotaView() {
           <td className="is-num" data-label="Bekleyen">{row.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Çalışan">{row.running.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{row.attempts.toLocaleString('tr-TR')}</td>
-          <td className={`is-num${row.failed > 0 ? ' is-error' : ''}`} data-label="Hata">{row.failed.toLocaleString('tr-TR')}</td>
+          <td className={`is-num${row.failed > 0 ? ' is-error' : ''}`} data-label="Hata">{row.failed > 0
+            ? <button type="button" className="qq-fail-link" aria-haspopup="dialog" aria-label={`${jobTitle(row.jobType)}: ${row.failed.toLocaleString('tr-TR')} hatayı göster`} onClick={() => openFailures(row.jobType)}>{row.failed.toLocaleString('tr-TR')}</button>
+            : row.failed.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Ort. Bekleme">{formatSeconds(row.averageWaitSeconds)}</td>
           <td className="is-num" data-label="Ort. Süre">{formatSeconds(row.averageDurationSeconds)}</td>
         </tr>)}</tbody>
       </table></div></>}
     </section>
+    {failuresOf && <Suspense fallback={null}><QueueFailuresDialog jobType={failuresOf} hours={hours} onClose={() => setFailuresOf(null)} onOpenJob={onOpenJob} /></Suspense>}
   </div>
 }
 

@@ -53,6 +53,15 @@ public static class JobEndpoints
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.MetricsAsync(tenant.TenantId, TimeSpan.FromHours(Math.Clamp(hours ?? 24, 1, 168)), Platforms(platform, platforms), http.RequestAborted))
                 : Unauthorized(http)).Produces<IReadOnlyList<JobTypeMetricView>>();
+        // The Hata cell of one job type behind its number: the failed attempts /metrics counts for the same hours and
+        // platforms, grouped by reason, and one page of them (page, pageSize 1-200). jobType is required.
+        api.MapGet("/metrics/failures", async (HttpContext http, IJobOperationsService service, string? jobType, int? hours, string? platforms, int? page, int? pageSize) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (string.IsNullOrWhiteSpace(jobType)) throw new ArgumentException("jobType zorunludur.");
+            var request = NumberedPageRequest.From(page, pageSize);
+            return Results.Ok(await service.FailuresAsync(tenant.TenantId, jobType, TimeSpan.FromHours(Math.Clamp(hours ?? 24, 1, 168)), Platforms(null, platforms), request.Page, request.PageSize, http.RequestAborted));
+        }).Produces<JobTypeFailuresView>();
         api.MapGet("/metrics/lanes", async (HttpContext http, IQueueHealthService service, int? hours) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.LanesAsync(tenant.TenantId, TimeSpan.FromHours(Math.Clamp(hours ?? 24, 1, 168)), http.RequestAborted))

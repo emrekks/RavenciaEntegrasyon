@@ -1,0 +1,38 @@
+/* İşlem Takibi › Kuyruk ve Kota › Hata window (QueueFailuresDialog.tsx); the table base is monitor-detail.css (md-*). */
+.rr-layer.rr-layer .qf-lead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.rr-layer.rr-layer .qf-lead strong { color: var(--rv-color-ink); font-weight: 600; }
+.rr-layer.rr-layer .qf-part { display: grid; gap: 8px; min-width: 0; }
+.rr-layer.rr-layer .qf-part + .qf-part { margin-top: 16px; }
+.rr-layer.rr-layer .qf-part h3 { margin: 0; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.rr-layer.rr-layer .qf-tbl th.qf-num, .rr-layer.rr-layer .qf-tbl td.qf-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rr-layer.rr-layer .qf-tbl td.qf-num b { color: var(--rv-color-danger); font-weight: 650; }
+.rr-layer.rr-layer .qf-tbl td.qf-time, .rr-layer.rr-layer .qf-tbl td.qf-outcome { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rr-layer.rr-layer .qf-tbl td.qf-store { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rr-layer.rr-layer .qf-tbl td.qf-reason { min-width: 260px; }
+.rr-layer.rr-layer .qf-reason > span { display: block; color: var(--rv-color-ink); }
+.rr-layer.rr-layer .qf-reason small { display: block; margin-top: 2px; color: var(--rr-muted); font-size: 11.5px; }
+.rr-layer.rr-layer .qf-reason .qf-code { font-family: var(--rv-font-mono); overflow-wrap: anywhere; }
+.rr-layer.rr-layer .qf-reason .qf-hint { color: var(--rv-color-success); }
+.rr-layer.rr-layer .qf-note { margin: 0; font-size: 12.5px; }
+.rr-layer.rr-layer .qf-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid var(--rr-line); border-radius: 7px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.rr-layer.rr-layer .qf-badge.is-ok { color: var(--rv-color-success); background: var(--rv-color-success-soft); border-color: transparent; }
+.rr-layer.rr-layer .qf-badge.is-bad { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: transparent; }
+.rr-layer.rr-layer .qf-badge.is-wait { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: transparent; }
+.rr-layer.rr-layer .qf-badge.is-muted { color: var(--rr-muted); }
+
+/* Phones: monitor-detail.css turns the rows into cards; here each value carries its label, the reason takes the full
+   width and the time pairs sit side by side. */
+@media (max-width: 760px) {
+  .rr-layer.rr-layer .qf-tbl td[data-label] { grid-column: auto; }
+  .rr-layer.rr-layer .qf-tbl td.qf-reason { grid-column: 1 / -1; min-width: 0; }
+  .rr-layer.rr-layer .qf-tbl td.qf-num { text-align: left; }
+  .rr-layer.rr-layer .qf-tbl td.qf-store { max-width: none; white-space: normal; }
+  .rr-layer.rr-layer .qf-tbl td.qf-time, .rr-layer.rr-layer .qf-tbl td.qf-outcome { white-space: normal; }
+  .rr-layer.rr-layer .qf-tbl td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 1px; color: var(--rr-muted); font-size: 12px; font-weight: 500; }
+  .rr-layer.rr-layer .qf-groups td.qf-reason { order: -1; }
+  .rr-layer.rr-layer .qf-attempts td.qf-reason { order: 1; }
+  /* The pager's page buttons and Sayfaya Git take two lines rather than run past the window (outweighs the phone pager
+     rule of design-step2.css, which keeps the bare pager on one line). */
+  .rr-layer.rr-layer .qf-modal .md-foot { flex-direction: column; align-items: stretch; }
+  .rr-layer.rr-layer .qf-modal.qf-modal .md-foot .rr-pager.rr-pager-bare { flex-wrap: wrap; justify-content: flex-start; gap: 8px; min-width: 0; max-width: 100%; }
+}
