@@ -11148,6 +11148,99 @@
         }
       }
     },
+    "/api/v1/jobs/metrics/failures": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJobsMetricsFailures",
+        "parameters": [
+          {
+            "name": "jobType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "platforms",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "1-100000; outside it the request is refused (400). Default 1.",
+            "schema": {
+              "maximum": 100000,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobTypeFailuresView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        },
+        "x-paging": "page+pageSize"
+      }
+    },
     "/api/v1/jobs/metrics/lanes": {
       "get": {
         "tags": [
@@ -31801,6 +31894,148 @@
                 "$ref": "#/components/schemas/JobModelGroupView"
               }
             ]
+          }
+        }
+      },
+      "JobTypeFailureGroupView": {
+        "required": [
+          "count",
+          "firstSeen",
+          "lastSeen",
+          "transient"
+        ],
+        "type": "object",
+        "properties": {
+          "errorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "firstSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transient": {
+            "type": "boolean"
+          }
+        }
+      },
+      "JobTypeFailuresView": {
+        "required": [
+          "jobType",
+          "totalCount",
+          "groupCount",
+          "groups",
+          "items",
+          "page",
+          "pageSize"
+        ],
+        "type": "object",
+        "properties": {
+          "jobType": {
+            "type": "string"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "groupCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobTypeFailureGroupView"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobTypeFailureView"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "JobTypeFailureView": {
+        "required": [
+          "jobId",
+          "attemptId",
+          "attemptedAt",
+          "attemptNumber",
+          "jobStatus",
+          "transient"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "storeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "platformCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobStatus": {
+            "type": "string"
+          },
+          "transient": {
+            "type": "boolean"
           }
         }
       },

@@ -122,6 +122,7 @@ public static class PagingContract
         ["/api/v1/price-stock-monitor/{connectionId}/failed-pushes"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
         ["/api/v1/price-stock-monitor/{connectionId}/lost-links"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
         ["/api/v1/api-health-signals/{connectionId}/attempts"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
+        ["/api/v1/jobs/metrics/failures"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
         // 3. pageNumber + pageSize, also the cursor (limit read as pageSize is).
         ["/api/v1/invoice-workspace/page"] = WithCursor(PageNumberPageSizeWithCursor, ["pageNumber", "pageSize"],
             ("pageNumber", new(1, null, 1, Refused: false)),
