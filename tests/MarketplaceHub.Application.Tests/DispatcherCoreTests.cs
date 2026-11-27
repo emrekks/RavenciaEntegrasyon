@@ -15,12 +15,12 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
     // arka-plan, ilk-cekim.
     private static DispatcherCore.LaneConfig[] DefaultLanes() =>
     [
-        new("kullanici", 1, 1), new("webhook", 1, 0), new("yazma", 1, 1), new("acil", 0, 0), new("siparis-okuma", 3, 0), new("durum-taramasi", 2, 0),
+        new("kullanici", 2, 0), new("webhook", 1, 0), new("yazma", 1, 1), new("acil", 0, 0), new("siparis-okuma", 3, 0), new("durum-taramasi", 2, 0),
         new("iade", 0, 2), new("toplu", 0, 2, Bulk: true), new("katalog", 0, 2, Bulk: true), new("arka-plan", 0, 2, Bulk: true), new("ilk-cekim", 0, 2, Bulk: true)
     ];
 
     [Fact]
-    public void TheDefaultLanesAddUpToTwentySlotsWithTwelveShared()
+    public void TheDefaultLanesAddUpToTwentySlotsWithElevenShared()
     {
         var settings = DispatcherSettings.Default;
         Assert.Equal(DefaultLanes().Select(lane => (lane.Name, lane.Reserved, lane.Share)),
@@ -28,7 +28,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         var core = new DispatcherCore(DefaultLanes());
         Assert.Equal(20, core.Total);
         Assert.Equal(20, settings.Total);
-        Assert.Equal(12, core.SharedSlots);
+        Assert.Equal(11, core.SharedSlots);
     }
 
     // Every job type at every priority belongs to exactly one dispatcher lane, the one LaneFor names, and the lease query's cap
@@ -58,6 +58,18 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor("IMPORT_APPLY", 0));
         Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor(InvoicingJobTypes.InvoiceSubmit, JobPriorityPolicy.BulkUserAction));
         Assert.Equal(DispatcherLanes.User, DispatcherLanes.LaneFor(InvoicingJobTypes.InvoiceSubmit, JobPriorityPolicy.UserAction));
+        // Second correctness review: -3 work no user waits on as a single click leaves kullanici (priority unchanged).
+        Assert.Equal(DispatcherLanes.User, DispatcherLanes.LaneFor(MarketplaceJobTypes.ShipmentAction, JobPriorityPolicy.UserAction));
+        Assert.Equal(DispatcherLanes.Writes, DispatcherLanes.LaneFor(MarketplaceJobTypes.PriceInventorySync, JobPriorityPolicy.UserAction));
+        Assert.Equal(DispatcherLanes.Writes, DispatcherLanes.LaneFor(InvoicingJobTypes.InvoiceReconcile, JobPriorityPolicy.UserAction));
+        Assert.Equal(DispatcherLanes.Writes, DispatcherLanes.LaneFor(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation, JobPriorityPolicy.UserAction));
+        Assert.Equal(DispatcherLanes.Writes, DispatcherLanes.LaneFor(MarketplaceJobTypes.ExternalEffectReconcile, JobPriorityPolicy.UserAction));
+        Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor(PanelJobTypes.FactoryReset, JobPriorityPolicy.UserAction));
+        Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor(MarketplaceJobTypes.ConnectionFullReset, JobPriorityPolicy.UserAction));
+        // Under the earlier lane models nothing moves: the flexible user lane still takes them all.
+        var flexibleUser = WorkerLanes.All().First(lane => lane.Name == "user");
+        Assert.True(flexibleUser.Takes(MarketplaceJobTypes.PriceInventorySync, JobPriorityPolicy.UserAction));
+        Assert.True(flexibleUser.Takes(PanelJobTypes.FactoryReset, JobPriorityPolicy.UserAction));
     }
 
     // The worker runs the model its settings name and the api shows that model's lanes: a switch changes both files (the
@@ -79,9 +91,9 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
     public void ALaneUsesItsReservationFirstAndAnotherLaneNeverTakesIt()
     {
         var lanes = DefaultLanes();
-        // Catalogue and background flood the shared slots: twelve jobs of katalog and arka-plan run.
+        // Catalogue and background flood the shared slots: eleven jobs of katalog and arka-plan run.
         var running = new int[11];
-        running[8] = 8;
+        running[8] = 7;
         running[9] = 4;
         var all = Enumerable.Repeat(true, 11).ToArray();
         // No shared slot is free: only lanes with a free reservation may start, in lane order.
@@ -99,6 +111,31 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         Assert.Equal(4, DispatcherCore.Decide(lanes, running, ordersOnly, false));
         // One lease at a time.
         Assert.Equal(-1, DispatcherCore.Decide(lanes, running, all, leaseInFlight: true));
+    }
+
+    // Second correctness review: a safety tick not below the watchdog's stale limit would restart an idle worker; it is lowered.
+    [Fact]
+    public void ASafetyTickNotBelowTheWatchdogsLimitIsLowered()
+    {
+        var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        Assert.Equal(TimeSpan.FromSeconds(15), MarketplaceHub.Worker.Worker.DispatcherSettingsChecked(DispatcherSettings.Default, TimeSpan.FromSeconds(120), logger).SafetyTick);
+        Assert.Equal(TimeSpan.FromSeconds(10), MarketplaceHub.Worker.Worker.DispatcherSettingsChecked(DispatcherSettings.Default with { SafetyTick = TimeSpan.FromSeconds(30) }, TimeSpan.FromSeconds(30), logger).SafetyTick);
+    }
+
+    // Second correctness review (M2): 19 of the 20 slots busy, one of them a single user action: the next single user action
+    // takes kullanici's second reserved slot, whatever else wants a slot.
+    [Fact]
+    public void ASingleUserActionGetsKullanicisSecondReservedSlotWithNineteenBusy()
+    {
+        var lanes = DefaultLanes();
+        var running = new int[11];
+        running[0] = 1;                  // kullanici: one single action
+        running[1] = 1; running[2] = 1;  // webhook, yazma: their reserved slots
+        running[4] = 3; running[5] = 2;  // siparis-okuma, durum-taramasi: their minimums
+        running[2] += 1; running[6] = 2; running[7] = 2; running[8] = 2; running[9] = 2; running[10] = 2; // the 11 shared slots
+        Assert.Equal(19, running.Sum());
+        var all = Enumerable.Repeat(true, 11).ToArray();
+        Assert.Equal(0, DispatcherCore.Decide(lanes, running, all, false));
     }
 
     [Fact]
@@ -231,8 +268,13 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
     //   - the dispatcher alone reaches a wait within a bounded number of steps (no busy loop: leases per event bounded);
     //   - the decision always picks a lane of the lowest tier among those that may lease;
     //   - every queued job runs in the end with no signal at all (jobs ending and the safety tick only).
+    // Second correctness review (28 Nov): lane G is a bulk lane, so Decide's four tiers (below the reservation, below the share,
+    // beyond it for short work, beyond it for bulk work) are all reachable and checked. The deferral needs no model of its own:
+    // to the core a deferred job is a job held by its own store (the census names that store, HeldBy), the case the store-held
+    // census below explores; its predicate itself is the lease's and the census's SQL, checked against PostgreSQL in
+    // DispatcherPostgreSqlTests.
     private const int Cap = 1;
-    private static readonly DispatcherCore.LaneConfig[] SmallLanes = [new("U", 1, 0), new("O", 1, 0), new("C", 0, 1), new("G", 0, 1)];
+    private static readonly DispatcherCore.LaneConfig[] SmallLanes = [new("U", 1, 0), new("O", 1, 0), new("C", 0, 1), new("G", 0, 1, Bulk: true)];
     private static readonly Dictionary<char, Guid> Stores = new() { ['a'] = new Guid("00000000-0000-0000-0000-00000000000a"), ['b'] = new Guid("00000000-0000-0000-0000-00000000000b") };
     private static bool Exempt(int lane) => lane == 0;
 
@@ -442,7 +484,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         }
         if (state.LeaseLane < 0 && core.Next(state.Now) is var chosen and >= 0)
         {
-            int Tier(int lane) => core.Running(lane) < SmallLanes[lane].Reserved ? 0 : core.Running(lane) - SmallLanes[lane].Reserved < SmallLanes[lane].Share ? 1 : 2;
+            int Tier(int lane) => core.Running(lane) < SmallLanes[lane].Reserved ? 0 : core.Running(lane) - SmallLanes[lane].Reserved < SmallLanes[lane].Share ? 1 : SmallLanes[lane].Bulk ? 3 : 2;
             for (var lane = 0; lane < SmallLanes.Length; lane++)
                 if (core.Hint(lane) == DispatcherCore.LaneHint.Ready && !core.BackingOff(lane, state.Now) && core.HasRoom(lane))
                     Assert.True(Tier(chosen) <= Tier(lane), $"lane {chosen} chosen over lane {lane} of a lower tier: {where}");

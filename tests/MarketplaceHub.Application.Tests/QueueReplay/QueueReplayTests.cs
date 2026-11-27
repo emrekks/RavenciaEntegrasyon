@@ -169,14 +169,29 @@ public sealed class QueueReplayTests(ITestOutputHelper output)
     private static readonly Known OrderReadsBehindRunningReconciliations =
         new(DispatcherLanes.OrderReads, TimeSpan.FromSeconds(15), "behind a reconciliation of the same store already running in its lock group");
 
+    // Known cells of the second correctness review (28 Nov, M2): kullanici's second reserved slot came from the shared slots and
+    // sits idle in a burst no user acts in. At the 300-job startup the status scans' p95 rises from ~44 to ~63 s (target 300 s)
+    // and the return reads' from ~62 to ~70 s; in the 300-invoice bulk run the bulk work's p50 by ~4 s. Taking the slot from
+    // yazma's reservation instead kept these cells but let writes wait ~15 minutes behind long background reads
+    // (LaneTableVariants, ASinglePackageAction...), so the write guarantee was kept.
+    private static readonly Known[] IdleSecondUserSlot =
+    [
+        // the max too rises (~79 -> ~91 s, fresh seeds ~74 -> ~87 s), far below the 300 s target: not compared
+        new(DispatcherLanes.StatusScans, TimeSpan.FromSeconds(75), "kullanici's second reserved slot idle during the startup burst", CheckMax: false),
+        new(DispatcherLanes.Returns, TimeSpan.FromSeconds(80), "kullanici's second reserved slot idle during the startup burst")
+    ];
+
+    private static readonly Known BulkBehindIdleSecondUserSlot =
+        new(DispatcherLanes.Bulk, TimeSpan.FromSeconds(70), "kullanici's second reserved slot idle during a bulk invoice run");
+
     [Fact]
     public Task AllProductsAtOnce() => AcceptAsync(ReplayStreams.AllProducts, known: OrderReadsBehindRunningReconciliations);
     [Fact] public Task SixtyStores() => AcceptAsync(ReplayStreams.SixtyStores);
     [Fact] public Task QuotaHeldTrendyolReads() => AcceptAsync(ReplayStreams.QuotaHeld);
-    [Fact] public Task WorkerStartsWithThreeHundredDueJobs() => AcceptAsync(ReplayStreams.StartBacklog);
+    [Fact] public Task WorkerStartsWithThreeHundredDueJobs() => AcceptAsync(ReplayStreams.StartBacklog, known: IdleSecondUserSlot);
     [Fact] public Task RestartsEveryThreeHours() => AcceptAsync(ReplayStreams.Restarts);
     [Fact] public Task MarketplaceOutageWithPilingRetries() => AcceptAsync(ReplayStreams.Outage);
-    [Fact] public Task BulkInvoicesWithSingleActions() => AcceptAsync(ReplayStreams.BulkInvoices);
+    [Fact] public Task BulkInvoicesWithSingleActions() => AcceptAsync(ReplayStreams.BulkInvoices, known: BulkBehindIdleSecondUserSlot);
     [Fact] public Task BulkProductUpdate() => AcceptAsync(ReplayStreams.BulkPublish);
     // The store's two 8.5-minute reference reads take two of its capped slots (under cap 2 its reconciliations waited ~500 s for
     // the first one to end; under the default cap 3 they take the third). No other store's work may be worse.
@@ -205,6 +220,27 @@ public sealed class QueueReplayTests(ITestOutputHelper output)
         // by CapVariants. Every other attempt is compared.
         AcceptAsync(ReplayStreams.StoreFlood, attempt => !(attempt.Connection == "c0" && DispatcherSettings.Default.IsCapped(attempt.WorkType)));
 
+    // Second correctness review (28 Nov, M2): with 300 per-product price writes, a factory reset and invoice read-backs queued at
+    // priority -3 and the shared slots full, a single package action still starts within 5 s (kullanici: 2 reserved slots, and
+    // the automatic -3 work leased by yazma and toplu). Today's user lane shares its two slots with all of them.
+    [Fact]
+    public async Task ASinglePackageActionStartsWithinFiveSecondsBehindAutomaticUserPriorityWork()
+    {
+        var comparison = await CompareAsync(ReplayStreams.UserActionsBehindAutomaticUserWork, ReplayStreams.Seeds);
+        Report(Table(comparison));
+        string Worst(ReplayResult result) => $"{result.Attempts.Where(attempt => attempt.JobType == MarketplaceJobTypes.ShipmentAction).Max(attempt => attempt.StartDelay).TotalSeconds:0.0}";
+        Report($"Paket işlemi en uzun bekleme (tohum başına): bugün {string.Join(", ", comparison.Current.Select(Worst))} sn; dağıtıcı {string.Join(", ", comparison.Dispatcher.Select(Worst))} sn; dağıtıcıda en çok eşzamanlı {string.Join(", ", comparison.Dispatcher.Select(result => result.MaxRunning))}\n");
+        foreach (var result in comparison.Dispatcher)
+        {
+            Assert.Equal(0, result.NotFinished);
+            // Every shared slot (11) and yazma's reserved one run the automatic and background work at once: the only free
+            // slots left are the reserved ones of kullanici and of lanes with no work now (they are never lent).
+            Assert.True(result.MaxRunning >= 14, $"the stream did not fill the shared slots ({result.MaxRunning} at most)");
+            Assert.All(result.Attempts.Where(attempt => attempt.JobType == MarketplaceJobTypes.ShipmentAction),
+                attempt => Assert.True(attempt.StartDelay <= TimeSpan.FromSeconds(5), $"a package action waited {attempt.StartDelay.TotalSeconds:0.0} s"));
+        }
+    }
+
     // Second methodology review (28 Nov): the lane table was tuned on ReplayStreams.Seeds, so the acceptance runs once more on
     // five seeds never used while tuning (ReplayStreams.FreshSeeds), with the same rules and known cells and no retuning after.
     [Fact]
@@ -216,10 +252,10 @@ public sealed class QueueReplayTests(ITestOutputHelper output)
             (ReplayStreams.AllProducts, null, [OrderReadsBehindRunningReconciliations, StatusScansOnFreshSeeds]),
             (ReplayStreams.SixtyStores, null, []),
             (ReplayStreams.QuotaHeld, null, []),
-            (ReplayStreams.StartBacklog, null, []),
+            (ReplayStreams.StartBacklog, null, IdleSecondUserSlot),
             (ReplayStreams.Restarts, null, []),
             (ReplayStreams.Outage, null, []),
-            (ReplayStreams.BulkInvoices, null, []),
+            (ReplayStreams.BulkInvoices, null, [BulkBehindIdleSecondUserSlot]),
             (ReplayStreams.BulkPublish, null, []),
             (ReplayStreams.LongReferenceReads, NotCappedOwnWorkOf("c3"), []),
             (ReplayStreams.TwoInitialImports, NotCappedOwnWorkOf("n0", "n1"), []),
@@ -237,9 +273,9 @@ public sealed class QueueReplayTests(ITestOutputHelper output)
 
     // Found by the fresh-seed acceptance (28 Nov), admitted as a known cell instead of retuning: in Tüm Ürünleri Çek the status
     // scans' p95 is 4.45 s against 3.00 s today (max 30.6 s against 55.3 s); a status scan of a store waits for that store's
-    // order read first (deferral). Bound 6 s.
+    // order read first (deferral). Bound 8 s (6 s before kullanici took its second reserved slot from the shared ones).
     private static readonly Known StatusScansOnFreshSeeds =
-        new(DispatcherLanes.StatusScans, TimeSpan.FromSeconds(6), "a status scan waits for its store's queued order read (deferral); found on fresh seeds");
+        new(DispatcherLanes.StatusScans, TimeSpan.FromSeconds(8), "a status scan waits for its store's queued order read (deferral); found on fresh seeds");
 
     // Ten per cent of the notifications (job and "freed") lost, every one delayed 50 ms. A user action whose notification was
     // lost is found by the 5-second short safety tick (today's model polls and does not lose it): bound 5 s.
@@ -263,7 +299,7 @@ public sealed class QueueReplayTests(ITestOutputHelper output)
             // between them) serially, while today's 220 loops lease in parallel: status scans start a few seconds later (bound 60 s,
             // the flip's order-read trigger), their max does not grow.
             Known[] known = stream == ReplayStreams.AllProducts ? [OrderReadsBehindRunningReconciliations]
-                : stream == ReplayStreams.StartBacklog ? [new Known(DispatcherLanes.StatusScans, TimeSpan.FromSeconds(60), "one lease at a time at 40 ms per lease")]
+                : stream == ReplayStreams.StartBacklog ? [new Known(DispatcherLanes.StatusScans, TimeSpan.FromSeconds(75), "one lease at a time at 40 ms per lease; kullanici's second reserved slot idle"), new Known(DispatcherLanes.Returns, TimeSpan.FromSeconds(85), "kullanici's second reserved slot idle")]
                 : [];
             problems.AddRange(Violations(comparison, include, DispatcherSettings.DefaultConnectionCap, false, known).Select(problem => $"{comparison.Stream}: {problem}"));
         }
@@ -344,11 +380,12 @@ public sealed class QueueReplayTests(ITestOutputHelper output)
         [
             ("default", defaults),
             ("no status deferral", defaults with { DeferStatusScans = false }),
-            ("kullanici 1+1", With(defaults, (DispatcherLanes.User, 1, 1), (DispatcherLanes.InitialSync, 0, 1))),
-            ("durum 3, ilk-cekim 1", With(defaults, (DispatcherLanes.StatusScans, 3, 0), (DispatcherLanes.InitialSync, 0, 1))),
-            ("siparis 4, durum 3, iade 3, katalog 1, ilk-cekim 0", With(defaults, (DispatcherLanes.OrderReads, 4, 0), (DispatcherLanes.StatusScans, 3, 0), (DispatcherLanes.Returns, 0, 3), (DispatcherLanes.Catalog, 0, 1), (DispatcherLanes.InitialSync, 0, 0)))
+            ("kullanici 1+1 (before the second review)", With(defaults, (DispatcherLanes.User, 1, 1))),
+            ("kullanici 2, iade 3, ilk-cekim 1", With(defaults, (DispatcherLanes.Returns, 0, 3), (DispatcherLanes.InitialSync, 0, 1))),
+            ("kullanici 2, yazma 0+2", With(defaults, (DispatcherLanes.Writes, 0, 2))),
+            ("kullanici 2, durum 3, ilk-cekim 1", With(defaults, (DispatcherLanes.StatusScans, 3, 0), (DispatcherLanes.InitialSync, 0, 1)))
         ];
-        foreach (var stream in new Func<int, ReplayStream>[] { ReplayStreams.StartBacklog, ReplayStreams.AllProducts })
+        foreach (var stream in new Func<int, ReplayStream>[] { ReplayStreams.StartBacklog, ReplayStreams.AllProducts, ReplayStreams.BulkInvoices })
             foreach (var (name, settings) in variants)
             {
                 var comparison = await CompareAsync(stream, ReplayStreams.Seeds, new ReplayOptions { Dispatcher = settings });

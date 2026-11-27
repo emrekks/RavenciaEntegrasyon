@@ -152,21 +152,23 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // deferral behind the store's queued order read.
     private Task StartDispatcher(CancellationToken stoppingToken, out int totalSlots)
     {
-        var settings = MarketplaceHub.Infrastructure.Jobs.DispatcherSettings.From(configuration);
+        var settings = DispatcherSettingsChecked(MarketplaceHub.Infrastructure.Jobs.DispatcherSettings.From(configuration), healthStaleAfter, logger);
         var lanes = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.All(hotPriorityCeiling, settings);
         var connectionCap = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.ConnectionCap(settings, hotPriorityCeiling);
-        var statusDeferral = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.DeferralFor(MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.StatusScans, settings);
+        var statusDeferral = MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.DeferralFor(MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.StatusScans, settings, hotPriorityCeiling);
         var created = new LaneDispatcher(LaneDispatcher.LanesFrom(lanes, settings), TimeProvider.System,
             async (lane, outsideShare, token) =>
             {
-                // A lane with two filters (toplu) tries them in turn.
+                // A lane with several filters (toplu, yazma) tries them in turn. Every lease passes the store cap: its rules
+                // name only the capped lanes' jobs, so it holds nothing else, and a deferral then checks the job ahead against
+                // the same cap as the census does.
                 LeasedJob? job = null;
                 foreach (var filter in lane.Filters)
                 {
                     job = await LeaseNextAsync(filter.MaximumPriority, filter.MinimumPriority, token, includedJobTypes: [.. filter.IncludedJobTypes], excludedJobTypes: [.. filter.ExcludedJobTypes],
-                        bulkhead: bulkheads.For(lane.Definition.Name, hotPriorityCeiling), attemptStart: AttemptStart(lane.Definition.Name, outsideShare),
-                        connectionCap: settings.IsCapped(lane.Definition.Name) ? connectionCap : null,
-                        deferral: MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.DeferralFor(lane.Definition.Name, settings));
+                        bulkhead: bulkheads.For(lane.Definition.Name, hotPriorityCeiling), attemptStart: AttemptStart(lane.Definition.Name, outsideShare) with { FinishOnceLocked = true },
+                        connectionCap: connectionCap.Cap > 0 ? connectionCap : null,
+                        deferral: MarketplaceHub.Infrastructure.Jobs.DispatcherLanes.DeferralFor(lane.Definition.Name, settings, hotPriorityCeiling));
                     if (job is not null) break;
                 }
                 TouchHealthFile();
@@ -200,6 +202,18 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             created.Total, string.Join(", ", lanes.Select(lane => $"{lane.Name} (reserved {settings.ReservedOf(lane.Name)}, share {settings.ShareOf(lane.Name)})")),
             settings.ConnectionCap == 0 ? "off" : settings.ConnectionCap.ToString(System.Globalization.CultureInfo.InvariantCulture), string.Join(",", settings.CappedLanes), settings.SafetyTick.TotalSeconds);
         return created.RunAsync(stoppingToken);
+    }
+
+    // Second correctness review (28 Nov): an idle dispatcher turns at least once per safety tick, and the watchdog restarts the
+    // worker when the last turn is older than Worker:HealthStaleAfterSeconds. A safety tick that long or longer would restart an
+    // idle worker for nothing: it is lowered to a third of the stale limit, with a warning.
+    internal static MarketplaceHub.Infrastructure.Jobs.DispatcherSettings DispatcherSettingsChecked(MarketplaceHub.Infrastructure.Jobs.DispatcherSettings settings, TimeSpan healthStaleAfter, ILogger logger)
+    {
+        if (settings.SafetyTick < healthStaleAfter) return settings;
+        var lowered = TimeSpan.FromSeconds(Math.Max(5, Math.Floor(healthStaleAfter.TotalSeconds / 3)));
+        logger.LogWarning("Worker:Dispatcher:SafetyTickSeconds ({Tick} s) is not below Worker:HealthStaleAfterSeconds ({Stale} s): the watchdog would restart an idle worker; the safety census runs every {Lowered} s instead",
+            settings.SafetyTick.TotalSeconds, healthStaleAfter.TotalSeconds, lowered.TotalSeconds);
+        return settings with { SafetyTick = lowered };
     }
 
     // A dispatcher failure: every one logged as an error, a repeat of the same kind within a minute only counted (the log stays

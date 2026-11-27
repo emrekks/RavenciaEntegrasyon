@@ -243,6 +243,29 @@ internal static class ReplayStreams
         return new ReplayStream("300 Ürün Toplu Güncelleme", builder.Jobs);
     }
 
+    // Second correctness review (28 Nov, M2): priority -3 work no user waits on as a single click (a bulk price publish's 300
+    // per-product price writes, a 10-minute factory reset, invoice status read-backs) queued while long background and catalogue
+    // reads of 12 stores fill the shared slots; a single package action arrives every 30 s and must start within 5 s.
+    public static ReplayStream UserActionsBehindAutomaticUserWork(int seed)
+    {
+        var builder = new Builder(seed);
+        Steady(builder, 6, TimeSpan.FromMinutes(25));
+        for (var store = 0; store < 12; store++)
+        {
+            builder.Add(TimeSpan.FromSeconds(2), MarketplaceJobTypes.StockReconciliation, 4, $"tb{store}", $"b{store}", "TRENDYOL", TimeSpan.FromMinutes(15));
+            builder.Add(TimeSpan.FromSeconds(2), MarketplaceJobTypes.TrendyolFinanceSync, 4, $"tb{store}", $"b{store}", "TRENDYOL", TimeSpan.FromMinutes(15));
+            builder.Add(TimeSpan.FromSeconds(2), MarketplaceJobTypes.ProductSync, 5, $"tb{store}", $"b{store}", "TRENDYOL", TimeSpan.FromMinutes(15));
+        }
+        for (var index = 0; index < 300; index++)
+            builder.Add(TimeSpan.FromSeconds(10) + TimeSpan.FromMilliseconds(index * 3), MarketplaceJobTypes.PriceInventorySync, -3, "t0", $"c{index % 6}", Platforms[index % 6].Platform, builder.Seconds(2, 5));
+        builder.Add(TimeSpan.FromSeconds(11), PanelJobTypes.FactoryReset, -3, "t2", null, "", TimeSpan.FromMinutes(10));
+        for (var index = 0; index < 30; index++)
+            builder.Add(TimeSpan.FromSeconds(12) + TimeSpan.FromMilliseconds(index * 50), InvoicingJobTypes.InvoiceReconcile, -3, "t0", "efaturam", "TRENDYOL_EFATURAM", builder.Seconds(1, 3), lockGroup: $"invoice-{index}");
+        for (var at = TimeSpan.FromSeconds(20); at < TimeSpan.FromMinutes(20); at += TimeSpan.FromSeconds(30))
+            builder.Add(at, MarketplaceJobTypes.ShipmentAction, -3, "t3", "s0", "TRENDYOL", builder.Seconds(0.5, 2), lockGroup: $"package-{at.TotalSeconds}");
+        return new ReplayStream("Otomatik -3 İşlerin Arasında Tekil Paket İşlemi", builder.Jobs);
+    }
+
     // One store's two long reference reads (8.5 minutes each, one references lock group) under the store cap, with the rest.
     public static ReplayStream LongReferenceReads(int seed)
     {
