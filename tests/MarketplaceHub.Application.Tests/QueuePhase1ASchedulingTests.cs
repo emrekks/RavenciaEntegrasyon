@@ -459,6 +459,36 @@ public sealed class QueuePhase1ASchedulingPostgreSqlTests(PostgreSqlTenantIsolat
         await transaction.RollbackAsync();
     }
 
+    // Kuyruk Faz 1B interaction: a brand list read refused for shrinking (Blocked REFERENCE_LIST_SHRANK) neither holds the
+    // tenant's other reference reads nor raises a job alert beside its own shrink issue.
+    [PostgreSqlFact]
+    public async Task A_shrunk_brand_read_does_not_hold_the_tenants_reference_reads_nor_raise_a_job_alert()
+    {
+        Assert.NotNull(fixture);
+        await using var db = fixture.CreateStrictContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var (tenantId, ids) = await SeedAsync(db, ("TRENDYOL", Guid.CreateVersion7()), ("PAZARAMA", Guid.CreateVersion7()));
+        await Pass(db, Base);
+        var first = Assert.Single(await ReferenceJobsAsync(db, tenantId));
+        await db.IntegrationJobs.Where(x => x.Id == first.Id).ExecuteUpdateAsync(set => set
+            .SetProperty(x => x.Status, JobStatus.Blocked).SetProperty(x => x.LastErrorCode, "REFERENCE_LIST_SHRANK").SetProperty(x => x.CompletedAt, Base.AddSeconds(5)));
+        await Pass(db, Base.AddSeconds(10));
+        var after = await ReferenceJobsAsync(db, tenantId);
+        Assert.Equal(2, after.Count);
+        Assert.Single(after, job => job.Status == JobStatus.Pending);
+
+        // A day and more later the blocked read raises no bell alert (the shrink issue is its notice); another code would.
+        db.IntegrationJobs.Add(StoppedJob(tenantId, ids[1], MarketplaceJobTypes.PazaramaReferenceSync, JobStatus.Blocked, "REFERENCE_LIST_SHRANK", Base.AddMinutes(-1)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, await JobFailureAlerts.RaiseAsync(db, Base.AddHours(25), TimeSpan.FromHours(6), CancellationToken.None));
+        db.IntegrationJobs.Add(StoppedJob(tenantId, ids[1], MarketplaceJobTypes.PazaramaReferenceSync, JobStatus.Blocked, "PAZARAMA_REFERENCE_INVALID", Base.AddMinutes(-1)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await JobFailureAlerts.RaiseAsync(db, Base.AddHours(25), TimeSpan.FromHours(6), CancellationToken.None));
+        await transaction.RollbackAsync();
+    }
+
     private static IntegrationJob StoppedJob(Guid tenantId, Guid connectionId, string jobType, JobStatus status, string code, DateTimeOffset completedAt)
     {
         var job = NewJob(tenantId, connectionId, jobType, $"test:{Guid.NewGuid():N}", completedAt.AddMinutes(-5));

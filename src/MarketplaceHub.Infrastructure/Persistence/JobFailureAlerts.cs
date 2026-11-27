@@ -25,6 +25,8 @@ public static class JobFailureAlerts
         var blockedSince = blockedBefore - lookback;
         var preSend = JobRetentionService.PreSendBlockCodes;
         var blockedFor = JobFailureAlertPolicy.BlockedFor;
+        // A stop that raises its own notice (a brand list refused for shrinking) is not alerted a second time.
+        var ownNotice = JobFailureAlertPolicy.OwnNoticeCodes.ToArray();
         // Review of 27 Nov 2026 (O2): the filters and the one-per-key reduction run in the database, newest first, before the
         // limit; a bulk run of superseded or pre-send-blocked jobs can no longer fill the pass and hide a new failure.
         // One row per tenant, connection, job type, error code and Istanbul day of the alert (the key), the latest job naming it.
@@ -38,7 +40,7 @@ public static class JobFailureAlerts
                 WHERE ((job."Status" IN ('DEAD', 'MANUAL_REVIEW') AND job."CompletedAt" > {since})
                        OR (job."Status" = 'BLOCKED' AND job."CompletedAt" <= {blockedBefore} AND job."CompletedAt" > {blockedSince}
                            AND (job."LastErrorCode" IS NULL OR NOT (job."LastErrorCode" = ANY({preSend})))))
-                  AND (job."LastErrorCode" IS NULL OR job."LastErrorCode" NOT LIKE '%SUPERSEDED%')
+                  AND (job."LastErrorCode" IS NULL OR (job."LastErrorCode" NOT LIKE '%SUPERSEDED%' AND NOT (job."LastErrorCode" = ANY({ownNotice}))))
                 ORDER BY job."TenantId", job."ConnectionId", job."JobType", coalesce(job."LastErrorCode", ''), raised.day, job."CompletedAt" DESC, job."Id" DESC) latest
             ORDER BY "CompletedAt" DESC
             LIMIT {MaximumJobsPerPass}

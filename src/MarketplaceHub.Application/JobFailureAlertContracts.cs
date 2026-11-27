@@ -44,6 +44,11 @@ public static class JobFailureAlertPolicy
     public static string SummaryMessage(int more) =>
         $"Bugün tek tek bildirilen {DailyCap} işin ardından {more} iş daha durdu ya da incelemenizi bekliyor. Ayrıntılar İşlem Takibi'nde.";
 
+    // Stops that already raise their own notice: a brand list read refused for shrinking (Kuyruk Faz 1B, the
+    // "reference-list-shrank:" operational issue waits for the owner's approval). One signal is enough; it would otherwise
+    // come back every day, since the next day's read is blocked again until the owner decides.
+    public static readonly IReadOnlyList<string> OwnNoticeCodes = ["REFERENCE_LIST_SHRANK"];
+
     public static bool IsSuperseded(string? errorCode) => errorCode is not null && errorCode.Contains("SUPERSEDED", StringComparison.Ordinal);
 
     public static string Severity(Kind kind) => kind == Kind.Dead ? PanelNotificationSeverities.Error : PanelNotificationSeverities.Warning;
