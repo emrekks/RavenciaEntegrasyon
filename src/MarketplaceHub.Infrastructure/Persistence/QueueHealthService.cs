@@ -223,7 +223,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             .Select(group => (Bucket: buckets.Describe(group.Key), Rows: group.ToList()))
             .Where(item => item.Bucket is not null)
             .Select(item => new QuotaUsageView(item.Bucket!.PlatformCode, string.Join(", ", item.Rows.Select(row => row.StoreName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)),
-                item.Bucket.Code, item.Bucket.Label, item.Bucket.LimitPerMinute, item.Rows[0].Requests, item.Rows[0].Peak, Math.Round(item.Rows[0].Requests / 60.0, 1), item.Bucket.Shared))
+                item.Bucket.Code, item.Bucket.Label, item.Bucket.LimitPerMinute, item.Rows[0].Requests, item.Rows[0].Peak, Math.Round(item.Rows[0].Requests / 60.0, 1), item.Bucket.Shared, item.Bucket.BaseLimit))
             .OrderBy(view => PlatformRank(view.PlatformCode)).ThenBy(view => view.StoreName, StringComparer.Ordinal).ThenBy(view => view.Bucket, StringComparer.Ordinal)];
     }
 

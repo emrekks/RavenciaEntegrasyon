@@ -35,7 +35,9 @@ public sealed class ScheduledJobProducerSnapshotPostgreSqlTests(PostgreSqlTenant
         await using var transaction = await db.Database.BeginTransactionAsync();
         await SeedAsync(db);
 
-        await new ScheduledJobProducer(db, new FixedTimeProvider(Now), new ConfigurationBuilder().Build()).EnqueueDueAsync(CancellationToken.None);
+        // Queue phase 1A's switches off (QueuePhase1ASchedulingPostgreSqlTests.SwitchesOff): this test pins the pass as it was,
+        // which is also what the switches give back; the phase 1A behaviour has its own tests.
+        await new ScheduledJobProducer(db, new FixedTimeProvider(Now), QueuePhase1ASchedulingPostgreSqlTests.SwitchesOff()).EnqueueDueAsync(CancellationToken.None);
         var first = await QueuedAsync(db);
 
         // T2's jobs ran and finished; its policies forget when they last queued. The next pass, in the same buckets, finds
@@ -46,7 +48,7 @@ public sealed class ScheduledJobProducerSnapshotPostgreSqlTests(PostgreSqlTenant
         await db.ConnectionSyncPolicies.Where(x => x.TenantId == TenantId && x.ConnectionId == t2)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastScheduledAt, (DateTimeOffset?)null));
         db.ChangeTracker.Clear();
-        await new ScheduledJobProducer(db, new FixedTimeProvider(Now.AddSeconds(5)), new ConfigurationBuilder().Build()).EnqueueDueAsync(CancellationToken.None);
+        await new ScheduledJobProducer(db, new FixedTimeProvider(Now.AddSeconds(5)), QueuePhase1ASchedulingPostgreSqlTests.SwitchesOff()).EnqueueDueAsync(CancellationToken.None);
         var second = (await QueuedAsync(db)).Except(first).ToList();
 
         await transaction.RollbackAsync();

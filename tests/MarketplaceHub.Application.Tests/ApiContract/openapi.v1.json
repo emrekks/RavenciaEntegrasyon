@@ -32268,6 +32268,27 @@
           }
         }
       },
+      "JobTypeLaneView": {
+        "required": [
+          "lane",
+          "attempts",
+          "borrowed"
+        ],
+        "type": "object",
+        "properties": {
+          "lane": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "borrowed": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "JobTypeMetricView": {
         "required": [
           "jobType",
@@ -32324,6 +32345,15 @@
           "running": {
             "type": "integer",
             "format": "int32"
+          },
+          "lanes": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/JobTypeLaneView"
+            }
           }
         }
       },
@@ -41139,7 +41169,8 @@
           "lastHourRequests",
           "peakMinuteRequests",
           "averagePerMinute",
-          "shared"
+          "shared",
+          "baseLimit"
         ],
         "type": "object",
         "properties": {
@@ -41175,6 +41206,10 @@
             "format": "double"
           },
           "shared": {
+            "type": "boolean",
+            "default": false
+          },
+          "baseLimit": {
             "type": "boolean",
             "default": false
           }
