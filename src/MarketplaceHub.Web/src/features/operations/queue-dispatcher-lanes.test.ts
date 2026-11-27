@@ -11,7 +11,10 @@ describe('queue phase 2 dispatcher lanes', () => {
   it('names the work-type lanes and says what their slots are', () => {
     expect(laneLabel('SIPARIS_OKUMA')).toBe('Sipariş Okuma')
     expect(laneLabel('ARKA_PLAN')).toBe('Arka Plan')
-    expect(laneSlotKind(lane('KULLANICI', 2, 0, 'dispatcher'))?.text).toBe('Ayrılmış 2')
+    expect(laneSlotKind(lane('WEBHOOK', 1, 0, 'dispatcher'))?.text).toBe('Ayrılmış 1')
+    expect(laneSlotKind(lane('KULLANICI', 1, 1, 'dispatcher'))?.text).toBe('Ayrılmış 1\nPay 1')
+    expect(laneLabel('TOPLU')).toBe('Toplu İşler')
+    expect(laneLabel('YAZMA')).toBe('Pazaryerine Yazma')
     expect(laneSlotKind(lane('SIPARIS_OKUMA', 3, 0, 'dispatcher'))?.text).toBe('Asgari 3')
     expect(laneSlotKind(lane('KATALOG', 0, 3, 'dispatcher'))?.text).toBe('Pay 3')
     // The earlier lanes send no such figures: nothing is shown, never a guess.

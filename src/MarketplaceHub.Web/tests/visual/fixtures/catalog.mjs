@@ -460,14 +460,17 @@ const laneMetrics = [
 const dispatcherLane = (lane, reserved, share, values, platforms = []) =>
   ({ lane, slots: reserved + share, reserved, share, platforms, model: 'dispatcher', queued: platforms.reduce((sum, row) => sum + row.queued, 0), running: platforms.reduce((sum, row) => sum + row.running, 0), ...values })
 export const dispatcherLaneMetrics = [
-  dispatcherLane('KULLANICI', 2, 0, { attempts: 64, averageWaitSeconds: 0.4, p95WaitSeconds: 1.2, ...laneWait(5) }),
-  dispatcherLane('ACIL', 1, 0, { attempts: 180, averageWaitSeconds: 0.1, p95WaitSeconds: 0.6, ...laneWait(5) }, [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }]),
+  dispatcherLane('KULLANICI', 1, 1, { attempts: 64, averageWaitSeconds: 0.4, p95WaitSeconds: 1.2, ...laneWait(5) }),
+  dispatcherLane('WEBHOOK', 1, 0, { attempts: 150, averageWaitSeconds: 0.1, p95WaitSeconds: 0.4, ...laneWait(5) }, [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }]),
+  dispatcherLane('YAZMA', 1, 1, { attempts: 90, averageWaitSeconds: 0.3, p95WaitSeconds: 2.1, ...laneWait(60) }),
+  dispatcherLane('ACIL', 0, 0, { attempts: 30, averageWaitSeconds: 0.2, p95WaitSeconds: 0.8, ...laneWait(60) }),
   dispatcherLane('SIPARIS_OKUMA', 3, 0, { attempts: 1240, averageWaitSeconds: 0.2, p95WaitSeconds: 0.9, ...laneWait(60), borrowed: 1 }, [{ platformCode: 'TRENDYOL', queued: 0, running: 2 }, { platformCode: 'HEPSIBURADA', queued: 1, running: 1 }, { platformCode: 'N11', queued: 0, running: 1 }]),
-  dispatcherLane('DURUM_TARAMASI', 3, 0, { attempts: 1120, averageWaitSeconds: 0.3, p95WaitSeconds: 1.4, ...laneWait(300) }, [{ platformCode: 'HEPSIBURADA', queued: 0, running: 1 }]),
-  dispatcherLane('IADE', 0, 3, { attempts: 310, averageWaitSeconds: 0.5, p95WaitSeconds: 4, ...laneWait(300) }),
-  dispatcherLane('KATALOG', 0, 3, { attempts: 12, averageWaitSeconds: 18, p95WaitSeconds: 60, ...laneWait(60) }, [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }, { platformCode: 'PAZARAMA', queued: 2, running: 0 }]),
+  dispatcherLane('DURUM_TARAMASI', 2, 0, { attempts: 1120, averageWaitSeconds: 0.3, p95WaitSeconds: 1.4, ...laneWait(300) }, [{ platformCode: 'HEPSIBURADA', queued: 0, running: 1 }]),
+  dispatcherLane('IADE', 0, 2, { attempts: 310, averageWaitSeconds: 0.5, p95WaitSeconds: 4, ...laneWait(300) }),
+  dispatcherLane('TOPLU', 0, 2, { attempts: 300, averageWaitSeconds: 12, p95WaitSeconds: 95, ...laneWait(600) }),
+  dispatcherLane('KATALOG', 0, 2, { attempts: 12, averageWaitSeconds: 18, p95WaitSeconds: 60, ...laneWait(60) }, [{ platformCode: 'TRENDYOL', queued: 0, running: 1 }, { platformCode: 'PAZARAMA', queued: 2, running: 0 }]),
   dispatcherLane('ARKA_PLAN', 0, 2, { attempts: 640, averageWaitSeconds: 9, p95WaitSeconds: 120, ...laneWait(600, { attempts: 640, waitSeconds: 5760, lockSeconds: 3100, backoffSeconds: 0, quotaHoldSeconds: 1800, slotSeconds: 400, unknownSeconds: 460 }) }, [{ platformCode: 'HEPSIBURADA', queued: 3, running: 1 }, { platformCode: '', queued: 1, running: 0 }]),
-  dispatcherLane('ILK_CEKIM', 0, 3, { attempts: 0, averageWaitSeconds: null, p95WaitSeconds: null, ...laneWait(120) })
+  dispatcherLane('ILK_CEKIM', 0, 2, { attempts: 0, averageWaitSeconds: null, p95WaitSeconds: null, ...laneWait(120) })
 ]
 const bucket = (platformCode, storeName, code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, shared = false, baseLimit = false) =>
   ({ platformCode, storeName, bucket: code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, averagePerMinute: Math.round(lastHourRequests / 6) / 10, shared, baseLimit })

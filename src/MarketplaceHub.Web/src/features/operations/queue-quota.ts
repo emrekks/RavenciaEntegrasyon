@@ -37,8 +37,11 @@ const laneLabels: Record<string, { label: string; hint: string; detail?: string 
   BACKGROUND: { label: 'Arka Plan', hint: 'Geçmiş taramaları, uzlaştırma, soru, finans, listeler.', detail: 'Zamanlanmış diğer okumalar: sipariş geçmişi taramaları (Hepsiburada, Pazarama ve PTT AVM dahil), uzlaştırmalar, müşteri soruları, finans, kategori ve marka listeleri, fatura süre takibi.' },
   // Queue phase 2: the dispatcher's lanes, one per kind of work (DispatcherLanes on the server). Their codes differ from the
   // earlier lanes' (job_attempts keeps both around a switch), and the Arka Plan code too.
-  KULLANICI: { label: 'Kullanıcı', hint: 'Panelden başlatılan işler; toplu işler de burada.', detail: 'Kullanıcının beklediği işlemler: paket ve iade işlemleri, etiket, elle sipariş yenileme, fatura kesme ve iletme. Toplu fatura işleri de burada, tekil isteklerin arkasında sıraya girer.' },
-  ACIL: { label: 'Acil', hint: 'Webhooklar ve pazaryerine yazmalar.', detail: 'Anlık bildirimler (webhook), pazaryerine yazmalar (paket işlemi, fiyat ve stok, ürün) ve elle başlatılan diğer kısa okumalar.' },
+  KULLANICI: { label: 'Kullanıcı', hint: 'Panelden başlatılan tekil işler.', detail: 'Kullanıcının beklediği tekil işlemler: paket ve iade işlemleri, etiket, elle sipariş yenileme, fatura kesme ve iletme. Toplu işler Toplu İşler şeridinde çalışır.' },
+  WEBHOOK: { label: 'Webhook', hint: 'Pazaryerlerinden gelen anlık bildirimler.', detail: 'Pazaryerlerinin gönderdiği anlık bildirimler (webhook): kısa işler, kendi ayrılmış slotunda bekletilmez.' },
+  YAZMA: { label: 'Pazaryerine Yazma', hint: 'Fiyat ve stok, ürün, paket ve fatura iletimi.', detail: 'Otomatik pazaryerine yazmalar: fiyat ve stok gönderimi, ürün açma ve güncelleme, paket işlemleri, fatura kesme ve iletme. Panelden tek tek başlatılanlar Kullanıcı şeridinde.' },
+  TOPLU: { label: 'Toplu İşler', hint: 'Toplu fatura, toplu ürün güncelleme, dosya aktarımı.', detail: 'Panelden toplu başlatılan işler (toplu fatura, toplu ürün güncelleme ve yayın) ve dosyadan içe aktarma: payı kadar slotu önce alır, tekil kullanıcı işlerinin önüne geçmez.' },
+  ACIL: { label: 'Elle Başlatılan Okuma', hint: 'Elle başlatılan kısa okumalar.', detail: 'Panelden elle başlatılan diğer kısa okumalar (sipariş geçmişi taraması, ürün veya iade yenileme gibi). Webhooklar ve pazaryerine yazmalar kendi şeritlerinde.' },
   SIPARIS_OKUMA: { label: 'Sipariş Okuma', hint: 'Bütün pazaryerlerinin yeni sipariş ve geçmiş okumaları.', detail: 'Trendyol, Hepsiburada, N11, Pazarama, PTT AVM ve Shopify yeni sipariş okumaları ve sipariş geçmişi taramaları.' },
   DURUM_TARAMASI: { label: 'Durum Taraması', hint: 'Bütün pazaryerlerinin açık sipariş durumları.', detail: 'Açık siparişlerin durumlarının yeniden okunması, bütün pazaryerleri.' },
   IADE: { label: 'İade', hint: 'Bütün pazaryerlerinin iadeleri ve iade durumları.', detail: 'Bütün pazaryerlerinin yeni iade okumaları ve açık iade durum kontrolleri.' },
@@ -47,28 +50,31 @@ const laneLabels: Record<string, { label: string; hint: string; detail?: string 
   ILK_CEKIM: { label: 'İlk Çekim', hint: 'Yeni bağlanan mağazanın ilk veri çekimi.' }
 }
 
-const dispatcherLaneCodes = new Set(['KULLANICI', 'ACIL', 'SIPARIS_OKUMA', 'DURUM_TARAMASI', 'IADE', 'KATALOG', 'ARKA_PLAN', 'ILK_CEKIM'])
+const dispatcherLaneCodes = new Set(['KULLANICI', 'WEBHOOK', 'YAZMA', 'ACIL', 'SIPARIS_OKUMA', 'DURUM_TARAMASI', 'IADE', 'TOPLU', 'KATALOG', 'ARKA_PLAN', 'ILK_CEKIM'])
 
 /** Whether the lane metrics come from the dispatcher (Worker:LaneModel=dispatcher). */
 export function isDispatcherModel(lanes: readonly LaneMetric[] | null | undefined) {
   return (lanes ?? []).some(lane => lane.model === 'dispatcher')
 }
 
-/** A dispatcher lane's slots in words: reserved ("Ayrılmış 2": Kullanıcı, Acil), a minimum ("Asgari 3": Sipariş Okuma, Durum
- * Taraması: the same rule, never lent) or a share of the shared slots ("Pay 3": served first on that many while it has work).
- * Null with the earlier lane models (they do not send the figures). */
-export function laneSlotKind(lane: LaneMetric): { text: string; title: string } | null {
+/** A dispatcher lane's slots in words: reserved ("Ayrılmış 1": Kullanıcı, Webhook, Pazaryerine Yazma), a minimum ("Asgari 3":
+ * Sipariş Okuma, Durum Taraması: the same rule, never lent), a share of the shared slots ("Pay 2": served first on that many
+ * while it has work) or both ("Ayrılmış 1 · Pay 1"). Null with the earlier lane models (they do not send the figures). */
+export function laneSlotKind(lane: LaneMetric): { text: string; title: string; stacked?: boolean } | null {
   if (lane.model !== 'dispatcher') return null
   const reserved = lane.reserved ?? 0
   const share = lane.share ?? 0
+  const shareTitle = `İşi varken ortak slotlardan ${share} tanesini diğer şeritlerden önce alır; boşken başka şeritler kullanır.`
   if (reserved > 0) {
     const minimum = lane.lane === 'SIPARIS_OKUMA' || lane.lane === 'DURUM_TARAMASI'
+    const reservedTitle = `${reserved} slot yalnız bu şeridindir, başka şeride verilmez. Bunlar doluysa ortak slotlardan biri boşsa onu alır.`
     return {
-      text: `${minimum ? 'Asgari' : 'Ayrılmış'} ${reserved}`,
-      title: `${reserved} slot yalnız bu şeridindir, başka şeride verilmez. Bunlar doluysa ortak slotlardan biri boşsa onu alır.`
+      text: `${minimum ? 'Asgari' : 'Ayrılmış'} ${reserved}${share > 0 ? `\nPay ${share}` : ''}`,
+      stacked: share > 0,
+      title: share > 0 ? `${reservedTitle}\n${shareTitle}` : reservedTitle
     }
   }
-  if (share > 0) return { text: `Pay ${share}`, title: `İşi varken ortak slotlardan ${share} tanesini diğer şeritlerden önce alır; boşken başka şeritler kullanır.` }
+  if (share > 0) return { text: `Pay ${share}`, title: shareTitle }
   return { text: 'Ortak', title: 'Yalnız ortak slotları kullanır.' }
 }
 

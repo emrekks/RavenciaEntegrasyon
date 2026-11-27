@@ -99,7 +99,7 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
 
     <section className="qq-section" aria-labelledby="qq-lanes">
       <h2 id="qq-lanes">Şeritler ve Slot Kullanımı</h2>
-      {dispatcher && <p className="qq-sub">Tek dağıtıcı boşalan slotu sıradaki işe verir. Kullanıcı ve Acil’in ayrılmış, Sipariş Okuma ve Durum Taraması’nın asgari slotları başka şeride verilmez; diğer şeritler ortak slotları payları kadar önce alır. Bir mağaza Katalog, Arka Plan ve İlk Çekim’de aynı anda en çok 2 iş çalıştırır.</p>}
+      {dispatcher && <p className="qq-sub">Tek dağıtıcı boşalan slotu sıradaki işe verir. Kullanıcı, Webhook ve Pazaryerine Yazma’nın ayrılmış, Sipariş Okuma ve Durum Taraması’nın asgari slotları başka şeride verilmez; diğer şeritler ortak slotları payları kadar önce alır, paydan artanı önce kısa işler, sonra toplu ve uzun işler kullanır. Bir mağazanın Katalog, Arka Plan ve İlk Çekim işleri birlikte sayılır ve aynı anda en çok 2 slot kullanır; sipariş, durum, iade, webhook, yazma ve kullanıcı işleri bu sınıra girmez.</p>}
       {lanes.isLoading ? <Busy text="Şeritler yükleniyor…" /> : lanes.isError && !lanes.data ? <p role="alert" className="qq-error">Şerit ölçümleri alınamadı.</p> : <>
         {laneTabs.length > 1 && <Tabs className="rv-view-tabs qq-platform-tabs" ariaLabel="Şerit pazaryeri" value={activeLaneTab} onChange={setLaneTab} items={laneTabs.map(tab => ({
           value: tab.value, count: tab.count,
@@ -110,7 +110,7 @@ export function QueueQuotaView({ onOpenJob }: { onOpenJob?: (jobId: string) => v
         <thead><tr><th className="qq-first">Şerit</th><th className="qq-usage-th">Slot Kullanımı</th><th className="is-num">Bekleyen</th><th className="is-num">Deneme</th><th className="is-num">Ort. Bekleme</th><th className="is-num">En Uzun %5 Bekleme</th><th className="is-num">Hedef</th><th>Durum</th></tr></thead>
         <tbody>{(lanes.data ?? []).map(lane => { const shown = laneCountsFor(lane, activeLaneTab); const kind = laneSlotKind(lane); return <tr key={lane.lane}>
           <td className="qq-first"><strong>{laneLabel(lane.lane)}</strong><small title={laneDetail(lane.lane)}>{laneHint(lane.lane)}</small></td>
-          <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={shown.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${shown.running} / ${lane.slots} slot`} /><span>{shown.running} / {lane.slots}</span>{kind && <small className="qq-no-limit" title={kind.title}>{kind.text}</small>}</span></td>
+          <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={shown.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${shown.running} / ${lane.slots} slot`} /><span>{shown.running} / {lane.slots}</span>{kind && <small className={kind.stacked ? 'qq-no-limit is-stacked' : 'qq-no-limit'} title={kind.title}>{kind.text}</small>}</span></td>
           <td className="is-num" data-label="Bekleyen">{shown.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{lane.attempts.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Ort. Bekleme">{(() => { const causes = laneWaitCauseLines(lane.waitCauses); return causes.length > 0 ? <span className="qq-causes" title={causes.join('\n')}>{formatSeconds(lane.averageWaitSeconds)}</span> : formatSeconds(lane.averageWaitSeconds) })()}</td>
