@@ -314,49 +314,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         set.UnionWith(modelIds);
     }
 
-    // KATALOG-14 phase D5b: the model fields a serializable caller's save gave its cards (ModelMirror), written after its
-    // commit with the deferred model values.
-    private readonly Dictionary<Guid, Dictionary<Guid, ModelMirror.FieldChange>> _deferredFieldChanges = [];
-
-    internal void DeferFieldChanges(Guid tenantId, IReadOnlyDictionary<Guid, ModelMirror.FieldChange> changes)
-    {
-        if (!_deferredFieldChanges.TryGetValue(tenantId, out var map)) _deferredFieldChanges[tenantId] = map = [];
-        foreach (var (productId, change) in changes) map[productId] = change;
-        if (!_deferredModelValues.ContainsKey(tenantId)) _deferredModelValues[tenantId] = [];
-    }
-
-    // The models deferred by saves inside a transaction, refreshed once no transaction is open. A failure is recorded as a
-    // PRODUCT_MODEL_LINK_FAILED issue and the daily scan repairs the model: the commit itself already stands.
+    // The models deferred by serializable saves, refreshed once no transaction is open: only their derived values
+    // (ProductModelValues: category attributes, size chart, a desi the model does not hold yet). The eight model fields are
+    // never deferred: a save writes them in its own transaction (ProductModelLinks.AfterSaveAsync, B2a review M1). A failure
+    // here is recorded as a PRODUCT_MODEL_LINK_FAILED issue (the commit itself already stands); the nightly model scan
+    // recomputes these derived values (it never writes the eight fields), and so does the next save of the model.
     public async Task RefreshDeferredModelValuesAsync()
     {
         if (_refreshingDeferredModelValues || _saving || _deferredModelValues.Count == 0 || Database.CurrentTransaction is not null) return;
         var deferred = _deferredModelValues.ToList();
         _deferredModelValues.Clear();
-        var deferredFields = _deferredFieldChanges.ToDictionary(x => x.Key, x => x.Value);
-        _deferredFieldChanges.Clear();
         _refreshingDeferredModelValues = true;
         try
         {
             foreach (var (tenantId, modelIds) in deferred)
             {
                 var now = _timeProvider.GetUtcNow();
-                if (deferredFields.TryGetValue(tenantId, out var changes))
-                {
-                    var reported = ModelMirrorReport.Count;
-                    try
-                    {
-                        await using var transaction = await Database.BeginTransactionAsync();
-                        // KATALOG-14 phase D5b review: the models' rows first, in id order, as every other model write takes them.
-                        await ProductModelLinks.LockModelsOfCardsAsync(this, tenantId, [.. changes.Keys], [], CancellationToken.None);
-                        await ModelMirror.ApplyAsync(this, tenantId, changes, now, CancellationToken.None);
-                        await transaction.CommitAsync();
-                    }
-                    catch (Exception exception) when (exception is not OperationCanceledException)
-                    {
-                        ForgetModelMirrorReport(reported);
-                        await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
-                    }
-                }
                 if (modelIds.Count == 0) continue;
                 try { await ProductModelValues.RefreshAsync(this, tenantId, modelIds, now, CancellationToken.None); }
                 catch (Exception exception) when (exception is not OperationCanceledException)

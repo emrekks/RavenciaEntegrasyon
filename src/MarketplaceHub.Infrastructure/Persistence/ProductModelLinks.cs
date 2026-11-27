@@ -208,12 +208,13 @@ public static class ProductModelLinks
     // its sibling colours (ModelMirror, PropagateCodeChangesAsync). Two such saves of sibling colours at once took the
     // locks in opposite orders (own card row, model, siblings) and one died of a deadlock. Before the save writes any card,
     // the rows of the models its cards belong to (and of the codes it touches) are locked in one statement, in id order,
-    // so the second save waits for the first. In the save's transaction; not in a serializable caller's (its model writes
-    // run after its commit, and a row lock there would only add serialization failures).
+    // so the second save waits for the first. In the save's transaction, a serializable caller's too since it writes its
+    // model fields in it (B2a review M1); a row another session changed after its snapshot then fails it at once (40001).
     public static async Task LockPendingModelsAsync(AppDbContext db, Pending pending, CancellationToken cancellationToken)
     {
-        if (db.Database.CurrentTransaction is not { } current
-            || Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(current).IsolationLevel == System.Data.IsolationLevel.Serializable) return;
+        if (db.Database.CurrentTransaction is null) return;
+        if (Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(db.Database.CurrentTransaction).IsolationLevel == System.Data.IsolationLevel.Serializable
+            && pending.FieldChanges.Count == 0 && pending.CodeChanges.Count == 0) return;
         foreach (var tenantId in pending.FieldChanges.Keys.Concat(pending.CodeChanges.Keys).Distinct().Order())
         {
             var productIds = (pending.FieldChanges.GetValueOrDefault(tenantId)?.Keys ?? Enumerable.Empty<Guid>())
@@ -367,17 +368,17 @@ public static class ProductModelLinks
                 var keyArray = keys.ToArray();
                 valueModels.UnionWith(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && keyArray.Contains(x.ModelCodeKey)).Select(x => x.Id).ToListAsync(cancellationToken));
             }
-            // KATALOG-14 phase D5a/b: the model's fields (ModelMirror) and values are written in the save's own transaction
-            // (the caller's or the one SaveChanges opened); a write that fails fails the save. A serializable caller (the
-            // editor's save, the delete) is the exception (review, 17 Nov 2026): a model row written in it would make the
-            // commit fail whenever another session wrote the model meanwhile, so its models are written right after its
-            // commit (AppDbContext.DeferModelValues).
+            // KATALOG-14 phase D5a/b: the model's fields (ModelMirror) are written in the save's own transaction (the caller's
+            // or the one SaveChanges opened), a serializable caller's too (the editor's save that deletes a variant): a write
+            // that fails fails the save, which the caller answers as "nothing saved, try again" (CatalogService.SaveConflict).
+            // KATALOG-14 D5 B2a review (M1): they were once written after a serializable caller's commit; a failure there left
+            // the owner's edit on the cards only while every reader reads the model, a silent lost edit. A concurrent write of
+            // the same model row now makes the serializable save fail with a serialization or lock conflict instead (409).
+            // Only the derived model values (ProductModelValues: category attributes, size chart, a desi the model does not hold
+            // yet) still follow a serializable caller's commit (AppDbContext.DeferModelValues); no owner edit is deferred.
             var serializable = db.Database.CurrentTransaction is { } current && Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(current).IsolationLevel == System.Data.IsolationLevel.Serializable;
             if (pending.FieldChanges.TryGetValue(tenantId, out var fieldChanges) && fieldChanges.Count > 0)
-            {
-                if (serializable) db.DeferFieldChanges(tenantId, fieldChanges);
-                else await ModelMirror.ApplyAsync(db, tenantId, fieldChanges, now, cancellationToken);
-            }
+                await ModelMirror.ApplyAsync(db, tenantId, fieldChanges, now, cancellationToken);
             if (valueModels.Count == 0) continue;
             if (serializable) db.DeferModelValues(tenantId, valueModels);
             else await ProductModelValues.RefreshAsync(db, tenantId, valueModels, now, cancellationToken);
@@ -555,10 +556,11 @@ public static class ProductModelLinks
                                      VatInclusion = m == null ? x.VatInclusion : m.VatInclusion,
                                      WarrantyMonths = m == null ? x.WarrantyMonths : m.WarrantyMonths,
                                      DeliveryDays = m == null ? x.DeliveryDays : m.DeliveryDays,
+                                     Desi = m == null ? null : m.Desi,
                                  })
                 .ToListAsync(cancellationToken);
         var actualFamilies = productRows.ToDictionary(x => x.Id, x => x.FamilyId);
-        var products = productRows.Select(x => new { x.Id, x.BrandId, FamilyId = x.FamilyId is Guid family && fresh.Contains(family) ? null : x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
+        var products = productRows.Select(x => new { x.Id, x.BrandId, FamilyId = x.FamilyId is Guid family && fresh.Contains(family) ? null : x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays, x.Desi })
             .ToDictionary(x => x.Id);
         var targetKeyArray = targetKeys.ToArray();
         var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && targetKeyArray.Contains(x.ModelCodeKey) && !freshIds.Contains(x.Id))
@@ -585,8 +587,7 @@ public static class ProductModelLinks
             if (keyCards.Count == 0) continue;
             var brandedModels = keyModels.Where(model => model.BrandId is not null).Select(model => model.BrandId).ToList();
             // A brand a save gives a linked colour moves its model to that brand's key: refused here, in the save's transaction,
-            // when that brand (a blank brand too, owner 17 Nov 2026) already has a model of the code (nothing is merged; the
-            // editor's deferred model write would be late, after its commit).
+            // when that brand (a blank brand too, owner 17 Nov 2026) already has a model of the code (nothing is merged).
             // A card whose brand and code the save changed together (an Excel row with Marka and Model Kodu, an editor save) is
             // not linked to a model of this code yet: it is refused when the model it would join (LinkBrand of its new brand)
             // already holds colours, as a code change to a code its brand holds is (review, 18 Nov 2026).
@@ -663,9 +664,12 @@ public static class ProductModelLinks
                 }
                 if (target is null)
                 {
+                    // KATALOG-14 D5 (B2a review): the desi too, from the model of the first card brought in that holds one (the
+                    // cards' values are their models').
+                    var desi = cards.Select(x => x.Card.Desi).FirstOrDefault(value => value is not null);
                     await db.Database.ExecuteSqlInterpolatedAsync($"""
-                        INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
-                        VALUES ({Guid.CreateVersion7()}, {tenantId}, {brand}, {Short(cards[0].Code, 160)}, {key}, {Short(fields.Title, 320)}, {titleColor}, {fields.Description}, {fields.CategoryId}, {fields.VatRate}, {fields.VatInclusion}, {fields.WarrantyMonths}, {fields.DeliveryDays}, {(DateTimeOffset?)null}, {now}, {now}, {1L})
+                        INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "Desi", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
+                        VALUES ({Guid.CreateVersion7()}, {tenantId}, {brand}, {Short(cards[0].Code, 160)}, {key}, {Short(fields.Title, 320)}, {titleColor}, {fields.Description}, {fields.CategoryId}, {fields.VatRate}, {fields.VatInclusion}, {fields.WarrantyMonths}, {fields.DeliveryDays}, {desi}, {(DateTimeOffset?)null}, {now}, {now}, {1L})
                         ON CONFLICT DO NOTHING
                         """, cancellationToken);
                     target = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key && x.BrandId == brand).OrderBy(x => x.Id).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
@@ -784,7 +788,7 @@ public static class ProductModelLinks
         if (productIds is { Length: 0 }) return 0;
         var cards = await db.Products.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.FamilyId == null && (productIds == null || productIds.Contains(x.Id)))
-            .Select(x => new OwnModelCard(x.Id, x.BrandId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))
+            .Select(x => new OwnModelCard(x.Id, x.BrandId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays, null))
             .ToListAsync(cancellationToken);
         return await LinkOwnModelsAsync(db, tenantId, cards, now, cancellationToken);
     }
@@ -801,12 +805,12 @@ public static class ProductModelLinks
                            where x.TenantId == tenantId && productIds.Contains(x.Id)
                            select new OwnModelCard(x.Id, x.BrandId, x.Title,
                                m == null ? x.Description : m.Description, m == null ? x.CategoryId : m.CategoryId, m == null ? x.VatRate : m.VatRate,
-                               m == null ? x.VatInclusion : m.VatInclusion, m == null ? x.WarrantyMonths : m.WarrantyMonths, m == null ? x.DeliveryDays : m.DeliveryDays))
+                               m == null ? x.VatInclusion : m.VatInclusion, m == null ? x.WarrantyMonths : m.WarrantyMonths, m == null ? x.DeliveryDays : m.DeliveryDays, m == null ? null : m.Desi))
             .ToListAsync(cancellationToken);
         await LinkOwnModelsAsync(db, tenantId, cards, now, cancellationToken);
     }
 
-    private sealed record OwnModelCard(Guid Id, Guid? BrandId, string Title, string Description, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays);
+    private sealed record OwnModelCard(Guid Id, Guid? BrandId, string Title, string Description, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays, decimal? Desi);
 
     private static async Task<int> LinkOwnModelsAsync(AppDbContext db, Guid tenantId, List<OwnModelCard> cards, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -814,8 +818,8 @@ public static class ProductModelLinks
         {
             var key = $"{OwnModelKeyPrefix}{card.Id:N}";
             await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
-                VALUES ({Guid.CreateVersion7()}, {tenantId}, {card.BrandId}, {""}, {key}, {Short(card.Title, 320)}, {(string?)null}, {card.Description}, {card.CategoryId}, {card.VatRate}, {card.VatInclusion}, {card.WarrantyMonths}, {card.DeliveryDays}, {(DateTimeOffset?)null}, {now}, {now}, {1L})
+                INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "Desi", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
+                VALUES ({Guid.CreateVersion7()}, {tenantId}, {card.BrandId}, {""}, {key}, {Short(card.Title, 320)}, {(string?)null}, {card.Description}, {card.CategoryId}, {card.VatRate}, {card.VatInclusion}, {card.WarrantyMonths}, {card.DeliveryDays}, {card.Desi}, {(DateTimeOffset?)null}, {now}, {now}, {1L})
                 ON CONFLICT DO NOTHING
                 """, cancellationToken);
             var modelId = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);

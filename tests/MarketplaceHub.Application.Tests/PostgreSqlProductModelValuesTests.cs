@@ -401,12 +401,13 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // F4: a save inside a caller's serializable transaction (the editor's save, the delete) does not touch the model row,
-    // so another session that writes the model meanwhile neither waits for it nor makes its commit fail; the model takes
-    // the values after the commit (KATALOG-14 phase D5a keeps this for serializable callers; review, 17 Nov 2026).
-    // Meanwhile the readers read the model (KATALOG-14 D5 step B2a): the saved text reaches them after the commit.
+    // F4, revised by the KATALOG-14 D5 B2a review (M1): a save inside a caller's serializable transaction (the editor's save
+    // that deletes a variant) writes its model fields in that transaction, as every other save does, so the readers give
+    // the saved text at once and an owner edit can never stand on the cards while the model (which every reader reads)
+    // keeps the old value. Another session that writes the model row meanwhile waits for the commit (here it gives up
+    // after its 1 s lock timeout); the save commits.
     [PostgreSqlFact]
-    public async Task ASaveInsideATransaction_LeavesTheModelRowAlone_AndRefreshesItAfterTheCommit()
+    public async Task ASaveInsideASerializableTransaction_WritesItsModelFieldsInIt()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
@@ -420,15 +421,13 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             siyah.Description = "Editör açıklaması";
             mavi.Description = "Editör açıklaması";
             await db.SaveChangesAsync();
-            // KATALOG-14 D5 step B2a: the readers read the model, which a serializable save writes only after its commit, so
-            // until then they give the model's text (as for the VAT, warranty and delivery days since phase D5b).
-            Assert.Equal(model.Description, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == siyah.Id)).Description);
-            // Another session (the scan, a worker's save) writes the model row meanwhile, without waiting.
+            Assert.Equal("Editör açıklaması", (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == siyah.Id)).Description);
             await using (var other = fixture.CreateContext())
             {
                 await other.Database.OpenConnectionAsync();
                 await other.Database.ExecuteSqlRawAsync("SET lock_timeout = '1s'");
-                await other.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "UpdatedAt" = now() WHERE "Id" = {model.Id}""");
+                var waited = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => other.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "UpdatedAt" = now() WHERE "Id" = {model.Id}"""));
+                Assert.Equal(Npgsql.PostgresErrorCodes.LockNotAvailable, waited.SqlState);
             }
             await transaction.CommitAsync();
         }

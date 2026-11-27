@@ -213,9 +213,10 @@ public sealed class StaleCardCopyReadersPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal(model.Id, haki.FamilyId);
     }
 
-    // Gap 3 (the Worker's warranty pass): it counts and writes by the model. Cards whose copy is empty under a model holding
-    // 24 are not counted and get nothing; a model left empty with cards on sale is counted whatever its cards' copies hold,
-    // and the first pass after a start gives the model 0.
+    // Gap 3 (the Worker's warranty pass): it counts by the model. Cards whose copy is empty under a model holding 24 are not
+    // counted (the readers see 24); a model left empty with cards on sale is counted whatever its cards' copies hold. The
+    // first pass after a start writes exactly where the previous release wrote (review L3): empty copies of cards on sale
+    // take 0, a model takes 0 only when none of its cards' copies is empty.
     [PostgreSqlFact]
     public async Task StaleCopies_TheWarrantyPassJudgesByTheModel()
     {
@@ -225,7 +226,7 @@ public sealed class StaleCardCopyReadersPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal(0, await EffectiveCatalog.Products(db).CountAsync(x => x.TenantId == seeded.Tenant.Id && x.WarrantyMonths == null));
         await ProductWarranty.RunPassAsync(db, firstPassAfterStart: true, CancellationToken.None);
         Assert.Equal((int?)24, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id)).WarrantyMonths);
-        Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Null(x.WarrantyMonths));
+        Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal((int?)0, x.WarrantyMonths));
 
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "WarrantyMonths" = NULL WHERE "TenantId" = {seeded.Tenant.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "WarrantyMonths" = 12 WHERE "TenantId" = {seeded.Tenant.Id}""");
