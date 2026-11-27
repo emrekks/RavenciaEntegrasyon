@@ -12,8 +12,19 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     private static readonly string[] LockGroupJobTypes = [.. MarketplaceJobTypes.ProcessorJobTypes];
     private static readonly string[] LockGroups = [.. MarketplaceJobTypes.ProcessorJobTypes.Select(MarketplaceSyncExecutionLock.GroupFor)];
 
-    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null)
+    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null)
     {
+        // Queue phase 2, the dispatcher's per-store cap (JobConnectionCap): off (null) for the earlier lane models, so their
+        // lease is the same query as before (every cap term is constant false).
+        var capOn = connectionCap is { Cap: > 0 };
+        var cap = connectionCap?.Cap ?? 0;
+        var capUser = connectionCap?.UserWork ?? false;
+        var capInitial = connectionCap?.InitialImports ?? false;
+        var capUrgent = connectionCap?.UrgentWork ?? false;
+        var capBackground = connectionCap?.BackgroundWork ?? false;
+        var capTypedJobTypes = connectionCap?.TypedJobTypes.ToArray() ?? [];
+        var cappedTypedJobTypes = connectionCap?.CappedTypedJobTypes.ToArray() ?? [];
+        var capCeiling = connectionCap?.HotPriorityCeiling ?? 0;
         var now = timeProvider.GetUtcNow();
         includedJobTypes ??= [];
         excludedJobTypes ??= [];
@@ -75,6 +86,20 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                 WHERE {bulkOn}
                   AND running."Status" = 'LEASED'
                   AND running."LeaseExpiresAt" > {now}),
+            -- Queue phase 2: each connection's running jobs that count toward the per-store cap (only read when it is set).
+            capped_load AS (
+                SELECT running."ConnectionId", count(*) AS running_count
+                FROM integration.jobs running
+                WHERE {capOn}
+                  AND running."Status" = 'LEASED'
+                  AND running."LeaseExpiresAt" > {now}
+                  AND running."ConnectionId" IS NOT NULL
+                  AND CASE WHEN running."Priority" <= {JobPriorityPolicy.BulkUserAction} THEN {capUser}
+                           WHEN running."Priority" < 0 THEN {capInitial}
+                           WHEN running."JobType" = ANY({capTypedJobTypes}::text[]) THEN running."JobType" = ANY({cappedTypedJobTypes}::text[])
+                           WHEN running."Priority" <= {capCeiling} THEN {capUrgent}
+                           ELSE {capBackground} END
+                GROUP BY running."ConnectionId"),
             -- One candidate owner per tenant, or per tenant and connection with connection fairness.
             queued_tenants AS (
                 SELECT DISTINCT queued."TenantId", CASE WHEN {fair} THEN queued."ConnectionId" END AS "ConnectionId"
@@ -152,6 +177,16 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                       WHERE backoff."ConnectionId" = candidate."ConnectionId"
                         AND backoff."LockGroup" = coalesce(candidate."LockGroup", candidate_group.lock_group)
                         AND backoff."Until" > {now})
+                  -- Queue phase 2, per-store cap: a capped job waits while its connection already runs the cap's number of
+                  -- capped jobs.
+                  AND NOT ({capOn}
+                      AND candidate."ConnectionId" IS NOT NULL
+                      AND CASE WHEN candidate."Priority" <= {JobPriorityPolicy.BulkUserAction} THEN {capUser}
+                               WHEN candidate."Priority" < 0 THEN {capInitial}
+                               WHEN candidate."JobType" = ANY({capTypedJobTypes}::text[]) THEN candidate."JobType" = ANY({cappedTypedJobTypes}::text[])
+                               WHEN candidate."Priority" <= {capCeiling} THEN {capUrgent}
+                               ELSE {capBackground} END
+                      AND {cap} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = candidate."ConnectionId"), 0))
                   -- Quota-aware leasing: a job whose marketplace quota is full right now waits in the queue, not in a slot.
                   -- Background work only (never a user action, a new-order read, a webhook or a write), and never longer
                   -- than the hold allows since the job became runnable.

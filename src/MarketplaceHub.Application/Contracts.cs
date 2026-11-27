@@ -45,7 +45,7 @@ public sealed class CommittedPrivateFile(string relativePath) : IStagedPrivateFi
 
 public interface IJobLeaseService
 {
-    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null);
+    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null, JobAttemptStart? attemptStart = null, JobConnectionCap? connectionCap = null);
     Task<bool> HeartbeatAsync(Guid jobId, string leaseToken, TimeSpan extension, CancellationToken cancellationToken);
     Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken, JobAttemptRun? run = null);
     Task<int> ReapExpiredAsync(CancellationToken cancellationToken);
@@ -87,6 +87,26 @@ public sealed record JobBulkhead(IReadOnlyList<string> JobTypes, IReadOnlyList<s
     int ClassMinimumPriority = 0, int ClassMaximumPriority = JobQuotaHold.DefaultHeldAbovePriority)
 {
     public bool IsEmpty => (ClassNames.Count == 0 || JobTypes.Count == 0) && LaneCap is null;
+}
+
+// Queue phase 2 (27 Nov 2026), the dispatcher's per-store cap: a capped job is not leased while Cap capped jobs of its
+// connection already run. Which jobs are capped (and counted) follows the dispatcher's lanes (DispatcherLanes.LaneFor):
+//   priority BulkUserAction or lower (kullanici)              UserWork
+//   priority InitialDataSync (ilk-cekim)                       InitialImports
+//   a type of TypedJobTypes (siparis-okuma, durum-taramasi,    capped when it is one of CappedTypedJobTypes
+//     iade, katalog), priority 0 and above
+//   any other type, priority 0..HotPriorityCeiling (acil)      UrgentWork
+//   any other type above the ceiling (arka-plan)               BackgroundWork
+// Counted from the LEASED rows in the database, so the lease query stays the one source of truth; the dispatcher leases one
+// job at a time, so two of its own leases never both see Cap - 1. Null: no cap (the lane models before the dispatcher).
+public sealed record JobConnectionCap(int Cap, bool UserWork, bool InitialImports, bool UrgentWork, bool BackgroundWork, IReadOnlyList<string> CappedTypedJobTypes, IReadOnlyList<string> TypedJobTypes, int HotPriorityCeiling)
+{
+    public bool Caps(string jobType, int priority) =>
+        priority <= JobPriorityPolicy.BulkUserAction ? UserWork
+        : priority < 0 ? InitialImports
+        : TypedJobTypes.Contains(jobType) ? CappedTypedJobTypes.Contains(jobType)
+        : priority <= HotPriorityCeiling ? UrgentWork
+        : BackgroundWork;
 }
 
 // QueueWait: how long the job waited between becoming runnable and this lease (slot, lock group or backoff wait).
