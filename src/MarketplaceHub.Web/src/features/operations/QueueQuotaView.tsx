@@ -12,9 +12,11 @@ import { jobTitle } from './job-presentation'
 import { formatDateTime } from '../../shared/format-date'
 import { ChoiceField } from './filter-fields'
 import {
-  activeJobTypes, countsByStatus, filterJobsByTab, generalJobTab, jobPlatformTabs, formatSeconds, laneHint, laneWaitState, laneLabel, laneTotals, queueWindowOptions, quotaLaneLabels, usagePercent, usageTone, windowSince,
+  activeJobTypes, countsByStatus, filterByMarketplace, filterJobsByTab, generalJobTab, jobPlatformTabs, formatSeconds, laneHint, laneWaitCauseLines, laneWaitState, laneLabel, laneTotals,
+  latencySeconds, latencySourceLabel, latencyState, marketplaceTabs, queueWindowOptions, quotaPeakText, usagePercent, usageTone, windowSince,
   type QueueWindow
 } from './queue-quota'
+import { platformDisplayName } from '../../shared/platform-names'
 import './queue-quota.css'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { queryKeys } from '../../shared/api/query-keys'
@@ -31,17 +33,33 @@ function UsageBar({ used, limit, label }: { used: number; limit: number; label: 
   </span>
 }
 
+// The seconds of a measured flow; no orders, "Veri Yok" (never 0).
+function seconds(value: number | null | undefined, orders: number) {
+  return orders === 0 ? 'Veri Yok' : latencySeconds(value)
+}
+
+// "32 sn / 1,5 dk": the median and the slowest 5 % of a split part of the order flow.
+function pair(p50: number | null | undefined, p95: number | null | undefined) {
+  return p50 === null || p50 === undefined ? '—' : `${latencySeconds(p50)} / ${latencySeconds(p95)}`
+}
+
 export function QueueQuotaView() {
   const [hours, setHours] = useState<QueueWindow>('24')
   const [platformTab, setPlatformTab] = useState('ALL')
+  const [quotaTab, setQuotaTab] = useState('ALL')
   const since = useMemo(() => windowSince(hours), [hours])
   const options = { placeholderData: keepPreviousData, refetchInterval: pollMs } as const
   const lanes = useQuery({ queryKey: queryKeys.queueQuota('lanes', hours), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsLanes'>>(`/jobs/metrics/lanes?hours=${hours}`, { signal }), ...options })
   const metrics = useQuery({ queryKey: queryKeys.queueQuota('metrics', hours), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetrics'>>(`/jobs/metrics?hours=${hours}`, { signal }), ...options })
   const quota = useQuery({ queryKey: queryKeys.queueQuota('quota'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsQuota'>>('/jobs/metrics/quota', { signal }), ...options })
+  const latency = useQuery({ queryKey: queryKeys.queueQuota('order-latency'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsOrderLatency'>>('/jobs/metrics/order-latency', { signal }), ...options })
   const counts = useQuery({ queryKey: queryKeys.queueQuota('counts', since), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsCounts'>>(`/jobs/counts?dateFrom=${encodeURIComponent(since)}`, { signal }), ...options })
-  const refresh = () => { void lanes.refetch(); void metrics.refetch(); void quota.refetch(); void counts.refetch() }
-  const fetching = lanes.isFetching || metrics.isFetching || quota.isFetching || counts.isFetching
+  const refresh = () => { void lanes.refetch(); void metrics.refetch(); void quota.refetch(); void latency.refetch(); void counts.refetch() }
+  const fetching = lanes.isFetching || metrics.isFetching || quota.isFetching || latency.isFetching || counts.isFetching
+  const quotaRows = quota.data ?? []
+  const quotaTabs = marketplaceTabs(quotaRows)
+  const activeQuotaTab = quotaTabs.some(tab => tab.value === quotaTab) ? quotaTab : 'ALL'
+  const shownQuota = filterByMarketplace(quotaRows, activeQuotaTab)
 
   const totals = lanes.data ? laneTotals(lanes.data) : null
   const types = metrics.data ? activeJobTypes(metrics.data) : []
@@ -79,7 +97,7 @@ export function QueueQuotaView() {
           <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={lane.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${lane.running} / ${lane.slots} slot`} /><span>{lane.running} / {lane.slots}</span></span></td>
           <td className="is-num" data-label="Bekleyen">{lane.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{lane.attempts.toLocaleString('tr-TR')}</td>
-          <td className="is-num" data-label="Ort. Bekleme">{formatSeconds(lane.averageWaitSeconds)}</td>
+          <td className="is-num" data-label="Ort. Bekleme">{(() => { const causes = laneWaitCauseLines(lane.waitCauses); return causes.length > 0 ? <span className="qq-causes" title={causes.join('\n')}>{formatSeconds(lane.averageWaitSeconds)}</span> : formatSeconds(lane.averageWaitSeconds) })()}</td>
           <td className="is-num" data-label="En Uzun %5 Bekleme">{formatSeconds(lane.p95WaitSeconds)}</td>
           <td className="is-num" data-label="Hedef">{formatSeconds(lane.targetSeconds)}</td>
           <td data-label="Durum">{(() => { const state = laneWaitState(lane.waitStatus); return <span className={`qq-wait is-${state.tone}`} title={[`Son 5 dk en uzun %5 bekleme: ${formatSeconds(lane.recentP95WaitSeconds)}`, `Sıradaki en eski iş: ${formatSeconds(lane.oldestWaitSeconds)}`, lane.alertSince ? `Uyarı ${formatDateTime(lane.alertSince)} tarihinden beri açık` : ''].filter(Boolean).join('\n')}><i aria-hidden="true" />{state.label}</span> })()}</td>
@@ -87,26 +105,50 @@ export function QueueQuotaView() {
       </table></div>}
     </section>
 
-    <div className="qq-split">
-      <section className="qq-section" aria-labelledby="qq-states">
-        <h2 id="qq-states">Duruma Göre İşler</h2>
-        <p className="qq-sub">{windowLabel} içinde oluşturulan işler.</p>
-        {counts.isLoading ? <Busy text="Sayılar yükleniyor…" /> : states.length === 0 ? <EmptyState icon="jobs" title="İş Yok">Bu aralıkta iş yok.</EmptyState> : <ul className="qq-states">
-          {states.map(state => <li key={state.status} className={`is-${state.status.toLowerCase()}`}><span>{state.label}</span><strong>{state.count.toLocaleString('tr-TR')}</strong></li>)}
-        </ul>}
-      </section>
-      <section className="qq-section" aria-labelledby="qq-quota">
-        <h2 id="qq-quota">Pazaryeri Kotası</h2>
-        <p className="qq-sub">Son 1 saatte gönderilen istekler; en yoğun dakika, dakikalık sınırla karşılaştırılır. Şimdilik Trendyol sipariş okumaları ölçülüyor.</p>
-        {quota.isLoading ? <Busy text="Kota yükleniyor…" /> : quota.isError && !quota.data ? <p role="alert" className="qq-error">Kota ölçümleri alınamadı.</p> : (quota.data ?? []).length === 0 ? <EmptyState icon="connect" title="Bağlantı Yok">Kotası ölçülen etkin bağlantı yok.</EmptyState> : <ul className="qq-quota">
-          {(quota.data ?? []).map(row => <li key={`${row.storeName}:${row.lane}`}>
-            <div className="qq-quota-head"><PlatformSquareMark code={row.platformCode} name={row.storeName} /><strong>{row.storeName}</strong><span className="qq-tag">{quotaLaneLabels[row.lane] ?? row.lane}</span></div>
-            <div className="qq-usage"><UsageBar used={row.peakMinuteRequests} limit={row.limitPerMinute} label={`${row.storeName} ${quotaLaneLabels[row.lane] ?? row.lane}: en yoğun dakika ${row.peakMinuteRequests} / ${row.limitPerMinute}`} /><span>{row.peakMinuteRequests} / {row.limitPerMinute} dk</span></div>
-            <small>Son 1 saat: {row.lastHourRequests.toLocaleString('tr-TR')} istek · Ortalama {row.averagePerMinute.toLocaleString('tr-TR')} / dk</small>
-          </li>)}
-        </ul>}
-      </section>
-    </div>
+    <section className="qq-section" aria-labelledby="qq-latency">
+      <h2 id="qq-latency">Siparişin Panele Ulaşma Süresi</h2>
+      <p className="qq-sub">Son 24 saatte panele gelen yeni siparişler: pazaryerindeki sipariş anından panele kaydına kadar. Webhook ile gelenlerde süre, pazaryerinin bildirimi göndermesi ve panelin işlemesi olarak ayrılır.</p>
+      {latency.isLoading ? <Busy text="Sipariş süreleri yükleniyor…" /> : latency.isError && !latency.data ? <p role="alert" className="qq-error">Sipariş süreleri alınamadı.</p> : (latency.data ?? []).length === 0 ? <EmptyState icon="connect" title="Veri Yok">Pazaryeri bağlantısı yok.</EmptyState> : <div className="qq-table-scroll"><table className="qq-table">
+        <thead><tr><th className="qq-first">Pazaryeri</th><th className="is-num">Sipariş</th><th className="is-num">Medyan</th><th className="is-num">En Uzun %5</th><th className="is-num" title="Sipariş anından webhook'un panele ulaşmasına kadar (medyan / en uzun %5)">Pazaryeri Bildirimi</th><th className="is-num" title="Webhook'un ulaşmasından siparişin panelde görünmesine kadar (medyan / en uzun %5)">Panelde İşleme</th><th className="is-num">Hedef</th><th>Durum</th></tr></thead>
+        <tbody>{(latency.data ?? []).map(row => <tr key={`${row.platformCode}:${row.source}`} className={row.source === 'ALL' ? 'qq-latency-all' : 'qq-latency-part'}>
+          <td className="qq-first"><span className="qq-mark-line"><PlatformSquareMark code={row.platformCode} name={platformDisplayName(row.platformCode)} size="sm" /><strong>{platformDisplayName(row.platformCode)}</strong></span><small>{latencySourceLabel(row.source)}</small></td>
+          <td className="is-num" data-label="Sipariş">{row.orders.toLocaleString('tr-TR')}</td>
+          <td className="is-num" data-label="Medyan">{seconds(row.p50Seconds, row.orders)}</td>
+          <td className="is-num" data-label="En Uzun %5">{seconds(row.p95Seconds, row.orders)}</td>
+          <td className="is-num" data-label="Pazaryeri Bildirimi">{pair(row.noticeP50Seconds, row.noticeP95Seconds)}</td>
+          <td className="is-num" data-label="Panelde İşleme">{pair(row.processingP50Seconds, row.processingP95Seconds)}</td>
+          <td className="is-num" data-label="Hedef">{row.targetSeconds === null || row.targetSeconds === undefined ? '—' : `${formatSeconds(row.targetSeconds)} (${row.source === 'WEBHOOK' ? 'işleme' : 'toplam'})`}</td>
+          <td data-label="Durum">{(() => { const state = latencyState(row.status); return state ? <span className={`qq-wait is-${state.tone}`}><i aria-hidden="true" />{state.label}</span> : '—' })()}</td>
+        </tr>)}</tbody>
+      </table></div>}
+    </section>
+
+    <section className="qq-section" aria-labelledby="qq-quota">
+      <h2 id="qq-quota">Pazaryeri Kotası</h2>
+      <p className="qq-sub">Son 1 saatte her kotaya giden istekler: en yoğun dakika, kodun dakikalık sınırıyla karşılaştırılır. Sınırı tutulmayan kotada yalnız kullanım gösterilir.</p>
+      {quota.isLoading ? <Busy text="Kota yükleniyor…" /> : quota.isError && !quota.data ? <p role="alert" className="qq-error">Kota ölçümleri alınamadı.</p> : quotaRows.length === 0 ? <EmptyState icon="connect" title="Veri Yok">Son 30 günde kota kullanan bağlantı yok.</EmptyState> : <>
+        <Tabs className="rv-view-tabs qq-platform-tabs" ariaLabel="Kota pazaryeri" value={activeQuotaTab} onChange={setQuotaTab} items={quotaTabs.map(tab => ({
+          value: tab.value, count: tab.count,
+          label: tab.value === 'ALL' ? tab.label : <><PlatformSquareMark code={tab.value} name={tab.label} size="sm" />{tab.label}</>
+        }))} />
+        <div className="qq-table-scroll"><table className="qq-table">
+          <thead><tr><th className="qq-first">Kota</th><th className="qq-usage-th">En Yoğun Dakika</th><th className="is-num">Son 1 Saat</th><th className="is-num">Ortalama</th></tr></thead>
+          <tbody>{shownQuota.map(row => <tr key={`${row.bucket}:${row.storeName}`}>
+            <td className="qq-first"><span className="qq-mark-line"><PlatformSquareMark code={row.platformCode} name={platformDisplayName(row.platformCode)} size="sm" /><strong>{row.label}</strong></span><small>{row.shared ? 'Tüm hesaplar ortak' : row.storeName}</small></td>
+            <td className="qq-usage-cell" data-label="En Yoğun Dakika"><span className="qq-usage">{row.limitPerMinute ? <UsageBar used={row.peakMinuteRequests} limit={row.limitPerMinute} label={`${row.label}: en yoğun dakika ${quotaPeakText(row)}`} /> : null}<span>{quotaPeakText(row)}</span>{row.limitPerMinute ? null : <small className="qq-no-limit">Sınır tutulmuyor</small>}</span></td>
+            <td className="is-num" data-label="Son 1 Saat">{row.lastHourRequests.toLocaleString('tr-TR')} istek</td>
+            <td className="is-num" data-label="Ortalama">{row.averagePerMinute.toLocaleString('tr-TR')} / dk</td>
+          </tr>)}</tbody>
+        </table></div></>}
+    </section>
+
+    <section className="qq-section" aria-labelledby="qq-states">
+      <h2 id="qq-states">Duruma Göre İşler</h2>
+      <p className="qq-sub">{windowLabel} içinde oluşturulan işler.</p>
+      {counts.isLoading ? <Busy text="Sayılar yükleniyor…" /> : states.length === 0 ? <EmptyState icon="jobs" title="İş Yok">Bu aralıkta iş yok.</EmptyState> : <ul className="qq-states">
+        {states.map(state => <li key={state.status} className={`is-${state.status.toLowerCase()}`}><span>{state.label}</span><strong>{state.count.toLocaleString('tr-TR')}</strong></li>)}
+      </ul>}
+    </section>
 
     <section className="qq-section" aria-labelledby="qq-types">
       <h2 id="qq-types">İş Türüne Göre Kuyruk</h2>

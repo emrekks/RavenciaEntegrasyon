@@ -422,15 +422,39 @@ const jobMetrics = [
   { jobType: 'PRODUCT_PUBLICATION', attempts: 12, failed: 2, averageWaitSeconds: 0.6, p95WaitSeconds: 2, averageDurationSeconds: 66, p95DurationSeconds: 190, queued: 0, running: 0 },
   { jobType: 'N11_ORDER_RECOVERY_SYNC', attempts: 4, failed: 0, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: 5400, p95DurationSeconds: 7800, queued: 1, running: 0 }
 ]
+// Invented figures (queue phase 0 adds each lane's recorded wait causes, every quota bucket and the order block).
+const laneWait = (targetSeconds, waitCauses = null) => ({ targetSeconds, recentP95WaitSeconds: null, oldestWaitSeconds: null, waitStatus: 'OK', alertSince: null, borrowed: 0, waitCauses })
 const laneMetrics = [
-  { lane: 'USER', attempts: 64, averageWaitSeconds: 0.8, p95WaitSeconds: 3, queued: 0, running: 0 },
-  { lane: 'INITIAL', attempts: 4, averageWaitSeconds: 12, p95WaitSeconds: 40, queued: 1, running: 0 },
-  { lane: 'HOT', attempts: 610, averageWaitSeconds: 3.1, p95WaitSeconds: 14, queued: 0, running: 1 },
-  { lane: 'BACKGROUND', attempts: 230, averageWaitSeconds: 48, p95WaitSeconds: 310, queued: 6, running: 0 }
+  { lane: 'USER', attempts: 64, averageWaitSeconds: 0.8, p95WaitSeconds: 3, queued: 0, running: 0, slots: 2, ...laneWait(5) },
+  { lane: 'INITIAL', attempts: 4, averageWaitSeconds: 12, p95WaitSeconds: 40, queued: 1, running: 0, slots: 3, ...laneWait(600) },
+  { lane: 'HOT', attempts: 610, averageWaitSeconds: 3.1, p95WaitSeconds: 14, queued: 0, running: 1, slots: 3, ...laneWait(30, { attempts: 610, waitSeconds: 1891, lockSeconds: 1220, backoffSeconds: 0, quotaHoldSeconds: 0, slotSeconds: 12, unknownSeconds: 659 }) },
+  { lane: 'BACKGROUND', attempts: 230, averageWaitSeconds: 48, p95WaitSeconds: 310, queued: 6, running: 0, slots: 2, ...laneWait(300, { attempts: 230, waitSeconds: 11040, lockSeconds: 7600, backoffSeconds: 120, quotaHoldSeconds: 2400, slotSeconds: 300, unknownSeconds: 620 }), waitStatus: 'OVER_TARGET' }
 ]
+const bucket = (platformCode, storeName, code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, shared = false) =>
+  ({ platformCode, storeName, bucket: code, label, limitPerMinute, lastHourRequests, peakMinuteRequests, averagePerMinute: Math.round(lastHourRequests / 6) / 10, shared })
 const quotaUsage = [
-  { platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol', lane: 'FOREGROUND', limitPerMinute: 50, lastHourRequests: 1260, peakMinuteRequests: 44, averagePerMinute: 21 },
-  { platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol', lane: 'BACKGROUND', limitPerMinute: 30, lastHourRequests: 1500, peakMinuteRequests: 30, averagePerMinute: 25 }
+  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:ORDERS_FG', 'Sipariş Okuma · Ön Plan', 12, 310, 8),
+  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:ORDERS_BG', 'Sipariş Okuma · Arka Plan', 18, 420, 17),
+  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:FINANCE', 'Finans', 100, 160, 64),
+  bucket('TRENDYOL', 'Örnek Trendyol', 'TRENDYOL:GLOBAL:ORDER:CLAIMS', 'Genel Limit · order:claims', 300, 95, 12),
+  bucket('HEPSIBURADA', 'Örnek Hepsiburada', 'HEPSIBURADA:OMS', 'Sipariş (OMS)', 600, 820, 41),
+  bucket('HEPSIBURADA', 'Örnek Hepsiburada', 'HEPSIBURADA:LISTING', 'Listeleme · Fiyat ve Stok', 100, 0, 0),
+  bucket('HEPSIBURADA', 'Örnek Hepsiburada', 'HEPSIBURADA:CATALOG', "Katalog · Sunucu IP'si Ortak", 180, 40, 22, true),
+  bucket('N11', 'Örnek N11', 'N11:ORDERS', 'Sipariş', 600, 380, 11),
+  bucket('PAZARAMA', 'Örnek Pazarama', 'PAZARAMA:READS', 'Okuma', 30, 260, 26),
+  bucket('PAZARAMA', 'Örnek Pazarama', 'PAZARAMA:SOMETHING', 'something', null, 12, 3),
+  bucket('PTTAVM', 'Örnek PTT AVM', 'PTTAVM:ORDERS', 'Sipariş', 30, 190, 4)
+]
+const orderLatency = [
+  { platformCode: 'TRENDYOL', source: 'ALL', orders: 31, p50Seconds: 29, p95Seconds: 84 },
+  { platformCode: 'TRENDYOL', source: 'WEBHOOK', orders: 28, p50Seconds: 28, p95Seconds: 80, noticeP50Seconds: 27.4, noticeP95Seconds: 79, processingP50Seconds: 0.4, processingP95Seconds: 1.2, targetSeconds: 5, status: 'OK' },
+  { platformCode: 'TRENDYOL', source: 'POLLING', orders: 3, p50Seconds: 140, p95Seconds: 230, targetSeconds: 180, status: 'WARN' },
+  { platformCode: 'HEPSIBURADA', source: 'ALL', orders: 4, p50Seconds: 3, p95Seconds: 150 },
+  { platformCode: 'HEPSIBURADA', source: 'WEBHOOK', orders: 3, p50Seconds: 2.5, p95Seconds: 4, noticeP50Seconds: 1.8, noticeP95Seconds: 3.1, processingP50Seconds: 0.7, processingP95Seconds: 8, targetSeconds: 5, status: 'WARN' },
+  { platformCode: 'N11', source: 'ALL', orders: 1, p50Seconds: 420, p95Seconds: 420 },
+  { platformCode: 'N11', source: 'POLLING', orders: 1, p50Seconds: 420, p95Seconds: 420, targetSeconds: 180, status: 'BAD' },
+  { platformCode: 'PAZARAMA', source: 'ALL', orders: 0 },
+  { platformCode: 'PTTAVM', source: 'ALL', orders: 0 }
 ]
 
 export const catalog = [
@@ -472,6 +496,7 @@ export const catalog = [
   ['GET /jobs/metrics', jobMetrics],
   ['GET /jobs/metrics/lanes', laneMetrics],
   ['GET /jobs/metrics/quota', quotaUsage],
+  ['GET /jobs/metrics/order-latency', orderLatency],
   ['^/jobs/([^/]+)$', jobDetail],
   // İşlem Takibi › Loglar: no price/stock line has been sent yet (automatic writes are off).
   ['GET /price-stock-send-log', { items: [], nextCursor: null, hasMore: false }],

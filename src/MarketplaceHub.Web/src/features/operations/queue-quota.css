@@ -55,7 +55,7 @@
   .qq-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qq-split { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 720px) {
+@media (max-width: 760px) {
   .qq-table-scroll { overflow: visible; background: none; border: 0; }
   .app-shell.stitch-shell main .qq .qq-table, .app-shell.stitch-shell main .qq .qq-table tbody { display: block; }
   .app-shell.stitch-shell main .qq .qq-table thead { display: none; }
@@ -92,3 +92,23 @@
 .qq-wait.is-ok { color: var(--rv-color-accent); }
 .qq-wait.is-warn { color: var(--rv-color-warning); }
 .qq-wait.is-bad { color: var(--rv-color-danger); font-weight: 600; }
+
+/* Queue phase 0 (27 Nov 2026): the order block, the quota table and the lane's wait causes. */
+.qq-mark-line { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.qq-mark-line .platform-square-mark.is-sm { flex: none; margin-right: 0; }
+.app-shell.stitch-shell main .qq .qq-table tr.qq-latency-part td.qq-first { padding-left: 34px; }
+.app-shell.stitch-shell main .qq .qq-table tr.qq-latency-part td.qq-first .qq-mark-line { display: none; }
+.app-shell.stitch-shell main .qq .qq-table tr.qq-latency-part td.qq-first small { margin-top: 0; color: var(--rv-color-ink); font-size: 13px; }
+.qq-causes { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.app-shell.stitch-shell main .qq .qq-table td.qq-usage-cell .qq-usage > span:not(.qq-bar) { min-width: 78px; }
+.qq-usage .qq-no-limit { color: var(--rv-color-muted); font-size: 11.5px; }
+.qq-section > .qq-states { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .qq-section > .qq-states { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .qq-section > .qq-states { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .qq .qq-table tr.qq-latency-part td.qq-first { padding-left: 0; }
+  .app-shell.stitch-shell main .qq .qq-table tr.qq-latency-part td.qq-first .qq-mark-line { display: inline-flex; }
+  .app-shell.stitch-shell main .qq .qq-table tr.qq-latency-part td.qq-first small { margin-top: 2px; color: var(--rv-color-muted); font-size: 11.5px; }
+}

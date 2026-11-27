@@ -2,8 +2,8 @@ import { jobStatusLabel } from '../../shared/job-status-labels'
 import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
 import type { ApiAnswer } from '../../shared/api/api-answer'
 
-// İşlem Takibi › Kuyruk ve Kota: what GET /jobs/metrics, /jobs/metrics/lanes, /jobs/metrics/quota and /jobs/counts
-// answer, and the words the tab shows for them.
+// İşlem Takibi › Kuyruk ve Kota: what GET /jobs/metrics, /jobs/metrics/lanes, /jobs/metrics/quota,
+// /jobs/metrics/order-latency and /jobs/counts answer, and the words the tab shows for them.
 
 export type LaneMetric = ApiAnswer<'getJobsMetricsLanes'>[number]
 export type JobTypeMetric = ApiAnswer<'getJobsMetrics'>[number]
@@ -37,7 +37,64 @@ export function laneHint(code: string) {
   return laneLabels[code]?.hint ?? ''
 }
 
-export const quotaLaneLabels: Record<string, string> = { FOREGROUND: 'Ön Plan', BACKGROUND: 'Arka Plan' }
+export type OrderLatency = ApiAnswer<'getJobsMetricsOrderLatency'>[number]
+export type LaneWaitCauses = NonNullable<LaneMetric['waitCauses']>
+
+/** Marketplace tabs above a list: "Tümü" first, then the marketplaces that have rows, in display order. */
+export function marketplaceTabs(rows: readonly { platformCode: string }[]): JobPlatformTab[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) counts.set(row.platformCode, (counts.get(row.platformCode) ?? 0) + 1)
+  const tabs: JobPlatformTab[] = [{ value: 'ALL', label: 'Tümü', count: rows.length }]
+  for (const code of platformDisplayOrder) if (counts.has(code)) tabs.push({ value: code, label: platformDisplayName(code), count: counts.get(code)! })
+  return tabs
+}
+
+/** The rows of one marketplace tab; a tab with no rows any more shows everything. */
+export function filterByMarketplace<T extends { platformCode: string }>(rows: readonly T[], tab: string): T[] {
+  if (tab === 'ALL') return [...rows]
+  const matching = rows.filter(row => row.platformCode === tab)
+  return matching.length > 0 ? matching : [...rows]
+}
+
+/** A quota bucket's busiest minute against its limit: "81 / 100 dk", or "81 / dk" when the code keeps no limit for it. */
+export function quotaPeakText(row: QuotaUsage) {
+  const limit = row.limitPerMinute
+  return limit === null || limit === undefined ? `${row.peakMinuteRequests.toLocaleString('tr-TR')} / dk` : `${row.peakMinuteRequests.toLocaleString('tr-TR')} / ${limit.toLocaleString('tr-TR')} dk`
+}
+
+/** An order-flow time: below 10 s with one decimal ("0,4 sn": the panel's own part is often under a second), else formatSeconds. */
+export function latencySeconds(seconds: number | null | undefined) {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '—'
+  return seconds < 10 ? `${seconds.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} sn` : formatSeconds(seconds)
+}
+
+// How an order reached the panel (GET /jobs/metrics/order-latency): every order, by a webhook delivery, or by a read.
+const latencySources: Record<string, string> = { ALL: 'Tüm Siparişler', WEBHOOK: 'Webhook ile', POLLING: 'Okuma ile' }
+export function latencySourceLabel(source: string) {
+  return latencySources[source] ?? source
+}
+
+/** A flow against its target: OK green, WARN (within twice the target) amber, BAD red; no status, no colour. */
+export function latencyState(status: string | null | undefined): { label: string; tone: 'ok' | 'warn' | 'bad' } | null {
+  if (status === 'OK') return { label: 'Hedefte', tone: 'ok' }
+  if (status === 'WARN') return { label: 'Hedefe Yakın', tone: 'warn' }
+  if (status === 'BAD') return { label: 'Hedef Aşıldı', tone: 'bad' }
+  return null
+}
+
+/** The lane's recorded wait causes as tooltip lines; nothing while no attempt recorded them. */
+export function laneWaitCauseLines(causes: LaneWaitCauses | null | undefined): string[] {
+  if (!causes || causes.attempts === 0) return []
+  const part = (label: string, seconds: number) => `${label}: ${formatSeconds(seconds)}`
+  return [
+    `Bekleme nedeni (${causes.attempts.toLocaleString('tr-TR')} deneme, toplam ${formatSeconds(causes.waitSeconds)})`,
+    part('Aynı bağlantının kilidi', causes.lockSeconds),
+    part('Kota geri çekilmesi', causes.backoffSeconds),
+    part('Kota bekletmesi', causes.quotaHoldSeconds),
+    part('Boş slot yok', causes.slotSeconds),
+    part('Nedeni bilinmeyen', causes.unknownSeconds)
+  ]
+}
 
 /** "8 sn", "3,5 dk", "1,2 sa"; a missing value is "—". */
 export function formatSeconds(seconds: number | null | undefined) {
