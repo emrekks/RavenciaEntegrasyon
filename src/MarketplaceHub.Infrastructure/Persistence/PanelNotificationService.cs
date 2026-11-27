@@ -113,10 +113,12 @@ public sealed class PanelNotificationService(AppDbContext db, TimeProvider timeP
 
     public async Task<IReadOnlyList<PanelNotificationView>> NewOrdersAsync(Guid tenantId, Guid userId, CancellationToken cancellationToken)
     {
-        // Shared rows only: a browser can never write a "new-orders:" key (PanelNotificationPolicy.IsServerKey).
+        // Shared rows only: a browser can never write a "new-orders:" or "job-alert:" key (PanelNotificationPolicy.IsServerKey).
+        // The bell's job alerts (JobFailureAlertPolicy, queue phase 1A) ride on the same list: one poll brings both.
         var pattern = $"{CatalogService.EscapeLike(NewOrderNoticePolicy.KeyPrefix)}%";
+        var alertPattern = $"{CatalogService.EscapeLike(JobFailureAlertPolicy.KeyPrefix)}%";
         var rows = await Visible(tenantId, userId).AsNoTracking()
-            .Where(x => x.UserId == null && EF.Functions.Like(x.ClientKey, pattern, LikeEscape))
+            .Where(x => x.UserId == null && (EF.Functions.Like(x.ClientKey, pattern, LikeEscape) || EF.Functions.Like(x.ClientKey, alertPattern, LikeEscape)))
             .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
             .Take(NewOrderNoticePolicy.ListLimit)
             .ToListAsync(cancellationToken);

@@ -24,7 +24,7 @@ public static class NotificationEndpoints
         api.MapGet("/summary", async (HttpContext http, IPanelNotificationService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.SummaryAsync(tenant.TenantId, tenant.UserId, http.RequestAborted)) : Unauthorized(http)).Produces<PanelNotificationSummary>();
         // The tenant's "Yeni Sipariş" notifications (NewOrderNoticePolicy) for the bell, newest first: every signed-in role,
-        // like the order list (GET /orders) they lead to.
+        // like the order list (GET /orders) they lead to. The job alerts ("job-alert:", JobFailureAlertPolicy) come with them.
         api.MapGet("/new-orders", async (HttpContext http, IPanelNotificationService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.NewOrdersAsync(tenant.TenantId, tenant.UserId, http.RequestAborted)) : Unauthorized(http))
             .Produces<IReadOnlyList<PanelNotificationView>>();

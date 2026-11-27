@@ -91,3 +91,41 @@ describe('new orders in the bell', () => {
     }
   })
 })
+
+// Queue phase 1A: the job alerts come on the same list (key "job-alert:"), read as errors or warnings and lead to the job.
+describe('job alerts in the bell', () => {
+  afterEach(() => localStorage.clear())
+  const dead: NewOrderNoticeRow = {
+    clientKey: 'job-alert:20261127:0123456789abcdef', severity: 'ERROR', title: 'Arka Plan İşi Durdu',
+    message: 'Deneme Mağaza: Yeni İadeler işi denemeleri bittiği için durdu. Neden: Pazaryeri yanıt vermedi.',
+    href: '/jobs?ara=00000000-0000-0000-0000-0000000000a1', actionLabel: 'İşe Git', platformCode: 'PTTAVM', storeName: 'Deneme Mağaza',
+    createdAt: '2026-11-27T11:00:00Z', updatedAt: '2026-11-27T11:00:00Z', readAt: null,
+    payload: JSON.stringify({ connectionId: 'c3', operation: 'İş Takibi', code: 'PTTAVM_NETWORK_ERROR', subject: { kind: 'job', id: '00000000-0000-0000-0000-0000000000a1', label: 'Yeni İadeler', href: '/jobs?ara=00000000-0000-0000-0000-0000000000a1' } })
+  }
+  const alerts = () => readNotificationHistory().filter(item => item.id.startsWith('job-alert:'))
+
+  it('adds a dead job as an error and a review as a warning, once, leading to the job', () => {
+    expect(syncNewOrderNotices([dead, { ...dead, clientKey: 'job-alert:20261127:fedcba9876543210', severity: 'WARNING', title: 'İş İnceleme Bekliyor', createdAt: '2026-11-27T11:05:00Z' }])).toBe(true)
+    const [review, error] = alerts()
+    expect(error).toMatchObject({ id: dead.clientKey, kind: 'error', title: 'Arka Plan İşi Durdu', href: dead.href, actionLabel: 'İşe Git', operation: 'İş Takibi', code: 'PTTAVM_NETWORK_ERROR', platformCode: 'PTTAVM', read: false })
+    expect(error.subject).toMatchObject({ kind: 'job', label: 'Yeni İadeler' })
+    expect(review).toMatchObject({ kind: 'warning', title: 'İş İnceleme Bekliyor' })
+    expect(syncNewOrderNotices([dead])).toBe(false)
+    expect(alerts()).toHaveLength(2)
+  })
+
+  it('is the server’s record: never sent to the center as the person’s own', async () => {
+    vi.useFakeTimers()
+    try {
+      const send = vi.fn().mockResolvedValue({})
+      localStorage.setItem('ravencia.notification-history.center@', '1')
+      const stop = startNotificationCenterSink(send)
+      syncNewOrderNotices([dead])
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(send).not.toHaveBeenCalled()
+      stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

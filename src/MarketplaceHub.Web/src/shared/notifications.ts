@@ -639,8 +639,12 @@ function attentionSignature(notification: AppNotification) {
 // seen list) or in any bell of the tenant (the server row's dismissedAt, which also holds after a sign-out wiped the seen
 // list, and on a new device). Marking one read goes to the server like any bell entry (the sink sends its key), so every
 // device sees it read.
+// The same list carries the job alerts (queue phase 1A, JobFailureAlertPolicy, key "job-alert:"): a background job that ended
+// dead, went to review or has been blocked for a day, one per store, job type, cause and day. They behave like the order
+// notices (added once, read and cleared across devices) but read as errors or warnings and lead to the job.
 export type NewOrderNoticeRow = {
   clientKey: string
+  severity?: string | null
   title: string
   message: string
   href?: string | null
@@ -655,6 +659,8 @@ export type NewOrderNoticeRow = {
 }
 
 export const newOrderNoticePrefix = 'new-orders:'
+export const jobAlertPrefix = 'job-alert:'
+const isServerNoticeKey = (key: string) => key.startsWith(newOrderNoticePrefix) || key.startsWith(jobAlertPrefix)
 const newOrderSeenStorageKey = 'ravencia.new-order-notices'
 
 function readNewOrderSeen(): Record<string, string> {
@@ -683,19 +689,21 @@ function newOrderCard(payload: string | null | undefined): Record<string, unknow
 
 function newOrderNotification(row: NewOrderNoticeRow, previous?: AppNotification): AppNotification {
   const card = newOrderCard(row.payload)
-  const href = typeof row.href === 'string' && row.href.startsWith('/') && !row.href.startsWith('//') ? row.href.slice(0, 300) : '/orders?status=NEW'
+  const alert = row.clientKey.startsWith(jobAlertPrefix)
+  const href = typeof row.href === 'string' && row.href.startsWith('/') && !row.href.startsWith('//') ? row.href.slice(0, 300) : alert ? '/jobs' : '/orders?status=NEW'
   // Read on the server (another device) is read here; a notice that grew since this browser read it is new again.
   const read = row.readAt ? true : previous ? previous.read && previous.message === row.message : false
   return {
     id: row.clientKey.slice(0, 120),
     message: row.message,
-    kind: 'info',
+    kind: alert ? (row.severity?.toUpperCase() === 'ERROR' ? 'error' : 'warning') : 'info',
     createdAt: row.createdAt,
     read,
     href,
-    actionLabel: text(row.actionLabel, 80) ?? 'Siparişlere Git',
-    title: text(row.title, 80) ?? 'Yeni Sipariş',
-    operation: 'Sipariş okuma',
+    actionLabel: text(row.actionLabel, 80) ?? (alert ? 'İşe Git' : 'Siparişlere Git'),
+    title: text(row.title, 80) ?? (alert ? 'Arka Plan İşi Durdu' : 'Yeni Sipariş'),
+    operation: alert ? text(card.operation, 80) ?? 'İş Takibi' : 'Sipariş okuma',
+    code: alert ? text(card.code, 80) : undefined,
     platformCode: text(row.platformCode, 40)?.toUpperCase(),
     connectionId: text(card.connectionId, 80),
     storeName: text(row.storeName, 120),
@@ -716,7 +724,7 @@ export function syncNewOrderNotices(rows: NewOrderNoticeRow[]) {
   const nextSeen: Record<string, string> = {}
   let next = history
   let changed = false
-  const listed = rows.filter(row => typeof row.clientKey === 'string' && row.clientKey.startsWith(newOrderNoticePrefix) && typeof row.message === 'string' && typeof row.createdAt === 'string')
+  const listed = rows.filter(row => typeof row.clientKey === 'string' && isServerNoticeKey(row.clientKey) && typeof row.message === 'string' && typeof row.createdAt === 'string')
     .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
   for (const row of listed) {
     nextSeen[row.clientKey] = row.updatedAt
