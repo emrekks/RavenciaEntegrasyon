@@ -107,8 +107,10 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             -- Queue phase 2, deferral (JobDeferral), read once: each connection and lock group with a job queued ahead that the
             -- lease could take now. A per-candidate EXISTS over integration.jobs made a lease on a 200 000-job queue run past
             -- the command timeout (28 Nov 2026); read once it costs one index range scan of the ahead types' priorities.
-            deferring_pairs AS (
-                SELECT DISTINCT ahead."ConnectionId", coalesce(ahead."LockGroup", ahead_group.lock_group) AS lock_group
+            -- MATERIALIZED and an uncorrelated IN below: a CTE referenced once is otherwise inlined back into the candidate
+            -- filter and recomputed for every candidate (seen in the plan on CI, 690e46b20); IN against it is one hashed lookup.
+            deferring_pairs AS MATERIALIZED (
+                SELECT DISTINCT ahead."ConnectionId", coalesce(ahead."LockGroup", ahead_group.lock_group, '') AS lock_group
                 FROM integration.jobs ahead
                 LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS ahead_group(job_type, lock_group)
                   ON ahead_group.job_type = ahead."JobType"
@@ -223,10 +225,8 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                   -- (deferring_pairs). The deferring lanes never take an ahead type, so the job is never its own ahead job.
                   AND NOT ({deferOn}
                       AND candidate."ConnectionId" IS NOT NULL
-                      AND EXISTS (
-                          SELECT 1 FROM deferring_pairs
-                          WHERE deferring_pairs."ConnectionId" = candidate."ConnectionId"
-                            AND deferring_pairs.lock_group = coalesce(candidate."LockGroup", candidate_group.lock_group)))
+                      AND (candidate."ConnectionId", coalesce(candidate."LockGroup", candidate_group.lock_group, ''))
+                          IN (SELECT deferring_pairs."ConnectionId", deferring_pairs.lock_group FROM deferring_pairs))
                   -- Quota-aware leasing: a job whose marketplace quota is full right now waits in the queue, not in a slot.
                   -- Background work only (never a user action, a new-order read, a webhook or a write), and never longer
                   -- than the hold allows since the job became runnable.

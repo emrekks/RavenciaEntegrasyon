@@ -203,11 +203,13 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                         AND (rule.included = '' OR strpos(rule.included, '|' || running."JobType" || '|') > 0)
                         AND strpos(rule.excluded, '|' || running."JobType" || '|') = 0)
                 GROUP BY running."ConnectionId"),
-            runnable AS (
-                SELECT job."Id", job."JobType", job."Priority", job."ConnectionId", coalesce(job."LockGroup", job_group.lock_group) AS lock_group
+            runnable AS MATERIALIZED (
+                SELECT job."Id", job."JobType", job."Priority", job."ConnectionId", coalesce(job."LockGroup", job_group.lock_group, '') AS lock_group,
+                       job."TenantId", job_connection."PlatformCode" AS platform
                 FROM integration.jobs job
                 LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS job_group(job_type, lock_group)
                   ON job_group.job_type = job."JobType"
+                LEFT JOIN integration.platform_connections job_connection ON job_connection."Id" = job."ConnectionId"
                 WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED')
                   AND job."AvailableAt" <= {now}
                   AND job."AttemptCount" < job."MaxAttempts"
@@ -217,8 +219,9 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                         AND backoff."LockGroup" = coalesce(job."LockGroup", job_group.lock_group)
                         AND backoff."Until" > {now})),
             -- Each connection and lock group with a job queued ahead that the lease could take now (JobDeferral: runnable and
-            -- not backed off, an ahead type in the priority range, not held by the per-store cap), read once.
-            deferring_pairs AS (
+            -- not backed off, an ahead type in the priority range, not held by the per-store cap), read once. MATERIALIZED and
+            -- an uncorrelated IN below: a CTE referenced once is otherwise inlined and recomputed for every runnable row.
+            deferring_pairs AS MATERIALIZED (
                 SELECT DISTINCT ahead_job."ConnectionId", ahead_job.lock_group
                 FROM runnable ahead_job
                 WHERE ahead_job."ConnectionId" IS NOT NULL
@@ -230,7 +233,19 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                           WHERE ahead_job."Priority" BETWEEN ahead_rule.minimum AND ahead_rule.maximum
                             AND (ahead_rule.included = '' OR strpos(ahead_rule.included, '|' || ahead_job."JobType" || '|') > 0)
                             AND strpos(ahead_rule.excluded, '|' || ahead_job."JobType" || '|') = 0)
-                      AND {capCount} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = ahead_job."ConnectionId"), 0)))
+                      AND {capCount} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = ahead_job."ConnectionId"), 0))),
+            -- The bulkhead classes of cap 1 held now, per tenant and marketplace, with the store running the class's job: read
+            -- once (a per-row join of the running jobs and the connections took most of a census of 40 000 rows, 28 Nov 2026).
+            class_holders AS MATERIALIZED (
+                SELECT class_running."TenantId", class_connection."PlatformCode" AS platform, running_class.class_name,
+                       min(class_running."ConnectionId"::text)::uuid AS holder
+                FROM integration.jobs class_running
+                JOIN unnest({bulkJobTypes}::text[], {bulkClasses}::text[]) AS running_class(job_type, class_name) ON running_class.job_type = class_running."JobType"
+                JOIN integration.platform_connections class_connection ON class_connection."Id" = class_running."ConnectionId"
+                WHERE {bulkOn}
+                  AND class_running."Status" = 'LEASED' AND class_running."LeaseExpiresAt" > {now}
+                  AND class_running."Priority" BETWEEN {bulkMinimum} AND {bulkMaximum}
+                GROUP BY class_running."TenantId", class_connection."PlatformCode", running_class.class_name)
             SELECT held."JobType" AS "JobType", held."Priority" AS "Priority", held."ConnectionId" AS "ConnectionId", held.held_by AS "HeldBy"
             FROM runnable
             CROSS JOIN LATERAL (
@@ -251,22 +266,16 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                                     AND (rule.included = '' OR strpos(rule.included, '|' || runnable."JobType" || '|') > 0)
                                     AND strpos(rule.excluded, '|' || runnable."JobType" || '|') = 0)
                               -- the same predicate as the lease's deferral (JobDeferral), read once (deferring_pairs)
-                              AND EXISTS (SELECT 1 FROM deferring_pairs WHERE deferring_pairs."ConnectionId" = runnable."ConnectionId"
-                                  AND deferring_pairs.lock_group = runnable.lock_group))
+                              AND (runnable."ConnectionId", runnable.lock_group) IN (SELECT deferring_pairs."ConnectionId", deferring_pairs.lock_group FROM deferring_pairs))
                           THEN runnable."ConnectionId"
                         -- A bulkhead class at its cap for the tenant and marketplace: held by the store running the class's job.
-                        ELSE (SELECT min(class_running."ConnectionId"::text)::uuid
+                        ELSE (SELECT min(class_holders.holder::text)::uuid
                               FROM unnest({bulkJobTypes}::text[], {bulkClasses}::text[]) AS candidate_class(job_type, class_name)
-                              JOIN unnest({bulkJobTypes}::text[], {bulkClasses}::text[]) AS running_class(job_type, class_name) ON running_class.class_name = candidate_class.class_name
-                              JOIN integration.jobs class_running ON class_running."JobType" = running_class.job_type
-                              JOIN integration.platform_connections class_connection ON class_connection."Id" = class_running."ConnectionId"
-                              JOIN integration.platform_connections candidate_connection ON candidate_connection."Id" = runnable."ConnectionId"
+                              JOIN class_holders ON class_holders.class_name = candidate_class.class_name
                               WHERE {bulkOn} AND runnable."Priority" BETWEEN {bulkMinimum} AND {bulkMaximum}
                                 AND candidate_class.job_type = runnable."JobType"
-                                AND class_running."TenantId" = candidate_connection."TenantId"
-                                AND class_connection."PlatformCode" = candidate_connection."PlatformCode"
-                                AND class_running."Status" = 'LEASED' AND class_running."LeaseExpiresAt" > {now}
-                                AND class_running."Priority" BETWEEN {bulkMinimum} AND {bulkMaximum})
+                                AND class_holders."TenantId" = runnable."TenantId"
+                                AND class_holders.platform = runnable.platform)
                     END AS held_by) held
             GROUP BY held."JobType", held."Priority", held."ConnectionId", held.held_by
             """).ToListAsync(cancellationToken);

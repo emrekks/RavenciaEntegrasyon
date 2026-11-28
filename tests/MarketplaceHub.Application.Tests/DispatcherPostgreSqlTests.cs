@@ -260,59 +260,64 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
-    // Load-lane check of 28 Nov: the deferral was a per-candidate EXISTS over integration.jobs, so on a 200 000-job queue a
-    // background lease with the cap and the deferral ran past the 30 s command timeout (the same lease without them took
-    // ~1.3 s). The connections and lock groups with a job ahead are now read once (deferring_pairs). On a 40 000-job queue
-    // with a new-order read on every tenth connection, the lease with the cap and the deferral costs at most a few times the
-    // lease without them, and the census answers.
+    // Load-lane check of 28 Nov and the CI failure of 690e46b20: the deferral's "a job ahead" set must be read once per query,
+    // never once per candidate or census row. A per-candidate EXISTS over integration.jobs ran a lease on a 200 000-job queue
+    // past the 30 s command timeout; the first fix was a CTE referenced once, which PostgreSQL inlines back into the
+    // per-candidate EXISTS (and the census's into a per-row scan of its runnable rows). The plans are asserted, not the clock
+    // (project rule since 28 Nov: no timing assertions outside the Load lane): on a 40 000-job queue, before and after ANALYZE,
+    // the deferral set is a materialized step the lease and the census each scan once, the lease with the cap and the deferral reads
+    // at most a few times the buffers of the lease without them, and the census reads its runnable rows and the bulkhead holders
+    // once. Loop counts over integration.jobs and times are printed only (the base lease checks every visited candidate, and the
+    // number visited depends on the other jobs in the database).
     [PostgreSqlFact]
-    public async Task TheDeferralKeepsALeaseOnALargeQueueAsCheapAsOneWithoutIt()
+    public async Task TheDeferralIsReadOnceNotPerCandidateInTheLeaseAndTheCensusPlans()
     {
-        var tenants = Enumerable.Range(0, 10).Select(index => ScheduledPolicyIsolationTests.NewTenant($"dispatcher-large-{index}")).ToList();
+        var tenants = Enumerable.Range(0, 60).Select(index => ScheduledPolicyIsolationTests.NewTenant($"dispatcher-plan-{index}")).ToList();
         var tenantIds = tenants.Select(tenant => tenant.Id).ToArray();
-        var correlation = $"large-{Guid.NewGuid():N}";
+        var correlation = $"plan-{Guid.NewGuid():N}";
         await using var seed = fixture.CreateContext();
         try
         {
             seed.Tenants.AddRange(tenants);
             await seed.SaveChangesAsync();
             string[] types = [MarketplaceJobTypes.StockReconciliation, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.TrendyolFinanceSync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ReferenceSync];
+            // 40 000 runnable jobs over 60 tenants and 600 stores, a new-order read on every tenth store, a few running.
             await seed.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO integration.jobs ("Id", "TenantId", "ConnectionId", "JobType", "PayloadJson", "PayloadVersion", "PayloadHash", "JobDedupKey", "EffectIdempotencyKey", "Priority", "Status", "AvailableAt", "AttemptCount", "CorrelationId", "Version", "CreatedAt")
-                SELECT gen_random_uuid(), ({tenantIds}::uuid[])[1 + (n % 10)], md5({correlation} || (n % 400))::uuid,
-                       CASE WHEN n % 4000 < 40 THEN {MarketplaceJobTypes.OrderSync} ELSE ({types}::text[])[1 + (n % 5)] END, chr(123) || chr(125), 1, 'h', {correlation} || ':' || n, {correlation} || ':' || n,
-                       CASE WHEN n % 4000 < 40 OR n % 5 = 3 THEN 0 ELSE 4 END, 'PENDING', now() - (n || ' seconds')::interval, 0, {correlation}, 0, now() - (n || ' seconds')::interval
+                SELECT gen_random_uuid(), ({tenantIds}::uuid[])[1 + (n % 60)], md5({correlation} || (n % 600))::uuid,
+                       CASE WHEN n % 6000 < 60 THEN {MarketplaceJobTypes.OrderSync} ELSE ({types}::text[])[1 + (n % 5)] END, chr(123) || chr(125), 1, 'h', {correlation} || ':' || n, {correlation} || ':' || n,
+                       CASE WHEN n % 6000 < 60 OR n % 5 = 3 THEN 0 ELSE 4 END, CASE WHEN n % 997 = 0 THEN 'LEASED' ELSE 'PENDING' END,
+                       now() - (n || ' seconds')::interval, 0, {correlation}, 0, now() - (n || ' seconds')::interval
                 FROM generate_series(1, 40000) AS n
                 """);
-            await seed.Database.ExecuteSqlRawAsync("ANALYZE integration.jobs");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"UPDATE integration.jobs SET \"LeaseExpiresAt\" = now() + interval '10 minutes' WHERE \"CorrelationId\" = {correlation} AND \"Status\" = 'LEASED'");
             var settings = DispatcherSettings.Default;
             var background = DispatcherLanes.All().First(lane => lane.Name == DispatcherLanes.Background);
-            async Task<double> MedianLeaseMs(bool withDeferral)
+            var bulkhead = BulkheadSettings.From(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Worker:LaneModel"] = "dispatcher" }).Build(), true)
+                .For(DispatcherLanes.OrderReads, WorkerLanes.DefaultHotPriorityCeiling);
+            foreach (var state in new[] { "as inserted (no ANALYZE by the test)", "after ANALYZE" })
             {
-                var times = new List<double>();
-                for (var index = 0; index < 7; index++)
-                {
-                    await using var db = fixture.CreateContext();
-                    var watch = System.Diagnostics.Stopwatch.StartNew();
-                    var job = await new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider).TryLeaseAsync(TimeSpan.FromMinutes(2), background.MaximumPriority, background.MinimumPriority, CancellationToken.None,
-                        includedJobTypes: [.. background.IncludedJobTypes], excludedJobTypes: [.. background.ExcludedJobTypes],
-                        connectionCap: withDeferral ? DispatcherLanes.ConnectionCap(settings) : null, deferral: withDeferral ? DispatcherLanes.DeferralFor(DispatcherLanes.Background, settings) : null);
-                    times.Add(watch.Elapsed.TotalMilliseconds);
-                    Assert.NotNull(job);
-                }
-                times.Sort();
-                return times[times.Count / 2];
+                if (state == "after ANALYZE") await seed.Database.ExecuteSqlRawAsync("ANALYZE integration.jobs");
+                var plain = await LeasePlanAsync(withDeferral: false);
+                var deferred = await LeasePlanAsync(withDeferral: true);
+                var census = await PlanOfAsync("held_by", async db => await QueueHealthService.RunnableJobKindsAsync(db, DateTimeOffset.UtcNow, CancellationToken.None, DispatcherLanes.ConnectionCap(settings),
+                    DispatcherLanes.DeferredRules(settings), DispatcherLanes.DeferralFor(DispatcherLanes.StatusScans, settings), bulkhead));
+                output.WriteLine($"{state}: lease without {plain.Buffers} buffers, jobs scans in up to {plain.JobsLoops} loops, {plain.Milliseconds:0} ms; " +
+                    $"with the cap and the deferral {deferred.Buffers} buffers, up to {deferred.JobsLoops} loops, {deferred.Milliseconds:0} ms; " +
+                    $"census {census.Buffers} buffers, runnable scanned in up to {census.CteLoops.GetValueOrDefault("runnable")} loops, deferral set in up to {census.CteLoops.GetValueOrDefault("deferring_pairs")}, {census.Milliseconds:0} ms");
+                Assert.True(deferred.Buffers <= (plain.Buffers * 3) + 2_000, $"{state}: the lease with the deferral read {deferred.Buffers} buffers, without it {plain.Buffers}");
+                // The deferral set is its own materialized step, scanned once (an inlined copy runs once per candidate or row).
+                Assert.True(deferred.CteLoops.TryGetValue("deferring_pairs", out var leaseLoops) && leaseLoops <= 1, $"{state}: the lease scanned the deferral set in {leaseLoops} loops (none: inlined)");
+                Assert.True(census.CteLoops.TryGetValue("deferring_pairs", out var censusLoops) && censusLoops <= 1, $"{state}: the census scanned the deferral set in {censusLoops} loops (none: inlined)");
+                Assert.True(census.CteLoops.GetValueOrDefault("runnable") <= 1, $"{state}: the census scanned its runnable rows in {census.CteLoops.GetValueOrDefault("runnable")} loops");
+                // The bulkhead holders are read once, not joined to the running jobs for every runnable row.
+                Assert.True(census.JobsLoops <= 1, $"{state}: the census scanned integration.jobs in {census.JobsLoops} loops");
             }
-            await MedianLeaseMs(false);
-            var plain = await MedianLeaseMs(false);
-            var deferred = await MedianLeaseMs(true);
-            await using var censusDb = fixture.CreateContext();
-            var censusWatch = System.Diagnostics.Stopwatch.StartNew();
-            var rows = await QueueHealthService.RunnableJobKindsAsync(censusDb, DateTimeOffset.UtcNow, CancellationToken.None, DispatcherLanes.ConnectionCap(settings),
-                DispatcherLanes.DeferredRules(settings), DispatcherLanes.DeferralFor(DispatcherLanes.StatusScans, settings), null);
-            output.WriteLine($"40 000 jobs: lease {plain:0} ms without, {deferred:0} ms with the cap and the deferral; census {censusWatch.Elapsed.TotalMilliseconds:0} ms, {rows.Count} rows");
-            Assert.NotEmpty(rows);
-            Assert.True(deferred <= (plain * 3) + 500, $"the lease with the deferral took {deferred:0} ms against {plain:0} ms without it");
+
+            Task<PlanFacts> LeasePlanAsync(bool withDeferral) => PlanOfAsync("FOR UPDATE OF job SKIP LOCKED", async db =>
+                await new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider).TryLeaseAsync(TimeSpan.FromMinutes(2), background.MaximumPriority, background.MinimumPriority, CancellationToken.None,
+                    includedJobTypes: [.. background.IncludedJobTypes], excludedJobTypes: [.. background.ExcludedJobTypes],
+                    connectionCap: withDeferral ? DispatcherLanes.ConnectionCap(settings) : null, deferral: withDeferral ? DispatcherLanes.DeferralFor(DispatcherLanes.Background, settings) : null));
         }
         finally
         {
@@ -320,6 +325,68 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.outbox_events WHERE \"TenantId\" = ANY({tenantIds})");
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.jobs WHERE \"TenantId\" = ANY({tenantIds})");
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM iam.tenants WHERE \"Id\" = ANY({tenantIds})");
+        }
+    }
+
+    private sealed record PlanFacts(long Buffers, long JobsLoops, Dictionary<string, long> CteLoops, double Milliseconds);
+
+    // Runs the query once through a context whose command interceptor keeps the SQL that contains marker, then runs
+    // EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) of that SQL with the same parameters in a transaction it rolls back.
+    private async Task<PlanFacts> PlanOfAsync(string marker, Func<AppDbContext, Task> run)
+    {
+        var capture = new CapturingInterceptor(marker);
+        var connectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!;
+        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).AddInterceptors(capture).Options))
+            await run(db);
+        Assert.NotNull(capture.Text);
+        await using var connection = new Npgsql.NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using var explain = new Npgsql.NpgsqlCommand("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + capture.Text, connection, transaction);
+        foreach (var parameter in capture.Parameters) explain.Parameters.Add(parameter.Clone());
+        var json = (string)(await explain.ExecuteScalarAsync())!;
+        await transaction.RollbackAsync();
+        if (Environment.GetEnvironmentVariable("MARKETPLACEHUB_PLAN_DUMP_DIR") is { Length: > 0 } dumpDirectory)
+            await File.WriteAllTextAsync(Path.Combine(dumpDirectory, $"plan-{DateTime.UtcNow:HHmmssfff}-{(marker.StartsWith("FOR", StringComparison.Ordinal) ? "lease" : "census")}.json"), json);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement[0];
+        var plan = root.GetProperty("Plan");
+        long jobsLoops = 0;
+        var cteLoops = new Dictionary<string, long>(StringComparer.Ordinal);
+        void Walk(JsonElement node)
+        {
+            var loops = node.TryGetProperty("Actual Loops", out var value) ? value.GetInt64() : 0;
+            if (node.TryGetProperty("Relation Name", out var relation) && relation.GetString() == "jobs") jobsLoops = Math.Max(jobsLoops, loops);
+            if (node.TryGetProperty("CTE Name", out var cte) && cte.GetString() is { } name) cteLoops[name] = Math.Max(cteLoops.GetValueOrDefault(name), loops);
+            if (node.TryGetProperty("Plans", out var children)) foreach (var child in children.EnumerateArray()) Walk(child);
+        }
+        Walk(plan);
+        var buffers = plan.GetProperty("Shared Hit Blocks").GetInt64() + plan.GetProperty("Shared Read Blocks").GetInt64();
+        return new PlanFacts(buffers, jobsLoops, cteLoops, root.GetProperty("Execution Time").GetDouble());
+    }
+
+    private sealed class CapturingInterceptor(string marker) : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public string? Text { get; private set; }
+        public List<Npgsql.NpgsqlParameter> Parameters { get; } = [];
+
+        private void Keep(System.Data.Common.DbCommand command)
+        {
+            if (Text is not null || !command.CommandText.Contains(marker, StringComparison.Ordinal)) return;
+            Text = command.CommandText;
+            Parameters.AddRange(command.Parameters.Cast<Npgsql.NpgsqlParameter>().Select(parameter => parameter.Clone()));
+        }
+
+        public override Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> ReaderExecuting(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result)
+        {
+            Keep(command);
+            return result;
+        }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Keep(command);
+            return ValueTask.FromResult(result);
         }
     }
 
