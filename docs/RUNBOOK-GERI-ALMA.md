@@ -101,8 +101,8 @@ geçirmez; her geçiş bir yayındır (iki dosyada değeri değiştir, commit et
 
 | Değer | Ne çalışır | Ne zaman |
 |---|---|---|
-| `flexible` | Bugünkü 11 şerit, 20 slot tek havuzda, şerit başına ödünç döngüleri (`LaneSlotPool`) | Bu yayındaki varsayılan |
-| `dispatcher` | Tek dağıtıcı, iş türüne göre 11 şerit (Kullanıcı, Webhook, Pazaryerine Yazma, Elle Başlatılan Okuma, Sipariş Okuma, Durum Taraması, İade, Toplu İşler, Katalog, Arka Plan, İlk Çekim), mağaza başına sınır | Kanıttan sonra tek satırlık geçiş yayını |
+| `flexible` | Önceki 11 şerit, 20 slot tek havuzda, şerit başına ödünç döngüleri (`LaneSlotPool`) | Dağıtıcıdan geri dönüş |
+| `dispatcher` | Tek dağıtıcı, iş türüne göre 11 şerit (Kullanıcı, Webhook, Pazaryerine Yazma, Elle Başlatılan Okuma, Sipariş Okuma, Durum Taraması, İade, Toplu İşler, Katalog, Arka Plan, İlk Çekim), mağaza başına sınır | Varsayılan (geçiş: 28 Kas 2026) |
 | `legacy` | Her şerit yalnız kendi slotlarında | İkinci geri dönüş |
 
 Dağıtıcıdan geri dönmek: iki dosyada `flexible` yazıp yayınla. Worker yeniden açılınca bekleyen işler kaybolmaz (kuyruk

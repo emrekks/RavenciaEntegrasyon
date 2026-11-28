@@ -449,7 +449,8 @@ function jobFailures(url) {
   }).filter(Boolean).sort((a, b) => b.count - a.count)
   return { jobType, totalCount: total, groupCount: groups.length, groups, items: attempts.slice((page - 1) * pageSize, page * pageSize), page, pageSize }
 }
-const laneMetrics = [
+// The earlier flexible lanes (the rollback model); the shipped default since 28 Nov 2026 is the dispatcher (dispatcherLaneMetrics).
+export const flexibleLaneMetrics = [
   { lane: 'USER', attempts: 64, averageWaitSeconds: 0.8, p95WaitSeconds: 3, queued: 0, running: 0, slots: 2, ...laneWait(5) },
   { lane: 'INITIAL', attempts: 4, averageWaitSeconds: 12, p95WaitSeconds: 40, queued: 1, running: 0, slots: 3, ...laneWait(600) },
   { lane: 'HOT', attempts: 610, averageWaitSeconds: 3.1, p95WaitSeconds: 14, queued: 0, running: 1, slots: 3, ...laneWait(30, { attempts: 610, waitSeconds: 1891, lockSeconds: 1220, backoffSeconds: 0, quotaHoldSeconds: 0, slotSeconds: 12, unknownSeconds: 659 }) },
@@ -539,7 +540,7 @@ export const catalog = [
   ['GET /jobs/counts', jobCounts],
   ['GET /jobs/metrics', jobMetrics],
   ['GET /jobs/metrics/failures', ({ url }) => jobFailures(url)],
-  ['GET /jobs/metrics/lanes', laneMetrics],
+  ['GET /jobs/metrics/lanes', dispatcherLaneMetrics],
   ['GET /jobs/metrics/quota', quotaUsage],
   ['GET /jobs/metrics/order-latency', orderLatency],
   ['^/jobs/([^/]+)$', jobDetail],

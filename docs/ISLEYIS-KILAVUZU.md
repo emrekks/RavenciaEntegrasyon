@@ -2264,8 +2264,8 @@ CrowdSec yeniden yüklenir), ardından `sudo cscli parsers inspect ravencia/pane
   (`QueueQuotaView.tsx`; uçlar `/jobs/metrics`, `/jobs/metrics/lanes`, `/jobs/metrics/quota`, `/jobs/counts`:
   `JobEndpoints.cs:32-46`).
 - **Şerit modeli ve dağıtıcı** (Kuyruk Faz 2, 27 Kas 2026; `Worker:LaneModel`; geçiş, doğrulama sorguları ve geri dönüş
-  eşikleri `docs/RUNBOOK-KUYRUK-DAGITICI.md`, geri dönüşün yayını `docs/RUNBOOK-GERI-ALMA.md` 2b). Bu yayında çalışan model
-  `flexible`'dır (11 şerit, 20 slot tek havuz). `dispatcher` seçilince:
+  eşikleri `docs/RUNBOOK-KUYRUK-DAGITICI.md`, geri dönüşün yayını `docs/RUNBOOK-GERI-ALMA.md` 2b). Çalışan model
+  28 Kas 2026'dan beri `dispatcher`'dır; geri dönüş `flexible` (önceki 11 şerit, 20 slot tek havuz). Dağıtıcıyla:
   - **Şeritler iş türüne göre**, her iş tek bir şeride düşer (`DispatcherLanes.LaneFor`); slotlar toplam 20
     (`Worker:Dispatcher:Reserved:<şerit>`, `Share:<şerit>`):
 

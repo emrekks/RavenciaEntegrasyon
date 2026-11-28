@@ -79,7 +79,8 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
     }
 
     // The worker runs the model its settings name and the api shows that model's lanes: a switch changes both files (the
-    // production compose passes no override). This release ships the flexible lanes, named explicitly. The files are copied
+    // production compose passes no override). Since the flip (28 Nov 2026) both ship the dispatcher; the rollback is flexible
+    // in both files (docs/RUNBOOK-GERI-ALMA.md 2b). The files are copied
     // next to the test (ShippedSettings), so the test does not depend on where the build puts its output.
     [Fact]
     public void TheWorkerAndTheApiShipTheSameLaneModel()
@@ -89,7 +90,7 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
             using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "ShippedSettings", file)));
             return document.RootElement.GetProperty("Worker").GetProperty("LaneModel").GetString();
         }
-        Assert.Equal("flexible", Model("worker.appsettings.json"));
+        Assert.Equal("dispatcher", Model("worker.appsettings.json"));
         Assert.Equal(Model("worker.appsettings.json"), Model("api.appsettings.json"));
     }
 
