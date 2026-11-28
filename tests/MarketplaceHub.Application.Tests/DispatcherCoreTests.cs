@@ -66,6 +66,12 @@ public sealed class DispatcherCoreTests(ITestOutputHelper output)
         Assert.Equal(DispatcherLanes.Writes, DispatcherLanes.LaneFor(MarketplaceJobTypes.ExternalEffectReconcile, JobPriorityPolicy.UserAction));
         Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor(PanelJobTypes.FactoryReset, JobPriorityPolicy.UserAction));
         Assert.Equal(DispatcherLanes.Bulk, DispatcherLanes.LaneFor(MarketplaceJobTypes.ConnectionFullReset, JobPriorityPolicy.UserAction));
+        // The deferring lanes never take a job type they defer to, at any priority (the lease drops the "not the job itself"
+        // check for that reason: deferring_pairs in JobLeaseService).
+        foreach (var lane in DispatcherLanes.All().Where(lane => DispatcherLanes.DeferringLanes.Contains(lane.Name)))
+            foreach (var type in DispatcherLanes.NewOrderReadJobTypes)
+                for (var priority = -4; priority <= 7; priority++)
+                    Assert.False(DispatcherLanes.Takes(lane, type, priority), $"{lane.Name} takes {type}:{priority}");
         // Under the earlier lane models nothing moves: the flexible user lane still takes them all.
         var flexibleUser = WorkerLanes.All().First(lane => lane.Name == "user");
         Assert.True(flexibleUser.Takes(MarketplaceJobTypes.PriceInventorySync, JobPriorityPolicy.UserAction));

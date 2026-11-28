@@ -260,6 +260,69 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // Load-lane check of 28 Nov: the deferral was a per-candidate EXISTS over integration.jobs, so on a 200 000-job queue a
+    // background lease with the cap and the deferral ran past the 30 s command timeout (the same lease without them took
+    // ~1.3 s). The connections and lock groups with a job ahead are now read once (deferring_pairs). On a 40 000-job queue
+    // with a new-order read on every tenth connection, the lease with the cap and the deferral costs at most a few times the
+    // lease without them, and the census answers.
+    [PostgreSqlFact]
+    public async Task TheDeferralKeepsALeaseOnALargeQueueAsCheapAsOneWithoutIt()
+    {
+        var tenants = Enumerable.Range(0, 10).Select(index => ScheduledPolicyIsolationTests.NewTenant($"dispatcher-large-{index}")).ToList();
+        var tenantIds = tenants.Select(tenant => tenant.Id).ToArray();
+        var correlation = $"large-{Guid.NewGuid():N}";
+        await using var seed = fixture.CreateContext();
+        try
+        {
+            seed.Tenants.AddRange(tenants);
+            await seed.SaveChangesAsync();
+            string[] types = [MarketplaceJobTypes.StockReconciliation, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.TrendyolFinanceSync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ReferenceSync];
+            await seed.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.jobs ("Id", "TenantId", "ConnectionId", "JobType", "PayloadJson", "PayloadVersion", "PayloadHash", "JobDedupKey", "EffectIdempotencyKey", "Priority", "Status", "AvailableAt", "AttemptCount", "CorrelationId", "Version", "CreatedAt")
+                SELECT gen_random_uuid(), ({tenantIds}::uuid[])[1 + (n % 10)], md5({correlation} || (n % 400))::uuid,
+                       CASE WHEN n % 4000 < 40 THEN {MarketplaceJobTypes.OrderSync} ELSE ({types}::text[])[1 + (n % 5)] END, chr(123) || chr(125), 1, 'h', {correlation} || ':' || n, {correlation} || ':' || n,
+                       CASE WHEN n % 4000 < 40 OR n % 5 = 3 THEN 0 ELSE 4 END, 'PENDING', now() - (n || ' seconds')::interval, 0, {correlation}, 0, now() - (n || ' seconds')::interval
+                FROM generate_series(1, 40000) AS n
+                """);
+            await seed.Database.ExecuteSqlRawAsync("ANALYZE integration.jobs");
+            var settings = DispatcherSettings.Default;
+            var background = DispatcherLanes.All().First(lane => lane.Name == DispatcherLanes.Background);
+            async Task<double> MedianLeaseMs(bool withDeferral)
+            {
+                var times = new List<double>();
+                for (var index = 0; index < 7; index++)
+                {
+                    await using var db = fixture.CreateContext();
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    var job = await new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider).TryLeaseAsync(TimeSpan.FromMinutes(2), background.MaximumPriority, background.MinimumPriority, CancellationToken.None,
+                        includedJobTypes: [.. background.IncludedJobTypes], excludedJobTypes: [.. background.ExcludedJobTypes],
+                        connectionCap: withDeferral ? DispatcherLanes.ConnectionCap(settings) : null, deferral: withDeferral ? DispatcherLanes.DeferralFor(DispatcherLanes.Background, settings) : null);
+                    times.Add(watch.Elapsed.TotalMilliseconds);
+                    Assert.NotNull(job);
+                }
+                times.Sort();
+                return times[times.Count / 2];
+            }
+            await MedianLeaseMs(false);
+            var plain = await MedianLeaseMs(false);
+            var deferred = await MedianLeaseMs(true);
+            await using var censusDb = fixture.CreateContext();
+            var censusWatch = System.Diagnostics.Stopwatch.StartNew();
+            var rows = await QueueHealthService.RunnableJobKindsAsync(censusDb, DateTimeOffset.UtcNow, CancellationToken.None, DispatcherLanes.ConnectionCap(settings),
+                DispatcherLanes.DeferredRules(settings), DispatcherLanes.DeferralFor(DispatcherLanes.StatusScans, settings), null);
+            output.WriteLine($"40 000 jobs: lease {plain:0} ms without, {deferred:0} ms with the cap and the deferral; census {censusWatch.Elapsed.TotalMilliseconds:0} ms, {rows.Count} rows");
+            Assert.NotEmpty(rows);
+            Assert.True(deferred <= (plain * 3) + 500, $"the lease with the deferral took {deferred:0} ms against {plain:0} ms without it");
+        }
+        finally
+        {
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.job_attempts WHERE \"TenantId\" = ANY({tenantIds})");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.outbox_events WHERE \"TenantId\" = ANY({tenantIds})");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.jobs WHERE \"TenantId\" = ANY({tenantIds})");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM iam.tenants WHERE \"Id\" = ANY({tenantIds})");
+        }
+    }
+
     // The real Worker (ExecuteAsync: the dispatcher or today's lane loops, the notification listener, the due-time wake, the
     // reaper) over a mixed stream of 48 jobs on four stores: user actions, webhooks, writes, order reads, status scans, return
     // reads, catalogue reads and background reads; some fail once and are retried, some stop as blocked. The job processor is

@@ -104,6 +104,34 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                         AND (rule.included = '' OR strpos(rule.included, '|' || running."JobType" || '|') > 0)
                         AND strpos(rule.excluded, '|' || running."JobType" || '|') = 0)
                 GROUP BY running."ConnectionId"),
+            -- Queue phase 2, deferral (JobDeferral), read once: each connection and lock group with a job queued ahead that the
+            -- lease could take now. A per-candidate EXISTS over integration.jobs made a lease on a 200 000-job queue run past
+            -- the command timeout (28 Nov 2026); read once it costs one index range scan of the ahead types' priorities.
+            deferring_pairs AS (
+                SELECT DISTINCT ahead."ConnectionId", coalesce(ahead."LockGroup", ahead_group.lock_group) AS lock_group
+                FROM integration.jobs ahead
+                LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS ahead_group(job_type, lock_group)
+                  ON ahead_group.job_type = ahead."JobType"
+                WHERE {deferOn}
+                  AND ahead."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+                  AND ahead."Priority" BETWEEN {aheadMinimum} AND {aheadMaximum}
+                  AND ahead."AvailableAt" <= {now}
+                  AND ahead."JobType" = ANY({aheadJobTypes}::text[])
+                  AND ahead."AttemptCount" < ahead."MaxAttempts"
+                  AND ahead."ConnectionId" IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM integration.connection_backoffs ahead_backoff
+                      WHERE ahead_backoff."ConnectionId" = ahead."ConnectionId"
+                        AND ahead_backoff."LockGroup" = coalesce(ahead."LockGroup", ahead_group.lock_group)
+                        AND ahead_backoff."Until" > {now})
+                  -- the job ahead is leasable now: not held by the per-store cap (the quota hold never holds its range)
+                  AND NOT ({capOn}
+                      AND EXISTS (
+                          SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS ahead_rule(minimum, maximum, included, excluded)
+                          WHERE ahead."Priority" BETWEEN ahead_rule.minimum AND ahead_rule.maximum
+                            AND (ahead_rule.included = '' OR strpos(ahead_rule.included, '|' || ahead."JobType" || '|') > 0)
+                            AND strpos(ahead_rule.excluded, '|' || ahead."JobType" || '|') = 0)
+                      AND {cap} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = ahead."ConnectionId"), 0))),
             -- One candidate owner per tenant, or per tenant and connection with connection fairness.
             queued_tenants AS (
                 SELECT DISTINCT queued."TenantId", CASE WHEN {fair} THEN queued."ConnectionId" END AS "ConnectionId"
@@ -191,34 +219,14 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                             AND (rule.included = '' OR strpos(rule.included, '|' || candidate."JobType" || '|') > 0)
                             AND strpos(rule.excluded, '|' || candidate."JobType" || '|') = 0)
                       AND {cap} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = candidate."ConnectionId"), 0))
-                  -- Queue phase 2, deferral: a job waits while its connection has a runnable job of an ahead type queued.
+                  -- Queue phase 2, deferral: a job waits while its connection has a job queued ahead in its lock group
+                  -- (deferring_pairs). The deferring lanes never take an ahead type, so the job is never its own ahead job.
                   AND NOT ({deferOn}
                       AND candidate."ConnectionId" IS NOT NULL
                       AND EXISTS (
-                          SELECT 1 FROM integration.jobs ahead
-                          LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS ahead_group(job_type, lock_group)
-                            ON ahead_group.job_type = ahead."JobType"
-                          WHERE ahead."ConnectionId" = candidate."ConnectionId"
-                            AND ahead."Id" <> candidate."Id"
-                            AND ahead."JobType" = ANY({aheadJobTypes}::text[])
-                            AND ahead."Priority" BETWEEN {aheadMinimum} AND {aheadMaximum}
-                            AND coalesce(ahead."LockGroup", ahead_group.lock_group) = coalesce(candidate."LockGroup", candidate_group.lock_group)
-                            AND ahead."Status" IN ('PENDING', 'RETRY_SCHEDULED')
-                            AND ahead."AvailableAt" <= {now}
-                            AND ahead."AttemptCount" < ahead."MaxAttempts"
-                            AND NOT EXISTS (
-                                SELECT 1 FROM integration.connection_backoffs ahead_backoff
-                                WHERE ahead_backoff."ConnectionId" = ahead."ConnectionId"
-                                  AND ahead_backoff."LockGroup" = coalesce(ahead."LockGroup", ahead_group.lock_group)
-                                  AND ahead_backoff."Until" > {now})
-                            -- the job ahead is leasable now: not held by the per-store cap (the quota hold never holds its range)
-                            AND NOT ({capOn}
-                                AND EXISTS (
-                                    SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS ahead_rule(minimum, maximum, included, excluded)
-                                    WHERE ahead."Priority" BETWEEN ahead_rule.minimum AND ahead_rule.maximum
-                                      AND (ahead_rule.included = '' OR strpos(ahead_rule.included, '|' || ahead."JobType" || '|') > 0)
-                                      AND strpos(ahead_rule.excluded, '|' || ahead."JobType" || '|') = 0)
-                                AND {cap} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = ahead."ConnectionId"), 0))))
+                          SELECT 1 FROM deferring_pairs
+                          WHERE deferring_pairs."ConnectionId" = candidate."ConnectionId"
+                            AND deferring_pairs.lock_group = coalesce(candidate."LockGroup", candidate_group.lock_group)))
                   -- Quota-aware leasing: a job whose marketplace quota is full right now waits in the queue, not in a slot.
                   -- Background work only (never a user action, a new-order read, a webhook or a write), and never longer
                   -- than the hold allows since the job became runnable.

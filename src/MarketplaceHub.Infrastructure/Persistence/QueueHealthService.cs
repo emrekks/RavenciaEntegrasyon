@@ -215,7 +215,22 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                       SELECT 1 FROM integration.connection_backoffs backoff
                       WHERE backoff."ConnectionId" = job."ConnectionId"
                         AND backoff."LockGroup" = coalesce(job."LockGroup", job_group.lock_group)
-                        AND backoff."Until" > {now}))
+                        AND backoff."Until" > {now})),
+            -- Each connection and lock group with a job queued ahead that the lease could take now (JobDeferral: runnable and
+            -- not backed off, an ahead type in the priority range, not held by the per-store cap), read once.
+            deferring_pairs AS (
+                SELECT DISTINCT ahead_job."ConnectionId", ahead_job.lock_group
+                FROM runnable ahead_job
+                WHERE ahead_job."ConnectionId" IS NOT NULL
+                  AND ahead_job."JobType" = ANY({ahead}::text[])
+                  AND ahead_job."Priority" BETWEEN {aheadMinimum} AND {aheadMaximum}
+                  AND NOT ({capOn}
+                      AND EXISTS (
+                          SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS ahead_rule(minimum, maximum, included, excluded)
+                          WHERE ahead_job."Priority" BETWEEN ahead_rule.minimum AND ahead_rule.maximum
+                            AND (ahead_rule.included = '' OR strpos(ahead_rule.included, '|' || ahead_job."JobType" || '|') > 0)
+                            AND strpos(ahead_rule.excluded, '|' || ahead_job."JobType" || '|') = 0)
+                      AND {capCount} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = ahead_job."ConnectionId"), 0)))
             SELECT held."JobType" AS "JobType", held."Priority" AS "Priority", held."ConnectionId" AS "ConnectionId", held.held_by AS "HeldBy"
             FROM runnable
             CROSS JOIN LATERAL (
@@ -235,18 +250,9 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
                                   WHERE runnable."Priority" BETWEEN rule.minimum AND rule.maximum
                                     AND (rule.included = '' OR strpos(rule.included, '|' || runnable."JobType" || '|') > 0)
                                     AND strpos(rule.excluded, '|' || runnable."JobType" || '|') = 0)
-                              -- the same predicate as the lease's deferral (JobDeferral): runnable and not backed off (runnable),
-                              -- in the deferral's priority range, not held by the per-store cap
-                              AND EXISTS (SELECT 1 FROM runnable ahead_job WHERE ahead_job."ConnectionId" = runnable."ConnectionId" AND ahead_job."Id" <> runnable."Id"
-                                  AND ahead_job."JobType" = ANY({ahead}::text[]) AND ahead_job.lock_group = runnable.lock_group
-                                  AND ahead_job."Priority" BETWEEN {aheadMinimum} AND {aheadMaximum}
-                                  AND NOT ({capOn}
-                                      AND EXISTS (
-                                          SELECT 1 FROM unnest({capMinimums}::int[], {capMaximums}::int[], {capIncluded}::text[], {capExcluded}::text[]) AS ahead_rule(minimum, maximum, included, excluded)
-                                          WHERE ahead_job."Priority" BETWEEN ahead_rule.minimum AND ahead_rule.maximum
-                                            AND (ahead_rule.included = '' OR strpos(ahead_rule.included, '|' || ahead_job."JobType" || '|') > 0)
-                                            AND strpos(ahead_rule.excluded, '|' || ahead_job."JobType" || '|') = 0)
-                                      AND {capCount} <= coalesce((SELECT capped_load.running_count FROM capped_load WHERE capped_load."ConnectionId" = ahead_job."ConnectionId"), 0))))
+                              -- the same predicate as the lease's deferral (JobDeferral), read once (deferring_pairs)
+                              AND EXISTS (SELECT 1 FROM deferring_pairs WHERE deferring_pairs."ConnectionId" = runnable."ConnectionId"
+                                  AND deferring_pairs.lock_group = runnable.lock_group))
                           THEN runnable."ConnectionId"
                         -- A bulkhead class at its cap for the tenant and marketplace: held by the store running the class's job.
                         ELSE (SELECT min(class_running."ConnectionId"::text)::uuid
