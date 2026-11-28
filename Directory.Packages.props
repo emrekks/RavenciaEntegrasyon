@@ -11,7 +11,7 @@
     <PackageVersion Include="Npgsql" Version="10.0.3" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="QRCoder" Version="1.8.1" />
-    <PackageVersion Include="HtmlSanitizer" Version="9.2.1039" />
+    <PackageVersion Include="HtmlSanitizer" Version="11.0.26" />
     <PackageVersion Include="Anthropic" Version="13.5.0" />
     <PackageVersion Include="NetVips" Version="3.2.0" />
     <PackageVersion Include="NetVips.Native.linux-x64" Version="8.18.7" />
