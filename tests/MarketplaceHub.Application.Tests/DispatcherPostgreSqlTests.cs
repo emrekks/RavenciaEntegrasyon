@@ -390,6 +390,42 @@ public sealed class DispatcherPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // Last review before the flip (28 Nov): the flip runbook's work-type CASE (docs/RUNBOOK-KUYRUK-DAGITICI.md, the first SQL
+    // block) classifies pre-flip attempts for the thresholds, so it must put every job where DispatcherLanes.LaneFor does
+    // (a -3 price write or read-back in yazma, a reset in toplu, not in kullanici). It is run here in PostgreSQL for every job
+    // type at every priority, with no recorded lane, and compared with LaneFor.
+    [PostgreSqlFact]
+    public async Task TheRunbookWorkTypeCaseMatchesLaneFor()
+    {
+        var runbook = (await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "ShippedDocs", "RUNBOOK-KUYRUK-DAGITICI.md"))).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var start = runbook.IndexOf("```sql\n", StringComparison.Ordinal) + "```sql\n".Length;
+        var end = runbook.IndexOf("```", start, StringComparison.Ordinal);
+        var workType = string.Join('\n', runbook[start..end].Split('\n').Where(line => !line.TrimStart().StartsWith("--", StringComparison.Ordinal)));
+        Assert.Contains("CASE WHEN a.\"Lane\"", workType, StringComparison.Ordinal);
+        string[] types = [.. MarketplaceJobTypes.ProcessorJobTypes, InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceReconcile, InvoicingJobTypes.InvoiceDocumentFetch,
+            InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.ManualOrderInvoiceDelivery, InvoicingJobTypes.StageCapabilityProbe,
+            PanelJobTypes.FactoryReset, "IMPORT_PREVIEW", "IMPORT_APPLY", "UNKNOWN_TYPE"];
+        var pairs = types.Distinct(StringComparer.Ordinal).SelectMany(type => Enumerable.Range(-4, 12).Select(priority => (Type: type, Priority: priority))).ToList();
+        await using var connection = new Npgsql.NpgsqlConnection(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION"));
+        await connection.OpenAsync();
+        await using var command = new Npgsql.NpgsqlCommand($"""
+            SELECT j."JobType", j."Priority", ({workType}) AS work_type
+            FROM unnest(@types::text[], @priorities::int[]) AS j("JobType", "Priority")
+            CROSS JOIN (SELECT NULL::text AS "Lane") a
+            """, connection);
+        command.Parameters.AddWithValue("types", pairs.Select(pair => pair.Type).ToArray());
+        command.Parameters.AddWithValue("priorities", pairs.Select(pair => pair.Priority).ToArray());
+        var mismatches = new List<string>();
+        await using (var reader = await command.ExecuteReaderAsync())
+            while (await reader.ReadAsync())
+            {
+                var (type, priority, sql) = (reader.GetString(0), reader.GetInt32(1), reader.GetString(2));
+                var expected = DispatcherLanes.LaneFor(type, priority);
+                if (sql != expected) mismatches.Add($"{type}:{priority} runbook {sql}, LaneFor {expected}");
+            }
+        Assert.True(mismatches.Count == 0, string.Join("; ", mismatches.Take(20)));
+    }
+
     // The real Worker (ExecuteAsync: the dispatcher or today's lane loops, the notification listener, the due-time wake, the
     // reaper) over a mixed stream of 48 jobs on four stores: user actions, webhooks, writes, order reads, status scans, return
     // reads, catalogue reads and background reads; some fail once and are retried, some stop as blocked. The job processor is

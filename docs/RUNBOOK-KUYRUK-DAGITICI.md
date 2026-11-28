@@ -2,7 +2,13 @@
 
 `Worker:LaneModel=dispatcher` geçişinin kontrol listesi, salt okunur doğrulama sorguları ve sayıyla yazılmış geri dönüş
 eşikleri. Modelin kendisi `docs/ISLEYIS-KILAVUZU.md` (İşlem Takibi › Şerit modeli ve dağıtıcı), geri dönüşün yayını
-`docs/RUNBOOK-GERI-ALMA.md` 2b. Sorgular canlıda yalnız `/prod-sql` ile (salt okunur rol, `BEGIN READ ONLY … ROLLBACK`)
+`docs/RUNBOOK-GERI-ALMA.md` 2b.
+
+**Durum (28 Kas 2026):** önce karanlık yayın (dağıtıcı kodu, varsayılan `flexible`, 996b57876), ardından geçiş
+yayını: iki `appsettings.json` dosyasında `dispatcher` (bu satırla aynı commit). Geçişten sonra ne zaman neye bakılacağı
+2. bölümde, sorgular 3. bölümde.
+
+Sorgular canlıda yalnız `/prod-sql` ile (salt okunur rol, `BEGIN READ ONLY … ROLLBACK`)
 çalıştırılır; hiçbiri yazmaz.
 
 ## 1. Geçişten önce
@@ -26,7 +32,7 @@ eşikleri. Modelin kendisi `docs/ISLEYIS-KILAVUZU.md` (İşlem Takibi › Şerit
 | Ne zaman | Ne |
 |---|---|
 | İlk 10 dk | `prod-logs logs worker --since 10m --grep -i dispatcher`: "dispatcher turn" hatası yok; Kuyruk ve Kota sayfası 11 şeridi gösteriyor; Q5'e (bekleyen ama başlamayan iş) elle bak |
-| İlk 1 saat | Q1, Q2, Q4, Q5, Q6; eşiklerden biri aşılırsa hemen geri dön (4. bölüm) |
+| İlk 1 saat | Q1, Q2, Q4, Q5, Q6; eşiklerden biri aşılırsa hemen geri dön (4. bölüm). Ayrıca izle: panelden tek tek başlatılan bir `PRICE_INVENTORY_SYNC` artık Pazaryerine Yazma'da (hedef 60 sn), başlama gecikmesine bak (Q1 yazma satırı); Q5'te "Elle Başlatılan Okuma" (acil) işi görünürse not al: ayrılmışı ve payı 0, yalnız boş ortak slotta çalışır |
 | İlk referans penceresi (ertesi sabah İstanbul 06:00-10:00 = 03:00-07:00 UTC) | Q1 ve Q3 bu pencere için ayrı; esnek modelin aynı penceresiyle karşılaştır |
 | 24 saat | Q1-Q6 tam pencere; Q7 iki kez (60 sn arayla) |
 
@@ -39,12 +45,18 @@ Her sorgunun başındaki `params` satırında `flip_at` geçiş anıdır; `worke
 dahil); `WaitSlotMs` dağıtıcıda "slot için bekleme" (bütün bekleme eksi kilit, geri çekilme ve kota bekletmesi),
 `WaitLockMs` mağazanın aynı kilit grubundaki işini bekleme, `WaitQuotaHoldMs` kota bekletmesi.
 
-İş türü sınıflaması iki modelde aynıdır (`DispatcherLanes.LaneFor` ile aynı kurallar; yeni bir iş tipi eklenince burası da
-güncellenir):
+İş türü: geçişten sonraki denemelerde dağıtıcının kaydettiği `job_attempts."Lane"` kullanılır (aşağıdaki CASE'in ilk satırı);
+geçişten önceki (esnek model) denemelerde aynı sınıflama `DispatcherLanes.LaneFor`'un kurallarıyla, aynı sırayla hesaplanır:
+öncelik -3 olsa da fiyat-stok yazması ve otomatik geri okumalar Pazaryerine Yazma'ya, sıfırlamalar Toplu İşler'e gider.
+`DispatcherPostgreSqlTests.TheRunbookWorkTypeCaseMatchesLaneFor` bu CASE'i PostgreSQL'de her iş tipi ve öncelikle çalıştırıp
+`LaneFor` ile karşılaştırır; yeni bir iş tipi eklenince burası güncellenir, yoksa test düşer:
 
 ```sql
--- WORK_TYPE: Q1-Q3'te aynen kullanılır.
-CASE WHEN j."Priority" <= -3 THEN 'kullanici'
+-- WORK_TYPE: Q1-Q3'te aynen kullanılır (a: job_attempts, j: jobs).
+CASE WHEN a."Lane" IN ('kullanici','webhook','yazma','acil','siparis-okuma','durum-taramasi','iade','toplu','katalog','arka-plan','ilk-cekim') THEN a."Lane"
+     WHEN j."Priority" <= -3 AND j."JobType" IN ('PRICE_INVENTORY_SYNC','INVOICE_RECONCILE','ORDER_INVOICE_RECONCILIATION','SHOPIFY_ORDER_INVOICE_RECONCILIATION','HEPSIBURADA_ORDER_INVOICE_RECONCILIATION','EXTERNAL_EFFECT_RECONCILE') THEN 'yazma'
+     WHEN j."Priority" <= -3 AND j."JobType" IN ('PANEL_FACTORY_RESET','CONNECTION_FULL_RESET') THEN 'toplu'
+     WHEN j."Priority" <= -3 THEN 'kullanici'
      WHEN j."Priority" = -2 THEN 'toplu'
      WHEN j."Priority" < 0 THEN 'ilk-cekim'
      WHEN j."JobType" IN ('IMPORT_PREVIEW','IMPORT_APPLY') THEN 'toplu'
@@ -133,7 +145,8 @@ kodlar (`*_NETWORK_ERROR`, `*_TIMEOUT`, `*REMOTE*`, `*_TOKEN_INVALID`, `*_CREDEN
 sayılmaz; son 14 günde başarısız denemelerin çoğu bu ikisiydi.
 
 ```sql
-WITH params AS (SELECT timestamptz '2026-11-28 09:00:00+00' AS flip_at)
+WITH params AS (SELECT timestamptz '2026-11-28 09:00:00+00' AS flip_at,
+                       ARRAY[timestamptz '2026-11-28 09:00:00+00', timestamptz '2026-11-28 13:20:00+00'] AS worker_starts)
 SELECT window_name, count(*) AS attempts,
        count(*) FILTER (WHERE panel_error) AS panel_errors,
        round(100.0 * count(*) FILTER (WHERE panel_error) / greatest(count(*), 1), 2) AS panel_error_pct,
@@ -141,6 +154,12 @@ SELECT window_name, count(*) AS attempts,
 FROM params p CROSS JOIN LATERAL (VALUES ('sonra', p.flip_at, p.flip_at + interval '1 hour'),
                                          ('dun ayni saat', p.flip_at - interval '1 day', p.flip_at - interval '23 hours')) w(window_name, w_from, w_to)
 JOIN integration.job_attempts a ON a."StartedAt" >= w.w_from AND a."StartedAt" < w.w_to
+  -- an attempt started or ended (a reaped lease ends at the reaper) in the 10 minutes after a worker start is left out: a
+  -- lease the restart left behind expires there; yesterday's window leaves out the same moments a day earlier
+  AND NOT EXISTS (SELECT 1 FROM unnest(p.worker_starts) AS start(at)
+                  CROSS JOIN LATERAL (SELECT start.at - (p.flip_at - w.w_from) AS from_at) s
+                  WHERE (a."StartedAt" >= s.from_at AND a."StartedAt" < s.from_at + interval '10 minutes')
+                     OR (coalesce(a."CompletedAt", a."StartedAt") >= s.from_at AND coalesce(a."CompletedAt", a."StartedAt") < s.from_at + interval '10 minutes'))
 CROSS JOIN LATERAL (SELECT NOT a."Succeeded"
     AND coalesce(a."ErrorCode", '') !~ '(_PENDING|_NEXT_PHASE|_SUPERSEDED|_NETWORK_ERROR|_TIMEOUT|REMOTE|_TOKEN_INVALID|_CREDENTIALS_REJECTED|_ACCESS_FORBIDDEN)' AS panel_error) e
 GROUP BY 1 ORDER BY 1;
@@ -193,7 +212,7 @@ açılışıyla karşılaştırılır.
 | Webhook slot beklemesi p95 > 1 sn ya da başlama > 60 sn (başlama kilit beklemesini de içerir: bir Trendyol sipariş okuması "orders" kilidini 36 sn'ye kadar tutar; canlıda bugün en uzun 24 sn, replay'de dağıtıcı 39-52 sn) | Q2 |
 | Sipariş Okuma başlama p95 > 60 sn ya da herhangi biri > 180 sn | Q1 |
 | Bir mağaza aynı anda sınırdan (`ConnectionCap`, 3) fazla sınırlı iş çalıştırdı | Q3 |
-| `LEASE_EXPIRED` > 0 | Q4 |
+| `LEASE_EXPIRED` > 0, her worker açılışından sonraki 10 dk hariç (yeniden açılışın geride bıraktığı bir kira orada dolar) | Q4 |
 | Panel tarafı hata: saatte en az 10 hata **ve** oran %1'in üstünde **ve** bir gün önceki aynı saatin 2 katından fazla | Q4 |
 | Worker günlüğünde "dispatcher turn" hatası dakikada birden çok, ya da sağlık dosyası bayat (watchdog yeniden başlattı) | `prod-logs logs worker --grep dispatcher`, `status` |
 

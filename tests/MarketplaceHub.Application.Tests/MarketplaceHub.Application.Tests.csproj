@@ -17,6 +17,8 @@
     <!-- The shipped settings of the worker and the api, compared by DispatcherCoreTests (the lane model must match). -->
     <None Include="..\..\src\MarketplaceHub.Worker\appsettings.json" Link="ShippedSettings\worker.appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\MarketplaceHub.Api\appsettings.json" Link="ShippedSettings\api.appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The flip runbook's work-type CASE, run against PostgreSQL and compared with DispatcherLanes.LaneFor (DispatcherPostgreSqlTests). -->
+    <None Include="..\..\docs\RUNBOOK-KUYRUK-DAGITICI.md" Link="ShippedDocs\RUNBOOK-KUYRUK-DAGITICI.md" CopyToOutputDirectory="PreserveNewest" />
     <!-- Diagnostic messages on: the run's Catalog:MirrorModelFields position line shows in the test output. -->
     <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
