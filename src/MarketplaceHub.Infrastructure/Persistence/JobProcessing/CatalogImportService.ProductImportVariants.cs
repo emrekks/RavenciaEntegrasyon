@@ -42,10 +42,15 @@ internal sealed partial class CatalogImportService
             .ToDictionary(group => group.Key, group => group.First().Desi!.Value, StringComparer.Ordinal);
         if (desiByExternalId.Count == 0) return;
         var externalIds = desiByExternalId.Keys.ToArray();
+        // KATALOG-14 D5 step B2b: "empty" is the desi every reader sees: the model's, else (a model without one) the variant's
+        // own (EffectiveCatalog.Variants), filtered in SQL so only the variants to fill are loaded.
         var targets = await (from variantLink in db.MarketplaceVariantLinks
                              join variant in db.ProductVariants on new { variantLink.TenantId, variantLink.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                             join card in db.Products on new { variant.TenantId, Id = variant.ProductId } equals new { card.TenantId, card.Id }
+                             join model in db.ProductModels on new { card.TenantId, Id = card.FamilyId } equals new { model.TenantId, Id = (Guid?)model.Id } into models
+                             from model in models.DefaultIfEmpty()
                              where variantLink.TenantId == tenantId && variantLink.ConnectionId == connectionId
-                                 && externalIds.Contains(variantLink.ExternalId) && variant.Desi == null
+                                 && externalIds.Contains(variantLink.ExternalId) && variant.Desi == null && (model == null || model.Desi == null)
                              select new { variantLink.ExternalId, Variant = variant }).ToListAsync(cancellationToken);
         foreach (var target in targets)
         {
@@ -145,7 +150,8 @@ internal sealed partial class CatalogImportService
             }
         }
         // The marketplace desi fills an empty local desi (also for observed catalogs: it only adds a value). A desi
-        // the person entered or an earlier import set is never overwritten.
+        // the person entered or an earlier import set is never overwritten. "Empty" is the model's desi (step B2b).
+        if (!isNewVariant && variant.Desi is null) await EffectiveCatalog.RebaseAsync(db, [variant], cancellationToken);
         if (variant.Desi is null && remote.Desi is { } remoteDesi)
         {
             variant.Desi = remoteDesi;

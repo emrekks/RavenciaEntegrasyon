@@ -36,6 +36,8 @@ builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Backups.IBackupEncry
 builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Backups.IBackupSetSource>(_ => new MarketplaceHub.Infrastructure.Backups.BackupSetDirectory(builder.Configuration["OffsiteBackup:BackupRoot"] ?? "/var/lib/marketplacehub/backups"));
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.Backups.OffsiteBackupCopier>();
 builder.Services.AddHostedService<MarketplaceHub.Infrastructure.Backups.OffsiteBackupWorkerService>();
+// KATALOG-14 D5 step B2b: whether saves still write the model fields' copy columns (Catalog:MirrorModelFields).
+MarketplaceHub.Infrastructure.Persistence.ModelFieldCopies.Configure(builder.Configuration);
 var host = builder.Build();
 
 if (args is ["efaturam-connection-test", var publicIdText]

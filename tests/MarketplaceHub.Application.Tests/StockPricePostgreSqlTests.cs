@@ -2627,7 +2627,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             VatRate: 10m, VatInclusion: "INCLUDED", WarrantyMonths: 6, DeliveryDays: 3, DefaultSalePrice: 500m, DefaultListPrice: 600m), CancellationToken.None);
         Assert.True(withNewColour.Succeeded, withNewColour.Error?.Message);
         db.ChangeTracker.Clear();
-        var hakiCard = await db.Products.SingleAsync(x => x.TenantId == tenant.Id && x.Id != mavi.Value.Id && x.Id != bordo.Id);
+        var hakiCard = await ModelFieldCopiesTestPosition.Cards(db).SingleAsync(x => x.TenantId == tenant.Id && x.Id != mavi.Value.Id && x.Id != bordo.Id);
         // The opened Mavi card was created as a draft, so the new card takes that status.
         Assert.Equal(("Bluz Haki", "Açıklama", ProductStatus.Draft, 10m, "INCLUDED", 6, 3, 500m, 600m), (hakiCard.Title, hakiCard.Description, hakiCard.Status, hakiCard.VatRate, hakiCard.VatInclusion, hakiCard.WarrantyMonths, hakiCard.DeliveryDays, hakiCard.DefaultSalePrice, hakiCard.DefaultListPrice));
         Assert.Null(hakiCard.TrendyolWebColorValueId);

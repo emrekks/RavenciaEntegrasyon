@@ -257,7 +257,9 @@ public static class ProductModelValues
         // VAT, warranty, delivery days, the category attributes) yet differs between colours is still reported.
         // KATALOG-14 phase D5b (owner, 17 Nov 2026): of the eight model fields only a VAT that differs between colours is
         // worth a warning (the invoice); the others the colours take from the model, unwarned.
-        var differing = DifferingFields(cards).Where(field => field == Vat).ToList();
+        // KATALOG-14 D5 step B2b: the colours' copies are compared only while they are kept (Catalog:MirrorModelFields on, as
+        // before); off, every colour reads the model's one VAT and the copies may differ, so nothing is reported.
+        var differing = ModelFieldCopies.Written ? DifferingFields(cards).Where(field => field == Vat).ToList() : [];
         // Owner rule "uyarı yalnız KDV farkında" (review, 18 Nov 2026): colours whose category attributes differ are counted for
         // the logs only (AttributesSpread), like the other fields that are not the VAT; no warning is opened.
         var attributesSpread = setKeys.Distinct(StringComparer.Ordinal).Skip(1).Any();

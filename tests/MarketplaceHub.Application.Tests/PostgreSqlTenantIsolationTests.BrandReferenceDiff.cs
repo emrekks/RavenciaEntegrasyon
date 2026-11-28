@@ -540,55 +540,72 @@ public sealed partial class PostgreSqlTenantIsolationTests
         }
     }
 
-    // Old vs new on a 1M-row list with 0.1 % changes: rows written, WAL bytes, duration (printed for the report).
+    // Old vs new with 0.1 % changes: rows written, WAL bytes, duration (printed for the report). Sized for CI (28 Nov 2026): at
+    // 1 M rows the test ran 4-6 min locally and longer on a runner, where it stayed silent past the 8-minute hang limit
+    // (Validate 46082558502, attempt 1); the old path's two full rewrites of 1 M rows alone wrote ~1.45 GB of WAL. What it shows,
+    // "the diff path writes in proportion to the changes, not to the list", holds at 200 000 rows, where the new path is
+    // measured; the old path rewrites the whole list every time, so it is measured on a 20 000-row list only.
     [PostgreSqlFact(Lane = PostgreSqlLane.Load)]
-    public async Task BrandDiff_MillionRowListWithATenthOfAPercentChanged_WritesOnlyTheChanges()
+    public async Task BrandDiff_LargeListWithATenthOfAPercentChanged_WritesOnlyTheChanges()
     {
-        var (tenant, connection) = await SeedBrandDiffTenantAsync("brand-diff-million");
+        var (tenant, connection) = await SeedBrandDiffTenantAsync("brand-diff-large");
+        var (oldTenant, oldConnection) = await SeedBrandDiffTenantAsync("brand-diff-large-old");
         try
         {
-            const int size = 1_000_000;
-            var list = DiffBrandList("P", size);
-            var seedWatch = Stopwatch.StartNew();
-            await SyncBrandListOkAsync(tenant.Id, connection.Id, list, diff: false);
-            output.WriteLine($"seed (full copy, first list) {seedWatch.Elapsed.TotalSeconds:F1} s");
-            // 0.1 %: 400 renamed, 300 removed, 300 added, spread over the list.
+            const int size = 200_000;
+            const int oldPathSize = 20_000;
+            // 0.1 %: every 2 500th renamed, every 3 333rd removed, 300 added, spread over the list.
             RemoteReferenceItem[] Mutate(RemoteReferenceItem[] source, string tag) =>
             [
                 .. source.Where((_, i) => i % 3_333 != 7).Select((x, i) => i % 2_500 == 11 ? DiffBrand(x.ExternalId, $"{x.Name} {tag}") : x),
                 .. Enumerable.Range(0, 300).Select(i => DiffBrand($"Q{tag}{i:D6}", $"Yeni {tag} {i}"))
             ];
-            var day1 = Mutate(list, "a");
-            var day2 = Mutate(day1, "b");
 
-            async Task<string> MeasureAsync(string label, RemoteReferenceItem[] items, bool diff)
+            async Task<long> MeasureAsync(string label, Guid tenantId, Guid connectionId, RemoteReferenceItem[] items, bool diff)
             {
                 Npgsql.NpgsqlConnection.ClearAllPools();
                 await Task.Delay(1_500);
                 var before = await WriteCountersAsync();
                 var watch = Stopwatch.StartNew();
-                await SyncBrandListOkAsync(tenant.Id, connection.Id, items, diff);
+                await SyncBrandListOkAsync(tenantId, connectionId, items, diff);
                 watch.Stop();
                 Npgsql.NpgsqlConnection.ClearAllPools();
                 await Task.Delay(1_500);
                 var after = await WriteCountersAsync();
                 var line = $"{label}: {watch.Elapsed.TotalSeconds:F1} s, inserted {after.Ins - before.Ins}, updated {after.Upd - before.Upd}, deleted {after.Del - before.Del}, WAL {(after.Wal - before.Wal) / 1024.0 / 1024.0:F1} MiB";
                 output.WriteLine(line);
-                return line;
+                return (after.Ins - before.Ins) + (after.Upd - before.Upd) + (after.Del - before.Del);
             }
 
-            await MeasureAsync("old path, unchanged", list, diff: false);
-            await MeasureAsync("old path, 0.1 % changed", day1, diff: false);
-            await MeasureAsync("new path, unchanged", day1, diff: true);
-            await MeasureAsync("new path, 0.1 % changed", day2, diff: true);
+            // The old path (a full rewrite) on 20 000 rows.
+            var oldList = DiffBrandList("O", oldPathSize);
+            await SyncBrandListOkAsync(oldTenant.Id, oldConnection.Id, oldList, diff: false);
+            var oldDay1 = Mutate(oldList, "a");
+            await MeasureAsync($"old path ({oldPathSize:N0}), unchanged", oldTenant.Id, oldConnection.Id, oldList, diff: false);
+            await MeasureAsync($"old path ({oldPathSize:N0}), 0.1 % changed", oldTenant.Id, oldConnection.Id, oldDay1, diff: false);
+            await AssertBrandListIsAsync(oldTenant.Id, oldConnection.Id, oldDay1);
+
+            // The new path on 200 000 rows.
+            var list = DiffBrandList("P", size);
+            var seedWatch = Stopwatch.StartNew();
+            await SyncBrandListOkAsync(tenant.Id, connection.Id, list, diff: false);
+            output.WriteLine($"seed (full copy, first list of {size:N0}) {seedWatch.Elapsed.TotalSeconds:F1} s");
+            var day1 = Mutate(list, "a");
+            var day2 = Mutate(day1, "b");
+            // Rows written follow the changes, not the list: none for an unchanged list, about 440 (300 added, 80 renamed, 60
+            // removed) for a 0.1 % change of 200 000 rows. Upper bounds only (the statistics counters may lag, never run ahead).
+            Assert.True(await MeasureAsync($"new path ({size:N0}), unchanged", tenant.Id, connection.Id, list, diff: true) <= 10);
+            Assert.True(await MeasureAsync($"new path ({size:N0}), 0.1 % changed", tenant.Id, connection.Id, day1, diff: true) <= 2_000);
+            Assert.True(await MeasureAsync($"new path ({size:N0}), 0.1 % changed again", tenant.Id, connection.Id, day2, diff: true) <= 2_000);
             await AssertBrandListIsAsync(tenant.Id, connection.Id, day2);
         }
         finally
         {
             await using var db = fixture.CreateContext();
             db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5));
-            await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.reference_items WHERE "TenantId" = {tenant.Id}""");
+            await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.reference_items WHERE "TenantId" = {tenant.Id} OR "TenantId" = {oldTenant.Id}""");
             await DeleteBrandDiffTenantAsync(tenant.Id);
+            await DeleteBrandDiffTenantAsync(oldTenant.Id);
         }
     }
 

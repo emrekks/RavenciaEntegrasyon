@@ -40,10 +40,10 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         {
             var model = await ModelOfAsync(db, card.Id);
             Assert.Equal((20m, (int?)5, "Yeni ortak açıklama", "Kadın Bordo Yeni Bluz", "Bordo", 3m), (model.VatRate, model.DeliveryDays, model.Description, model.Title, model.TitleColor, model.Desi));
-            var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync();
+            var cards = await ModelFieldCopiesTestPosition.Cards(db).Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync();
             Assert.All(cards, x => Assert.Equal((20m, (int?)5, "Yeni ortak açıklama"), (x.VatRate, x.DeliveryDays, x.Description)));
             Assert.Equal(["Kadın Bordo Yeni Bluz", "Kadın Gri Yeni Bluz", "Kadın Siyah Yeni Bluz"], cards.Select(x => x.Title).Order(StringComparer.Ordinal));
-            Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(3m, x.Desi));
+            Assert.All(await ModelFieldCopiesTestPosition.VariantRows(db).Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(3m, x.Desi));
             // The overrides are neither read nor written.
             Assert.All(cards, x => Assert.Equal((null, null), (x.TitleOverride, x.DescriptionOverride)));
             var read = await EffectiveCatalog.Products(db).Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync();
@@ -68,14 +68,17 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         await using (var db = fixture.CreateContext())
         {
             db.MarketplaceCatalogImport = true;
-            (await db.Products.SingleAsync(x => x.Id == card.Id)).VatRate = 20m;
+            var importing = await db.Products.SingleAsync(x => x.Id == card.Id);
+            // As the import does (CatalogImportService): the card is rebased on its model before it takes the listing's values.
+            await EffectiveCatalog.RebaseAsync(db, CancellationToken.None);
+            importing.VatRate = 20m;
             await db.SaveChangesAsync();
             Assert.True(Assert.Single(db.ModelMirrorReport).Refused);
         }
         await using (var db = fixture.CreateContext())
         {
             Assert.Equal(10m, (await ModelOfAsync(db, card.Id)).VatRate);
-            Assert.Equal(10m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).VatRate);
+            Assert.Equal(10m, (await ModelFieldCopiesTestPosition.Cards(db).SingleAsync(x => x.Id == card.Id)).VatRate);
             var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.DedupeKey.StartsWith(ModelMirror.DifferDedupePrefix));
             Assert.Equal(IssueStatus.Open, issue.Status);
             Assert.Contains("MZ300 modelinin pazaryerinden gelen", issue.Summary);
@@ -84,7 +87,10 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             Assert.Contains(ModelMirror.NextUpdateSentence, issue.Summary);
 
             // The owner then gives the model a value (the editor, Excel): the warning is settled.
-            (await db.Products.SingleAsync(x => x.Id == card.Id)).VatRate = 20m;
+            var importing = await db.Products.SingleAsync(x => x.Id == card.Id);
+            // As the import does (CatalogImportService): the card is rebased on its model before it takes the listing's values.
+            await EffectiveCatalog.RebaseAsync(db, CancellationToken.None);
+            importing.VatRate = 20m;
             await db.SaveChangesAsync();
             Assert.Equal(20m, (await ModelOfAsync(db, card.Id)).VatRate);
             Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == issue.Id)).Status);
@@ -106,13 +112,19 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         await using (var db = fixture.CreateContext())
         {
             await ProductModelScan.RunTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-            var gap = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
-            Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
-            Assert.Contains("KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
-            // Only the VAT is warned about (owner, 17 Nov 2026); the delivery days and warranty are only logged.
-            Assert.DoesNotContain("teslimat süresi", gap.Summary);
-            Assert.DoesNotContain("garanti", gap.Summary);
-            Assert.Contains("fatura modelin KDV'siyle kesilir", gap.Summary);
+            // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) a raw copy write is no difference (nothing reads
+            // the copies) and no gap warning opens; the readers and the invoice below still take the model's values.
+            if (!ModelFieldCopiesTestPosition.CopiesWritten) Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix)));
+            var gap = !ModelFieldCopiesTestPosition.CopiesWritten ? null : await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
+            if (gap is not null)
+            {
+                Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
+                Assert.Contains("KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
+                // Only the VAT is warned about (owner, 17 Nov 2026); the delivery days and warranty are only logged.
+                Assert.DoesNotContain("teslimat süresi", gap.Summary);
+                Assert.DoesNotContain("garanti", gap.Summary);
+                Assert.Contains("fatura modelin KDV'siyle kesilir", gap.Summary);
+            }
 
             var model = await ModelOfAsync(db, card.Id);
             Assert.Equal((10m, (int?)2, (int?)24), (model.VatRate, model.DeliveryDays, model.WarrantyMonths));
@@ -178,9 +190,9 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));
             var after = await ModelOfAsync(db, seeded.Cards[0].Id);
             Assert.Equal((model.VatRate, model.CategoryId, model.WarrantyMonths, model.DeliveryDays, model.Description), (after.VatRate, after.CategoryId, after.WarrantyMonths, after.DeliveryDays, after.Description));
-            var newColour = await db.Products.AsNoTracking().SingleAsync(x => x.Id == added);
+            var newColour = await ModelFieldCopiesTestPosition.Cards(db).SingleAsync(x => x.Id == added);
             Assert.Equal((after.Id, model.VatRate, model.CategoryId, model.DeliveryDays, model.Description), (newColour.FamilyId!.Value, newColour.VatRate, newColour.CategoryId, newColour.DeliveryDays, newColour.Description));
-            var existing = await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[1].Id);
+            var existing = await ModelFieldCopiesTestPosition.Cards(db).SingleAsync(x => x.Id == seeded.Cards[1].Id);
             Assert.Equal((model.CategoryId, model.Description), (existing.CategoryId, existing.Description));
         }
     }
@@ -217,17 +229,26 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         await using (var db = fixture.CreateContext())
         {
             var differing = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
-            Assert.Contains(differing, x => x.StartsWith("MZ300", StringComparison.Ordinal));
+            // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the copy written behind the model's back is no difference: nothing is listed.
+            if (ModelFieldCopiesTestPosition.CopiesWritten) Assert.Contains(differing, x => x.StartsWith("MZ300", StringComparison.Ordinal));
+            else Assert.DoesNotContain(differing, x => x.StartsWith("MZ300", StringComparison.Ordinal));
             await ProductModelValues.RefreshTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
             await ProductModelValues.RefreshAllAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
             await ProductModelScan.RunTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
             Assert.Equal(before, await ModelFieldsSnapshotAsync(db, seeded.Tenant.Id));
             Assert.Equal(10m, (await ModelOfAsync(db, changed.Id)).VatRate);
 
-            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
-            Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open, 1), (issue.Code, issue.Status, issue.OccurrenceCount));
-            Assert.Contains("MZ300 modelinin", issue.Summary);
-            Assert.Contains("Bordo rengi: KDV %20 dahil (modelin: %10 dahil)", issue.Summary);
+            // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) a copy written behind the model's back is no
+            // difference: no gap warning opens. Only the warning assertions depend on the position; the rest runs in both.
+            var issue = await db.OperationalIssues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
+            if (ModelFieldCopiesTestPosition.CopiesWritten)
+            {
+                Assert.NotNull(issue);
+                Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open, 1), (issue.Code, issue.Status, issue.OccurrenceCount));
+                Assert.Contains("MZ300 modelinin", issue.Summary);
+                Assert.Contains("Bordo rengi: KDV %20 dahil (modelin: %10 dahil)", issue.Summary);
+            }
+            else Assert.Null(issue);
 
             // The invoice: the colour is invoiced at the model's rate.
             var variant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == changed.Id).OrderBy(x => x.SortOrder).FirstAsync();
@@ -238,9 +259,11 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             // The owner's own save closes the difference (every colour takes the value) and the next scan settles the warning.
             (await db.Products.SingleAsync(x => x.Id == seeded.Cards[0].Id)).VatRate = 20m;
             await db.SaveChangesAsync();
-            Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
+            Assert.All(await ModelFieldCopiesTestPosition.Cards(db).Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
+            if (ModelFieldCopiesTestPosition.CopiesWritten) Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
             await ProductModelValues.RefreshTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-            Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == issue.Id)).Status);
+            if (issue is not null) Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == issue.Id)).Status);
+            Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));
         }
     }
 
@@ -302,7 +325,10 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             // is warned about).
             Assert.Equal(brand, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == ownModel)).BrandId);
             Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix) && x.Status == IssueStatus.Open));
-            Assert.Contains(await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None), x => x.Contains(ProductModelValues.Brand, StringComparison.Ordinal));
+            // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the card's brand copy is not compared: nothing is listed.
+            var listed = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            if (ModelFieldCopiesTestPosition.CopiesWritten) Assert.Contains(listed, x => x.Contains(ProductModelValues.Brand, StringComparison.Ordinal));
+            else Assert.DoesNotContain(listed, x => x.Contains(ProductModelValues.Brand, StringComparison.Ordinal));
             Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelLinks.AmbiguousCode && x.Status == IssueStatus.Open));
         }
     }
@@ -320,7 +346,9 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         await using (var db = fixture.CreateContext())
         {
             var logged = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
-            Assert.Contains(logged, x => x.Contains(ProductModelValues.Warranty, StringComparison.Ordinal) && x.Contains(ProductModelValues.DeliveryDays, StringComparison.Ordinal));
+            // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the copies are not compared: nothing is logged.
+            if (ModelFieldCopiesTestPosition.CopiesWritten) Assert.Contains(logged, x => x.Contains(ProductModelValues.Warranty, StringComparison.Ordinal) && x.Contains(ProductModelValues.DeliveryDays, StringComparison.Ordinal));
+            else Assert.Empty(logged);
             await ProductModelScan.RunTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
             await ProductModelValues.RefreshAllAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
             Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));

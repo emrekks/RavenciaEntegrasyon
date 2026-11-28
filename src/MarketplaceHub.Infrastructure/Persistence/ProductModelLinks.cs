@@ -1050,25 +1050,26 @@ public static class ProductModelLinks
         return opened.SequenceEqual(model, StringComparer.Ordinal) ? rows : null;
     }
 
-    // The editor saved the model's fields to every card: the model takes the same values (write-through).
-    public static async Task WriteFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, string? titleColor, DateTimeOffset now, CancellationToken cancellationToken)
+    // The editor saved the model's fields: the model record is marked as saved by the editor (FieldsSavedAt, the editor's
+    // read of the record). KATALOG-14 D5 step B2b (review 1): the fields themselves are not written here. The save's own
+    // transaction gave the model every field it changed, under the model row lock (ModelMirror, from ProductModelLinks
+    // .Capture); a field this save did not change is the model's already, and writing it again from the card here, after
+    // the commit and outside the lock, could put back a value another save wrote meanwhile. The one value ModelMirror does
+    // not carry is an emptied warranty (a draft saved with it emptied): it becomes the model's when this save emptied it and
+    // all the model's cards are drafts (review, 16 Nov 2026), written under the model row lock.
+    public static async Task WriteFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, bool warrantyEmptied, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var card = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId && x.FamilyId != null)
-            .Select(x => new { x.FamilyId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
-            .SingleOrDefaultAsync(cancellationToken);
-        if (card is null) return;
-        var color = string.IsNullOrWhiteSpace(titleColor) ? null : Short(titleColor.Trim(), 120);
-        var title = Short(card.Title, 320);
-        // An empty warranty (a draft saved with it emptied) is the model's only while all its cards are drafts: a model
-        // with a card on sale or closed keeps its own (review, 16 Nov 2026).
-        var keepWarranty = card.WarrantyMonths is null
-            && await db.Products.AnyAsync(x => x.TenantId == tenantId && x.FamilyId == card.FamilyId && x.Status != ProductStatus.Draft, cancellationToken);
-        await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == card.FamilyId)
+        await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        await LockModelsOfCardsAsync(db, tenantId, [productId], [], cancellationToken);
+        var familyId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.FamilyId).SingleOrDefaultAsync(cancellationToken);
+        if (familyId is null) return;
+        var emptyWarranty = warrantyEmptied
+            && !await db.Products.AnyAsync(x => x.TenantId == tenantId && x.FamilyId == familyId && x.Status != ProductStatus.Draft, cancellationToken);
+        await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == familyId)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, color).SetProperty(x => x.Description, card.Description)
-                .SetProperty(x => x.CategoryId, card.CategoryId).SetProperty(x => x.VatRate, card.VatRate).SetProperty(x => x.VatInclusion, card.VatInclusion)
-                .SetProperty(x => x.WarrantyMonths, x => keepWarranty ? x.WarrantyMonths : card.WarrantyMonths).SetProperty(x => x.DeliveryDays, card.DeliveryDays)
+                .SetProperty(x => x.WarrantyMonths, x => emptyWarranty ? null : x.WarrantyMonths)
                 .SetProperty(x => x.FieldsSavedAt, now).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 
     // The editor's family with the model link: the cards linked to the opened card's model, plus the model-code rule's

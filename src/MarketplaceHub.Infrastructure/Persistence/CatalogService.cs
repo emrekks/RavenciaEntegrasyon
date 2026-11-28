@@ -1405,6 +1405,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (fields.Count == 0) return true;
         var siblingIds = familyProductIds.Where(productId => productId != opened.Id).ToArray();
         var siblings = await db.Products.Where(x => x.TenantId == tenantId && siblingIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
         var signatures = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && (siblingIds.Contains(x.ProductId) || x.ProductId == opened.Id))
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
@@ -1527,6 +1528,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
         var priceChangedProductIds = new HashSet<Guid>();
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version);
+        // KATALOG-14 D5 step B2b: the card compares what the editor sends with its model's values, never with its copies.
+        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
         var effectiveListPrice = command.DefaultListPrice ?? product.DefaultListPrice;
         var effectiveSalePrice = command.DefaultSalePrice ?? product.DefaultSalePrice;
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
@@ -1572,6 +1575,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || variantIdsToDelete.Count > 0 || placeholderIdsToDelete.Count > 0 || command.Status is not null
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : [];
+        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
         // KATALOG-14 D5 step B2a: the stored desi a check reads is the model's (EffectiveCatalog), never the variant's copy.
         var storedDesi = existingVariants.Count == 0 ? [] : await EffectiveCatalog.DesiOfAsync(db, tenantId, existingVariants.Select(x => x.Id), cancellationToken);
         if (variantIdsToDelete.Count > 0)
@@ -1986,6 +1990,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (familyProductIdsToProtect.Count > 0)
         {
             var siblings = await db.Products.Where(x => x.TenantId == tenantId && familyProductIdsToProtect.Contains(x.Id)).ToListAsync(cancellationToken);
+            await EffectiveCatalog.RebaseAsync(db, cancellationToken);
             foreach (var sibling in siblings)
             {
                 var siblingStatusBefore = sibling.Status;
@@ -2067,10 +2072,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var keys = await ProductModelLinks.KeysOfProductsAsync(db, tenantId, [.. familyProductIds.Append(productId).Distinct()], cancellationToken);
             await ProductModelLinks.ReconcileAsync(db, tenantId, keys, now, cancellationToken);
             if (!(command.FamilySharedFields ?? []).Any(ProductFamilySharedFields.IsKnown)) return;
-            var signatures = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId)
-                .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.OptionSignature).ToListAsync(cancellationToken);
-            var color = signatures.Select(ProductFamilyColorOrder.ColorOf).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-            try { await ProductModelLinks.WriteFieldsAsync(db, tenantId, productId, color, now, cancellationToken); }
+            try { await ProductModelLinks.WriteFieldsAsync(db, tenantId, productId, command.ClearWarrantyMonths && command.WarrantyMonths is null, now, cancellationToken); }
             catch (Exception exception) when (exception is DbException or InvalidOperationException) { await ProductModelLinks.RecordLinkFailureAsync(db, tenantId, exception, timeProvider.GetUtcNow()); }
             if ((command.FamilySharedFields ?? []).Contains(ProductFamilySharedFields.Attributes, StringComparer.Ordinal) && command.Attributes is not null)
                 await ProductModelLinks.WriteAttributesAsync(db, tenantId, productId, now, cancellationToken);

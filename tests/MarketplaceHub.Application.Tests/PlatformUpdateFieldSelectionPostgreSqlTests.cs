@@ -168,14 +168,14 @@ public sealed class PlatformUpdateFieldSelectionPostgreSqlTests(PostgreSqlTenant
         await using (var db = fixture.CreateContext())
         {
             // A new card starts at 1 day.
-            Assert.Equal(1, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == product.Id)).DeliveryDays);
+            Assert.Equal(1, (await ModelFieldCopiesTestPosition.Cards(db).SingleAsync(x => x.Id == product.Id)).DeliveryDays);
             var stored = await db.Products.SingleAsync(x => x.Id == product.Id);
             stored.DeliveryDays = 4;
             await db.SaveChangesAsync();
         }
         await using (var db = fixture.CreateContext())
         {
-            Assert.Equal(4, (await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == product.Id)).DeliveryDays);
+            Assert.Equal(4, (await ModelFieldCopiesTestPosition.Cards(db).SingleAsync(x => x.TenantId == tenant.Id && x.Id == product.Id)).DeliveryDays);
             await db.Products.Where(x => x.Id == product.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.DeliveryDays, (int?)null));
         }
         await using (var db = fixture.CreateContext())

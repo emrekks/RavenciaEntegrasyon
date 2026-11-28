@@ -91,8 +91,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             }
 
             await using var verificationDb = fixture.CreateContext();
-            Assert.Equal(2m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == emptyVariantId)).Desi);
-            Assert.Equal(2m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == enteredVariantId)).Desi);
+            Assert.Equal(2m, (await ModelFieldCopiesTestPosition.VariantRows(verificationDb).SingleAsync(row => row.Id == emptyVariantId)).Desi);
+            Assert.Equal(2m, (await ModelFieldCopiesTestPosition.VariantRows(verificationDb).SingleAsync(row => row.Id == enteredVariantId)).Desi);
             Assert.Equal("Local title", (await verificationDb.Products.AsNoTracking().SingleAsync(row => row.Id == productId)).Title);
         }
         finally
@@ -882,7 +882,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var currentDesi = await SaveDesiAsync(4m);
         Assert.True(currentDesi.Succeeded, currentDesi.Error?.Message);
         db.ChangeTracker.Clear();
-        var afterDesi = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
+        var afterDesi = await ModelFieldCopiesTestPosition.VariantRows(db).Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
         // KATALOG-14 phase D5b: the desi is the model's, so the one given to a variant reaches every variant.
         Assert.Equal([3m, 3m], afterDesi.Select(x => x.Desi));
 
@@ -10601,7 +10601,9 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     }
 }
 
-public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
+// xUnit hands the fixture its diagnostic sink (the run's position line goes there); a test that builds one for a second
+// context passes none.
+public sealed class PostgreSqlTenantIsolationFixture(IMessageSink? diagnostics = null) : IAsyncLifetime
 {
     private static readonly SemaphoreSlim MigrationGate = new(1, 1);
     private readonly bool shouldMigrate = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION"));
@@ -10614,6 +10616,9 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // KATALOG-14 D5 step B2b: the run's position of Catalog:MirrorModelFields, checked (a host started by a test must not
+        // change it) and printed for the log.
+        ModelFieldCopiesTestPosition.Verify(diagnostics);
         if (!shouldMigrate) return;
         await MigrationGate.WaitAsync();
         try

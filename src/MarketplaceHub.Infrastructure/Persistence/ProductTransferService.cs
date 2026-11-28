@@ -321,6 +321,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var loadedProducts = new List<Product>(productIds.Length);
         foreach (var chunk in productIds.Chunk(Chunk))
             loadedProducts.AddRange(await db.Products.Where(product => product.TenantId == tenantId && chunk.Contains(product.Id)).ToListAsync(cancellationToken));
+        // KATALOG-14 D5 step B2b: the file's values are compared with the model's, never with the cards' or variants' copies.
+        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
         var productById = loadedProducts.ToDictionary(product => product.Id);
         if (productChanges.Any(change => !productById.ContainsKey(change.ProductId)) || panelProductIds.Any(id => !productById.ContainsKey(id)))
             return Stale("Bazı ürünler artık katalogda yok; dosyayı yeniden yükleyin.");
@@ -644,6 +646,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                     if (!productById.TryGetValue(cardId, out var card))
                     {
                         card = await db.Products.SingleAsync(item => item.TenantId == tenantId && item.Id == cardId, cancellationToken);
+                        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
                         productById[cardId] = card;
                     }
                     // KATALOG-14 phase D5b: a model is its code alone, so every colour of it takes the value (no brand check),
@@ -689,6 +692,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 if (!productById.TryGetValue(cardId, out var known))
                 {
                     known = await db.Products.SingleAsync(item => item.TenantId == tenantId && item.Id == cardId, cancellationToken);
+                    await EffectiveCatalog.RebaseAsync(db, cancellationToken);
                     productById[cardId] = known;
                 }
                 brandBefore[cardId] = known.BrandId;
@@ -703,6 +707,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                     if (!productById.TryGetValue(cardId, out var card))
                     {
                         card = await db.Products.SingleAsync(item => item.TenantId == tenantId && item.Id == cardId, cancellationToken);
+                        await EffectiveCatalog.RebaseAsync(db, cancellationToken);
                         productById[cardId] = card;
                     }
                     if (card.BrandId == match.Id) continue;
@@ -727,6 +732,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                                   join product in db.Products on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
                                   where variant.TenantId == tenantId && product.FamilyId != null && modelIds.Contains(product.FamilyId.Value)
                                   select new { Variant = variant, ModelId = product.FamilyId!.Value }).ToListAsync(cancellationToken);
+            await EffectiveCatalog.RebaseAsync(db, cancellationToken);
             foreach (var sibling in siblings.Where(item => !fileVariantIds.Contains(item.Variant.Id)))
             {
                 var desi = desiOfModel[sibling.ModelId];

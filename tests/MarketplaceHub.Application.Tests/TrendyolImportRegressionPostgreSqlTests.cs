@@ -207,16 +207,25 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         // "Tekil ürün çekimi" with "Mevcut Ürün Bilgilerini Güncelle" overwrites the owner's edit (ProductImportMergePolicy.
         // OverwriteLocalChanges, owner decision 7 Nov) and still keeps the owner's pictures. KATALOG-14 phase D5b (owner,
         // 17 Nov 2026): the name is the model's and an import never moves a model, so Trendyol's other name for this one
-        // colour is not taken, unwarned. The card's warranty (24 here) is never touched: a listing carries none.
+        // colour is not taken, unwarned. The warranty is never touched: a listing carries none. KATALOG-14 D5 step B2b: the
+        // warranty is the model's (24 here, the card's copy a stale 7); the import leaves the model's, and the stale copy of the
+        // row it writes is healed to it while the copies are kept (ModelFieldCopyHold).
+        Guid modelId;
         await using (var db = fixture.CreateContext())
-            await db.Products.Where(row => row.Id == siyah.ProductId).ExecuteUpdateAsync(s => s.SetProperty(row => row.WarrantyMonths, 24));
+        {
+            modelId = (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).FamilyId!.Value;
+            await db.ProductModels.Where(row => row.Id == modelId).ExecuteUpdateAsync(s => s.SetProperty(row => row.WarrantyMonths, 24));
+            await db.Products.Where(row => row.Id == siyah.ProductId).ExecuteUpdateAsync(s => s.SetProperty(row => row.WarrantyMonths, 7));
+        }
         await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), $"{{\"productLookup\":\"{ModelCode}\",\"updateExistingProducts\":true}}");
         Assert.Equal(placementBefore, await PlacementAsync(seed));
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
         await using (var db = fixture.CreateContext())
         {
-            var card = await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId);
+            var card = await ModelFieldCopiesTestPosition.Cards(db).SingleAsync(row => row.Id == siyah.ProductId);
             Assert.Equal((Title("Siyah"), (int?)24), (card.Title, card.WarrantyMonths));
+            Assert.Equal((int?)24, (await db.ProductModels.AsNoTracking().SingleAsync(row => row.Id == modelId)).WarrantyMonths);
+            if (ModelFieldCopiesTestPosition.CopiesWritten) Assert.Equal((int?)24, (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).WarrantyMonths);
             // A name difference is not warned about (owner, 17 Nov 2026: only a VAT difference is).
             Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Status == IssueStatus.Open));
         }
@@ -374,7 +383,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await RunAsync(seed, new TrendyolCatalogPort(Read(bordoAgain)), "{\"full\":true}");
         await using (var db = fixture.CreateContext())
         {
-            var products = await db.Products.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+            var products = await ModelFieldCopiesTestPosition.Cards(db).Where(row => row.TenantId == seed.TenantId).ToListAsync();
             Assert.All(products, row => Assert.Equal("Sahibin model açıklaması.", row.Description));
             Assert.Equal(Title("Bordo"), products.Single(row => row.Title.StartsWith("Kadın Bordo", StringComparison.Ordinal)).Title);
         }
@@ -1449,8 +1458,9 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     private static async Task<Dictionary<string, Card>> CardsAsync(AppDbContext db, Seed seed)
     {
         var links = await db.MarketplaceProductLinks.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.ConnectionId == seed.ConnectionId).ToListAsync();
-        var products = await db.Products.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
-        var variants = await db.ProductVariants.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        // KATALOG-14 D5 step B2b: the cards' columns while the copies are kept, else the values every reader sees.
+        var products = await ModelFieldCopiesTestPosition.Cards(db).Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        var variants = await ModelFieldCopiesTestPosition.VariantRows(db).Where(row => row.TenantId == seed.TenantId).ToListAsync();
         return links.ToDictionary(link => link.ExternalId, link => new Card(products.Single(row => row.Id == link.ProductId), [.. variants.Where(row => row.ProductId == link.ProductId)]));
     }
 

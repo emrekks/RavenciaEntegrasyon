@@ -108,7 +108,7 @@ public sealed class PostgreSqlCatalogModelCodeConsistencyTests(PostgreSqlTenantI
         var applied = await service.ApplyAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand([], [new ProductTransferProductChange(siyah.Id, 1, "Kadın Siyah Yırtmaçlı Bluz", 20m)]), "transfer-model-fields", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
         db.ChangeTracker.Clear();
-        var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id);
+        var cards = await ModelFieldCopiesTestPosition.Cards(db).Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id);
         Assert.Equal(("Kadın Siyah Yırtmaçlı Bluz", 20m), (cards[siyah.Id].Title, cards[siyah.Id].VatRate));
         Assert.Equal(("Kadın Mavi Yırtmaçlı Bluz", 20m, "INCLUDED"), (cards[mavi.Id].Title, cards[mavi.Id].VatRate, cards[mavi.Id].VatInclusion));
         Assert.Equal(("Kadın Gri Bluz", 10m), (cards[lavian.Id].Title, cards[lavian.Id].VatRate));

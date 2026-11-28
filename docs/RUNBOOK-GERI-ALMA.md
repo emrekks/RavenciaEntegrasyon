@@ -618,3 +618,50 @@ listenin tamamını görür. Taze 993 bin satırlık tablo 530 MB (canlıda 1.06
 
 Canlı kontrol sorguları (salt okuma, boyut ve sayaçlar): `.local-docs/kuyruk-faz1b-verify.sql` (git dışı); boşalan
 alanın geri kazanılması (VACUUM FULL / pg_repack / REINDEX CONCURRENTLY, ~500 MB) sahibin ayrı kararıdır, otomatik yapılmaz.
+
+## 12. Model alanlarının kart kopyaları (KATALOG-14 D5 B2b, `Catalog:MirrorModelFields`)
+
+Açıklama, KDV oranı, KDV dahil mi, kategori, garanti, teslimat süresi ve desi modelin alanlarıdır; bütün okuyucular modelden
+okur (B2a, `EffectiveCatalog`). Renk kartı ve varyantlardaki aynı adlı sütunlar yalnız geri alma güvencesi olan
+**kopyalardır**. Anahtar açıkken (bu sürümün değeri `true`) kayıtlar kopyaları modelle birlikte yazar; kapalıyken hiçbir
+kayıt onları yazmaz. Ad (her rengin kendi adı) ve marka (kartın modele bağı) iki konumda da yazılır. Kısıt gereği kalan
+yazımlar: yeni kartın açıklaması (sütun NOT NULL) ve Marka Listesi / kategori sıfırlamasının `"BrandId"`/`"CategoryId"` = NULL
+adımları (RESTRICT bağları).
+
+**Flip (kopyaları yazmayı bırakmak):** anahtar compose'tan geçmez; `production.env`e yazılan değer API'ye ve Worker'a
+ulaşmaz. Flip bir sürümdür: `src/MarketplaceHub.Api/appsettings.json` **ve** `src/MarketplaceHub.Worker/appsettings.json`
+içinde `"Catalog": { "MirrorModelFields": false }` yapıp gönderin (tam deploy; iki dosya aynı değeri taşımalı, bir test
+bunu denetler). Önce `.local-docs/model-b2b-verify.sql` (git dışı) ile modellerin kendi içinde tutarlı olduğunu görün.
+
+**Açık konum (bu sürüm):** davranış main ile aynıdır; kopya-model farkı uyarıları (`ModelMirror.ReportGapsAsync`, renkler
+arası KDV uyarısı, `PRODUCT_MODEL_VALUES_DIFFER`) ve Worker'ın açılıştaki tek seferlik garanti onarımı eskisi gibi çalışır.
+Bu sürümün düzeltmeleri iki konumda da geçerlidir: yazıcılar "değişti mi" sorusunu kopyaya değil modele sorar, editörün
+kayıt sonrası model yazımı yalnız "editör kaydetti" işaretini (ve boşaltılan garantiyi) yazar, başarısız bir kayıt aynı
+bağlamda yeniden denenince uygulanır.
+
+**Geri alma:** iki dosyada `true` yapıp gönderin. Kendiliğinden hiçbir şey yeniden yazılmaz (geri doldurma yok, sahip
+kuralı): kapalıyken düzenlenen satırların kopyaları bayat kalır; hiçbir okuyucu onları okumaz. Açık konumda gece kontrolü,
+kapalıyken KDV'si değişen modeller için bilgi amaçlı `PRODUCT_MODEL_VALUES_DIFFER` uyarısı açar (main'in her kopya farkında
+açtığı uyarı); fatura ve ekranlar modelin değerini kullanır. Kapatmak için sahibin o ürünün renklerini düzenleyicide bir kez
+(hiçbir şey değiştirmeden) kaydetmesi yeter: kayıt bayat kopyayı modelden iyileştirir (alan değişikliği sayılmaz; pazaryeri
+bağı, iş ya da outbox olarak aynı kaydın main'de yaptığından fazlası olmaz) ve sonraki kontrol uyarıyı kapatır
+(`ModelFieldCopiesReviewPostgreSqlTests`). Kaydedilmeyen satırların kopyası bayat ve okunmadan kalır.
+
+**Kapalı konumda değişenler:** sahibin kaydı (düzenleyici, Excel, Toplu Değer Ata, API) değeri modele yazar ve modelin
+bütün renklerine uygular; pazaryeri bağları açık konumdakiyle aynı biçimde "düzenlendi" işaretlenir (aynı gönderimler
+sıraya girer, `ModelFieldCopiesPostgreSqlTests`). Yazıcılar "değişti mi" sorusunu kopyaya değil modele sorar (iki konumda).
+Kopya-model farkını ölçen denetimler (`ModelMirror.ReportGapsAsync`, renkler arası KDV uyarısı) yalnız kapalıyken fark aramaz
+(hiçbir okuyucu kopyayı okumadığı için fark yoktur); garanti onarımı yalnız kapalıyken hiçbir şey yazmaz, modele göre sayar. C (sütunları düşürmek) ayrı sahip onayı ister ve geri alınamaz.
+
+**Testleri iki konumda koşmak:** testler varsayılan olarak gönderilen konumda (açık) koşar;
+`MARKETPLACEHUB_TEST_MIRROR_MODEL_FIELDS=false` bütün koşuyu kapalı konumda çalıştırır. Koşunun konumu test çıktısında
+`[model-field-copies] Catalog:MirrorModelFields = … (asked: …)` satırıyla görünür (ayrıca `%TEMP%\marketplacehub-model-field-copies.log`);
+istenen konum tutmazsa fixture hata verir. Ham kopya sütununu denetleyen testler onu yalnız açık konumda denetler
+(`ModelFieldCopiesTestPosition.Cards`/`VariantRows`: açıkken ham satır, kapalıyken modelin değeri). Kopyalardan etkilenen
+sınıflar (B2b incelemesinde iki konumda koşulan küme) şu süzgeçle seçilir; boş bir veritabanına karşı her konum için bir kez:
+
+```bash
+export MARKETPLACEHUB_TEST_CONNECTION="Host=localhost;Port=<port>;Username=postgres;Database=<boş-db>"
+export MARKETPLACEHUB_TEST_MIRROR_MODEL_FIELDS=false   # sonra true
+dotnet test tests/MarketplaceHub.Application.Tests --filter "(FullyQualifiedName~Catalog|FullyQualifiedName~ProductModel|FullyQualifiedName~Family|FullyQualifiedName~ProductTransfer|FullyQualifiedName~Import|FullyQualifiedName~Bulk|FullyQualifiedName~Composer|FullyQualifiedName~Golden|FullyQualifiedName~StaleCardCopy|FullyQualifiedName~EffectiveCatalog|FullyQualifiedName~ModelSingleSource|FullyQualifiedName~ModelFieldCopies|FullyQualifiedName~ModelBrandCode|FullyQualifiedName~Warranty|FullyQualifiedName~ProductJob|FullyQualifiedName~Publication|FullyQualifiedName~StockPrice|FullyQualifiedName~ModelRecord|FullyQualifiedName~ContractTests|FullyQualifiedName~ProductEditor|FullyQualifiedName~Variant|FullyQualifiedName~PanelFactoryReset|FullyQualifiedName~Report|FullyQualifiedName~Product)&PostgreSqlLane!=Load"
+```

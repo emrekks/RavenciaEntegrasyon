@@ -107,7 +107,8 @@ public sealed class ModelSingleSourceReviewPostgreSqlTests(PostgreSqlTenantIsola
         await ProductWarranty.RunPassAsync(db, firstPassAfterStart: true, CancellationToken.None);
         Assert.Null((await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id)).WarrantyMonths);
         Assert.Null((await db.Products.AsNoTracking().SingleAsync(x => x.Id == draft)).WarrantyMonths);
-        Assert.Equal((int?)0, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[0].Id)).WarrantyMonths);
+        // KATALOG-14 D5 step B2b: with the copies off (Catalog:MirrorModelFields false) the repair is retired and writes nothing.
+        Assert.Equal(ModelFieldCopiesTestPosition.CopiesWritten ? 0 : (int?)null, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[0].Id)).WarrantyMonths);
     }
 
     // L5 (gap 2): a new colour added from the editor brings the model's VAT, not the opened card's poisoned copy. Before the
